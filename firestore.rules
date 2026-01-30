@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ========================================================================
+    // USERS COLLECTION
+    // ========================================================================
+    // Usuários podem ler apenas seus próprios dados
+    // Escritas são controladas exclusivamente pelo servidor via Admin SDK
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false; // Apenas servidor pode escrever
+    }
+    
+    // ========================================================================
+    // EXPEDITIONS COLLECTION (Histórico)
+    // ========================================================================
+    // Usuários podem ler apenas suas próprias expedições
+    // Escritas são controladas exclusivamente pelo servidor
+    match /expeditions/{expeditionId} {
+      allow read: if request.auth != null && 
+                     resource.data.userId == request.auth.uid;
+      allow write: if false; // Apenas servidor pode escrever
+    }
+    
+    // ========================================================================
+    // LEADERBOARDS COLLECTION (Futuro)
+    // ========================================================================
+    // Leaderboards são públicos para leitura
+    // Escritas são controladas pelo servidor
+    match /leaderboards/{leaderboardId} {
+      allow read: if true; // Público
+      allow write: if false; // Apenas servidor
+    }
+    
+    // ========================================================================
+    // DEFAULT: Negar tudo que não foi explicitamente permitido
+    // ========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

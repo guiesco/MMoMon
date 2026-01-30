@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teste CORS</title>
+</head>
+<body>
+    <h1>Teste de CORS - expedition-start</h1>
+    <button onclick="testExpeditionStart()">Testar /api/expedition-start</button>
+    <pre id="result"></pre>
+
+    <script>
+        async function testExpeditionStart() {
+            const resultEl = document.getElementById('result');
+            resultEl.textContent = 'Testando...\n';
+            
+            try {
+                console.log('Enviando requisição para http://localhost:3001/api/expedition-start');
+                
+                const response = await fetch('http://localhost:3001/api/expedition-start', {
+                    method: 'POST',
+                    mode: 'cors',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        userId: 'test-user-123',
+                        mapId: 'test-map',
+                        timestamp: Date.now()
+                    })
+                });
+
+                console.log('Response status:', response.status);
+                console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+                const data = await response.json();
+                
+                resultEl.textContent += `✅ SUCESSO!\n\n`;
+                resultEl.textContent += `Status: ${response.status}\n`;
+                resultEl.textContent += `Response: ${JSON.stringify(data, null, 2)}\n`;
+                
+                console.log('Data:', data);
+            } catch (error) {
+                resultEl.textContent += `❌ ERRO!\n\n`;
+                resultEl.textContent += `Tipo: ${error.constructor.name}\n`;
+                resultEl.textContent += `Mensagem: ${error.message}\n`;
+                resultEl.textContent += `Stack: ${error.stack}\n`;
+                
+                console.error('Erro:', error);
+            }
+        }
+    </script>
+</body>
+</html>

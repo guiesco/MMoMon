@@ -1,0 +1,28 @@
+# Dependências
+node_modules/
+server/node_modules/
+
+# Build
+dist/
+server/dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Firebase Credentials (NUNCA COMMITAR!)
+firebase-service-account.json
+server/firebase-service-account.json
+src/services/firebaseConfig.ts
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
