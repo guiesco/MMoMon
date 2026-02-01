@@ -1,11 +1,11 @@
 /**
  * Abstração unificada para gerenciamento de estado do mundo do jogo.
  * 
- * Esta abstração permite que tanto single-player quanto multiplayer
- * usem a mesma interface para gerenciar criaturas, recursos e jogadores.
+ * Arquitetura multiplayer-first: o servidor é sempre a fonte de verdade.
+ * Cliente apenas recebe e renderiza o estado sincronizado.
  * 
- * Em single-player: LocalWorldState gerencia estado localmente
- * Em multiplayer: RemoteWorldState sincroniza com servidor
+ * RemoteWorldState: Implementação padrão - sincroniza com servidor via WebSocket
+ * LocalWorldState: @deprecated Mantido apenas para testes - não deve ser usado em produção
  */
 
 import type { ThreatTier, EnemyBehaviorType, EnemyAIState, EnemyBehaviorConfig } from "./constants";
@@ -134,7 +134,8 @@ export interface ExtractionPointState {
 
 /**
  * Interface para gerenciamento de estado do mundo.
- * Implementada por LocalWorldState (single-player) e RemoteWorldState (multiplayer).
+ * Implementada por RemoteWorldState (multiplayer-first, padrão).
+ * LocalWorldState está deprecated e mantido apenas para testes.
  */
 export interface GameWorldState {
   // Coleções de entidades
@@ -177,12 +178,16 @@ export interface GameWorldState {
 }
 
 // =============================================================================
-// Implementação Local (Single-Player)
+// Implementação Local (Deprecated - Apenas para Testes)
 // =============================================================================
 
 /**
+ * @deprecated Arquitetura multiplayer-first: sempre use RemoteWorldState.
+ * Esta implementação é mantida apenas para testes unitários.
+ * Em produção, o servidor é sempre a fonte de verdade.
+ * 
  * Implementação local do estado do mundo.
- * Usado em single-player, onde o cliente é a fonte de verdade.
+ * Não deve ser usada em produção - apenas para testes.
  */
 export class LocalWorldState implements GameWorldState {
   readonly creatures: Map<string, CreatureState> = new Map();
@@ -296,13 +301,15 @@ export class LocalWorldState implements GameWorldState {
 }
 
 // =============================================================================
-// Implementação Remota (Multiplayer)
+// Implementação Remota (Multiplayer-First - Padrão)
 // =============================================================================
 
 /**
- * Implementação remota do estado do mundo.
- * Usado em multiplayer, onde o servidor é a fonte de verdade.
+ * Implementação remota do estado do mundo (padrão).
+ * Arquitetura multiplayer-first: o servidor é sempre a fonte de verdade.
  * As atualizações são sincronizadas via WebSocket.
+ * 
+ * Esta é a implementação padrão - sempre use esta em produção.
  */
 export class RemoteWorldState implements GameWorldState {
   readonly creatures: Map<string, CreatureState> = new Map();

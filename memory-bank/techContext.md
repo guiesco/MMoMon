@@ -1,17 +1,23 @@
 # PokéExtract: Wild Expedition – Tech Context
 
-## Stack Proposto (sujeito a alinhamento)
-- **Frontend**:
-  - TypeScript
-  - React (ou outra SPA leve) + engine/renderizador 2D (ex: PixiJS ou Phaser) para top-down.
-  - WebSockets nativos ou via biblioteca (ex: socket.io client).
-- **Backend**:
-  - Node.js + TypeScript.
-  - WebSocket server (ex: ws ou socket.io server).
-  - Framework HTTP leve (Express ou similar) apenas para auth/básico.
-- **Banco de Dados**:
-  - Postgres ou outro relacional para persistência de progresso.
-  - Para MVP local: SQLite/Prisma pode ser suficiente.
+## Stack Tecnológico (Atual)
+
+### Frontend
+- **TypeScript**: Tipagem estática
+- **Phaser 3**: Engine de jogo 2D
+- **Vite**: Build tool e dev server
+- **WebSocket (ws)**: Comunicação em tempo real
+- **Firebase Client SDK**: Autenticação e sincronização
+
+### Backend
+- **Node.js + TypeScript**: Runtime e tipagem
+- **WebSocket (ws)**: Servidor WebSocket
+- **Express**: HTTP server (para APIs)
+- **Firebase Admin SDK**: Persistência e autenticação
+
+### Persistência
+- **Firebase Firestore**: Banco de dados NoSQL na nuvem
+- **localStorage**: Fallback offline (apenas leitura)
 
 ## Requisitos Técnicos
 - **Gráficos**:

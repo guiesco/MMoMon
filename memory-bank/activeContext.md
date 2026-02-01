@@ -1,23 +1,29 @@
 # PokéExtract: Wild Expedition – Active Context
 
 ## Foco Atual
-- **🔥 FIREBASE: Persistência na Nuvem** ✅
-- **Estado**: IMPLEMENTAÇÃO COMPLETA - PRONTO PARA CONFIGURAÇÃO
-- **Última Atualização**: 29/01/2026 (Firebase integrado - servidor + cliente)
+- **🏗️ REFATORAÇÃO: Arquitetura Multiplayer-First** ✅
+- **Estado**: REFATORAÇÃO COMPLETA - ARQUITETURA UNIFICADA
+- **Última Atualização**: Janeiro 2026 (Refatoração multiplayer-first concluída)
 
-## Próxima Fase: Configurar Firebase e Testar Persistência
+## Refatoração Concluída (Janeiro 2026)
 
-### Setup Necessário (Usuário)
-1. **Criar projeto no Firebase Console**
-2. **Baixar credenciais**:
-   - `firebase-service-account.json` (servidor)
-   - Configurar `firebaseConfig.ts` (cliente)
-3. **Seguir guia**: `FIREBASE_SETUP_GUIDE.md`
+### Mudanças Implementadas
+1. ✅ **Arquitetura Multiplayer-First**:
+   - Removida flag `isMultiplayer` - sempre usa servidor
+   - Removida lógica duplicada single/multiplayer
+   - Sempre usa `RemoteWorldState`
+   - Servidor sempre inicializa mundo completo
 
-### Após Setup: Polimento de Gameplay
+2. ✅ **Limpeza de Documentações**:
+   - Removidas 40+ documentações obsoletas
+   - Criados documentos consolidados:
+     - `ARCHITECTURE.md` - Arquitetura completa
+     - `FIREBASE_INTEGRATION.md` - Integração Firebase
 
-### Plano Documentado
-Ver `POLISHING_PLAN.md` para detalhes completos e prompts de execução.
+3. ⏳ **Próximos Passos**:
+   - Melhorar integração Firebase (client só sync no login e crafting/loadout)
+   - Garantir que servidor sempre inicializa valores do mundo
+   - Mover todas as interações Firebase para server-side
 
 ### Problemas Identificados (Prioridade)
 

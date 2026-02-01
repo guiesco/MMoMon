@@ -4,9 +4,9 @@
   "private": true,
   "main": "dist/index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "DEBUG_PROJECTILES=true DEBUG_AI=true ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "DEBUG_PROJECTILES=true DEBUG_AI=true node dist/index.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

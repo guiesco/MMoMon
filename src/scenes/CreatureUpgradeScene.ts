@@ -13,6 +13,7 @@ import {
   RANK_CONFIG,
 } from "../game/creatureProgression";
 import type { CreatureRank, OwnedCreature } from "../game/types";
+import { syncPlayerStateToServer } from "../services/firebaseSync";
 
 /**
  * Cena de evolução/fusão de criaturas.
@@ -95,7 +96,10 @@ export class CreatureUpgradeScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-UP", () => this.moveSelection(-1));
     this.input.keyboard?.on("keydown-DOWN", () => this.moveSelection(1));
     this.input.keyboard?.on("keydown-ENTER", () => this.tryFusion());
-    this.input.keyboard?.on("keydown-ESC", () => this.scene.start("BaseHubScene"));
+    this.input.keyboard?.on("keydown-ESC", async () => {
+      await syncPlayerStateToServer();
+      this.scene.start("BaseHubScene");
+    });
     this.input.keyboard?.on("keydown-SPACE", () => this.tryFusion());
   }
 

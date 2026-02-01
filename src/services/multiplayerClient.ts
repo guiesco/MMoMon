@@ -321,6 +321,7 @@ export class MultiplayerClient {
   private ws: WebSocket | null = null;
   private roomId: string;
   private name: string;
+  private userId: string | null = null;
   private events: Partial<MultiplayerEvents> = {};
   private clientId: string | null = null;
   private reconnectAttempts: number = 0;
@@ -328,9 +329,10 @@ export class MultiplayerClient {
   private reconnectDelay: number = 1000;
   private url: string = "ws://localhost:3003";
 
-  constructor(roomId: string, name: string) {
+  constructor(roomId: string, name: string, userId?: string | null) {
     this.roomId = roomId;
     this.name = name;
+    this.userId = userId || null;
   }
 
   /**
@@ -369,13 +371,18 @@ export class MultiplayerClient {
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;
-      this.ws?.send(
-        JSON.stringify({
-          type: "join",
-          roomId: this.roomId,
-          name: this.name
-        })
-      );
+      const joinMessage: any = {
+        type: "join",
+        roomId: this.roomId,
+        name: this.name
+      };
+      
+      // ✅ FASE 3: Incluir userId se disponível (para recuperar time do Firebase)
+      if (this.userId) {
+        joinMessage.userId = this.userId;
+      }
+      
+      this.ws?.send(JSON.stringify(joinMessage));
       this.events.connected?.();
     };
 
@@ -486,6 +493,11 @@ export class MultiplayerClient {
    * Envia intent de interação com recurso.
    */
   sendResourceInteract(resourceId: string): void {
+    if (!this.isConnected()) {
+      console.warn("[MultiplayerClient] Tentativa de enviar resource_interact sem conexão ativa");
+      return;
+    }
+    console.log(`[MultiplayerClient] Enviando resource_interact para recurso: ${resourceId}`);
     this.send({
       type: "resource_interact",
       resourceId
@@ -544,9 +556,12 @@ export class MultiplayerClient {
    */
   private send(message: Record<string, unknown>): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.warn(`[MultiplayerClient] Tentativa de enviar mensagem sem conexão. Tipo: ${message.type}, readyState: ${this.ws?.readyState}`);
       return;
     }
-    this.ws.send(JSON.stringify(message));
+    const messageStr = JSON.stringify(message);
+    console.log(`[MultiplayerClient] Enviando mensagem: ${messageStr.substring(0, 100)}...`);
+    this.ws.send(messageStr);
   }
 
   /**

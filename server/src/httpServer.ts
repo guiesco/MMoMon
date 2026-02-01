@@ -9,7 +9,7 @@
 
 import express, { Request, Response } from 'express';
 import { isFirebaseAvailable } from './firebase';
-import { saveUserData, saveExpeditionRewards } from './firestoreOperations';
+import { saveUserData, saveExpeditionRewards, createUser } from './firestoreOperations';
 import type { SaveExpeditionData } from './firebaseTypes';
 
 const app = express();
@@ -65,6 +65,38 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 /**
+ * Cria um novo usuário no Firebase
+ */
+app.post('/api/create-user', async (req: Request, res: Response) => {
+  try {
+    const { userId, displayName } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'userId é obrigatório' });
+    }
+    
+    if (!isFirebaseAvailable()) {
+      return res.status(503).json({ error: 'Firebase não disponível' });
+    }
+    
+    console.log(`[HTTP] 📝 Criando usuário ${userId}...`);
+    
+    await createUser(userId, {
+      displayName: displayName || 'Convidado',
+      initialTeamSlots: 3,
+      initialInventoryCapacity: 50
+    });
+    
+    console.log(`[HTTP] ✅ Usuário ${userId} criado com sucesso`);
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[HTTP] ❌ Erro ao criar usuário:', error);
+    res.status(500).json({ error: 'Erro ao criar usuário' });
+  }
+});
+
+/**
  * Sincroniza estado completo do jogador
  */
 app.post('/api/sync-player', async (req: Request, res: Response) => {
@@ -85,13 +117,18 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
 
     console.log(`[HTTP] 📥 Sincronizando estado do jogador ${userId}`);
 
+    // Buscar dados atuais do Firebase para preservar campos importantes
+    const { getUser } = await import('./firestoreOperations');
+    const existingUserData = await getUser(userId);
+
     // Converter formato do cliente para formato do Firestore
     const userData = {
       profile: {
         displayName: progress.displayName || 'Convidado',
-        createdAt: new Date(),
+        // Preservar createdAt se já existir, senão usar data atual
+        createdAt: existingUserData?.profile?.createdAt || new Date(),
         lastLogin: new Date(),
-        totalPlayTime: 0
+        totalPlayTime: existingUserData?.profile?.totalPlayTime || 0
       },
       inventory: {
         items: {} as Record<string, number>,
@@ -103,9 +140,10 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
       creatures: {} as Record<string, any>,
       activeTeam: {
         creatureIds: progress.activeTeamIds || [],
-        selectedMapId: progress.selectedMapId || 'forest-clearing'
+        selectedMapId: progress.selectedMapId || 'floresta-celestial'
       },
-      stats: {
+      // Preservar estatísticas existentes (não são alteradas por crafting/evolução)
+      stats: existingUserData?.stats || {
         expeditionsCompleted: 0,
         expeditionsFailed: 0,
         totalResourcesCollected: 0,
@@ -125,18 +163,29 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
     // Converter criaturas
     if (progress.creatures && Array.isArray(progress.creatures)) {
       for (const creature of progress.creatures) {
+        // Buscar dados completos da criatura do Firebase se existir (para preservar capturedAt)
+        const existingCreature = existingUserData?.creatures?.[creature.instanceId];
+        
         userData.creatures[creature.instanceId] = {
           instanceId: creature.instanceId,
           definitionId: creature.definitionId,
           level: creature.level,
           currentHp: creature.currentHp,
+          maxHp: existingCreature?.maxHp || creature.currentHp, // Preservar maxHp se existir
           experience: creature.experience,
           rank: creature.rank || 1,
           copiesFused: creature.copiesFused || 0,
-          totalExpeditionXp: creature.totalExpeditionXp || 0
+          totalExpeditionXp: creature.totalExpeditionXp || 0,
+          // Preservar capturedAt se existir
+          capturedAt: existingCreature?.capturedAt || new Date()
         };
       }
     }
+    
+    console.log(`[HTTP] 📊 Estado convertido:`);
+    console.log(`[HTTP] - Itens no inventário: ${Object.keys(userData.inventory.items).length}`);
+    console.log(`[HTTP] - Criaturas: ${Object.keys(userData.creatures).length}`);
+    console.log(`[HTTP] - Time ativo: ${userData.activeTeam.creatureIds.length} criaturas`);
 
     await saveUserData(userId, userData);
 
@@ -155,117 +204,15 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
 });
 
 /**
- * Sincroniza recompensas de expedição
+ * NOTA: Endpoints de expedição removidos (FASE 3).
+ * 
+ * - /api/sync-expedition-rewards: Removido - servidor salva automaticamente quando extração completa
+ * - /api/expedition-start: Removido - não é mais necessário
+ * - /api/expedition-end: Removido - servidor salva automaticamente quando extração completa
+ * 
+ * Todas as operações de expedição são agora gerenciadas pelo servidor WebSocket.
+ * O servidor salva recompensas automaticamente no Firebase quando extração completa.
  */
-app.post('/api/sync-expedition-rewards', async (req: Request, res: Response) => {
-  try {
-    const { userId, rewards } = req.body;
-
-    if (!userId || !rewards) {
-      return res.status(400).json({
-        error: 'userId e rewards são obrigatórios'
-      });
-    }
-
-    if (!isFirebaseAvailable()) {
-      return res.status(503).json({
-        error: 'Firebase não disponível'
-      });
-    }
-
-    console.log(`[HTTP] 📥 Sincronizando recompensas de expedição para ${userId}`);
-
-    const expeditionData: SaveExpeditionData = {
-      userId,
-      success: true,
-      mapId: 'unknown', // Será atualizado se tivermos essa info
-      startedAt: new Date(),
-      duration: 0,
-      rewards: {
-        resources: new Map(Object.entries(rewards.resourcesCollected || {})),
-        capturedCreatures: rewards.creaturesCaptures || []
-      },
-      stats: {
-        damageDealt: 0,
-        damageTaken: 0,
-        resourcesCollected: rewards.resourcesCollected 
-          ? (Object.values(rewards.resourcesCollected) as number[]).reduce((a, b) => a + b, 0) 
-          : 0,
-        creaturesCaptured: (rewards.creaturesCaptures || []).length
-      }
-    };
-
-    await saveExpeditionRewards(expeditionData);
-
-    console.log(`[HTTP] ✅ Recompensas sincronizadas para ${userId}`);
-
-    res.json({
-      success: true,
-      message: 'Recompensas sincronizadas com sucesso'
-    });
-  } catch (error) {
-    console.error('[HTTP] ❌ Erro ao sincronizar recompensas:', error);
-    res.status(500).json({
-      error: 'Erro ao sincronizar recompensas'
-    });
-  }
-});
-
-/**
- * Registra início de expedição
- */
-app.post('/api/expedition-start', async (req: Request, res: Response) => {
-  try {
-    const { userId, mapId, timestamp } = req.body;
-
-    if (!userId || !mapId) {
-      return res.status(400).json({
-        error: 'userId e mapId são obrigatórios'
-      });
-    }
-
-    console.log(`[HTTP] 📥 Registrando início de expedição: ${userId} em ${mapId}`);
-
-    // Por enquanto apenas log - pode ser expandido para salvar no Firestore
-    res.json({
-      success: true,
-      message: 'Início de expedição registrado'
-    });
-  } catch (error) {
-    console.error('[HTTP] ❌ Erro ao registrar início:', error);
-    res.status(500).json({
-      error: 'Erro ao registrar início de expedição'
-    });
-  }
-});
-
-/**
- * Registra fim de expedição
- */
-app.post('/api/expedition-end', async (req: Request, res: Response) => {
-  try {
-    const { userId, success, stats, timestamp } = req.body;
-
-    if (!userId || success === undefined) {
-      return res.status(400).json({
-        error: 'userId e success são obrigatórios'
-      });
-    }
-
-    console.log(`[HTTP] 📥 Registrando fim de expedição: ${userId} (${success ? 'sucesso' : 'falha'})`);
-
-    // Por enquanto apenas log - pode ser expandido para salvar no Firestore
-    res.json({
-      success: true,
-      message: 'Fim de expedição registrado'
-    });
-  } catch (error) {
-    console.error('[HTTP] ❌ Erro ao registrar fim:', error);
-    res.status(500).json({
-      error: 'Erro ao registrar fim de expedição'
-    });
-  }
-});
 
 /**
  * Inicia o servidor HTTP

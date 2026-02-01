@@ -165,7 +165,7 @@ export interface GameLoopCallbacks {
   /**
    * Chamado quando uma captura é processada (sucesso ou falha).
    */
-  onCaptureResult?: (playerId: string, targetId: string, result: CaptureResult) => void;
+  onCaptureResult?: (playerId: string, targetId: string, ballType: BallType, result: CaptureResult) => void;
 
   /**
    * Chamado quando uma criatura é removida do mundo (ex: capturada).
@@ -202,6 +202,27 @@ export interface GameLoopCallbacks {
     skillType: SkillType,
     x: number,
     y: number
+  ) => void;
+
+  /**
+   * Chamado quando um intent de extração é processado (start/cancel).
+   */
+  onExtractionIntent?: (
+    playerId: string,
+    pointId: string,
+    action: "start" | "cancel"
+  ) => void;
+
+  /**
+   * Chamado quando um ataque é processado (para confirmação imediata ao cliente).
+   */
+  onAttackAccepted?: (
+    playerId: string,
+    targetX: number,
+    targetY: number,
+    success: boolean,
+    projectileId?: string,
+    failReason?: string
   ) => void;
 }
 
@@ -419,6 +440,10 @@ export class GameLoop {
     if (player) {
       player.x = x;
       player.y = y;
+      // Log periódico para debug (a cada 100 atualizações)
+      if (this.tickNumber % 100 === 0) {
+        console.log(`[GameLoop] Posição atualizada: ${playerId.slice(0, 8)}... -> (${x.toFixed(0)}, ${y.toFixed(0)})`);
+      }
     } else {
       console.log(`[GameLoop] ⚠️ Tentando atualizar posição de jogador não registrado: ${playerId.slice(0, 8)}...`);
       console.log(`[GameLoop]   Jogadores registrados: ${Array.from(this.combatState.players.keys()).map(k => k.slice(0, 8)).join(", ")}`);
@@ -549,6 +574,12 @@ export class GameLoop {
         if (player) {
           player.x = intent.data.x as number;
           player.y = intent.data.y as number;
+          // Log periódico para debug (a cada 100 movimentos)
+          if (this.tickNumber % 100 === 0) {
+            console.log(`[GameLoop] Movimento processado: ${intent.playerId.slice(0, 8)}... -> (${intent.data.x.toFixed(0)}, ${intent.data.y.toFixed(0)})`);
+          }
+        } else {
+          console.log(`[GameLoop] ⚠️ Tentando mover jogador não registrado: ${intent.playerId.slice(0, 8)}...`);
         }
         this.debugLog(`Processando movimento de ${intent.playerId}: (${intent.data.x}, ${intent.data.y})`);
         break;
@@ -563,6 +594,18 @@ export class GameLoop {
           Date.now(),
           intent.data.creatureId // Passar creatureId para usar stats específicos
         );
+
+        // Enviar confirmação imediata ao cliente
+        if (this.callbacks.onAttackAccepted) {
+          this.callbacks.onAttackAccepted(
+            intent.playerId,
+            intent.data.targetX as number,
+            intent.data.targetY as number,
+            attackResult.success,
+            attackResult.projectileId,
+            attackResult.failReason
+          );
+        }
 
         if (attackResult.success) {
           this.debugLog(`Ataque de ${intent.playerId} criou projétil ${attackResult.projectileId}`);
@@ -642,16 +685,19 @@ export class GameLoop {
         this.processCaptureIntent(intent);
         break;
 
-      case "resource":
-        // TODO: Verificar se recurso existe e está em range, remover do worldState
-        this.debugLog(`Processando coleta de recurso ${intent.data.resourceId} por ${intent.playerId}`);
-        break;
-
       case "extraction":
-        // TODO: Verificar zona de extração, iniciar/cancelar timer
-        this.debugLog(
-          `Processando extração de ${intent.playerId}: ${intent.data.action} em ${intent.data.pointId}`
-        );
+        // Processar extração (start/cancel) - delega para callback que tem acesso à Room
+        if (this.callbacks.onExtractionIntent) {
+          this.callbacks.onExtractionIntent(
+            intent.playerId,
+            intent.data.pointId as string,
+            intent.data.action as "start" | "cancel"
+          );
+        } else {
+          this.debugLog(
+            `Extração não processada: callback onExtractionIntent não definido para ${intent.playerId}`
+          );
+        }
         break;
     }
   }
@@ -680,7 +726,7 @@ export class GameLoop {
       this.debugLog(`Captura falhou: criatura ${targetId} não encontrada`);
       
       if (this.callbacks.onCaptureResult) {
-        this.callbacks.onCaptureResult(intent.playerId, targetId, {
+        this.callbacks.onCaptureResult(intent.playerId, targetId, ballType, {
           success: false,
           captureChance: 0,
           roll: 0,
@@ -699,7 +745,7 @@ export class GameLoop {
 
     // Delegar processamento para callback que tem acesso ao inventário
     if (this.callbacks.onCaptureResult) {
-      this.callbacks.onCaptureResult(intent.playerId, targetId, {
+      this.callbacks.onCaptureResult(intent.playerId, targetId, ballType, {
         success: false,
         captureChance: 0,
         roll: 0,
@@ -809,8 +855,9 @@ export class GameLoop {
       return;
     }
 
-    // TODO: Condição 2: todos jogadores extraíram ou morreram
-    // Implementar quando tivermos WorldState com tracking de jogadores
+    // Condição 2: todos jogadores extraíram ou morreram
+    // Esta verificação é feita no GameLoopManager.onTick através do callback
+    // que tem acesso à Room completa (incluindo extractionPoints e activeExtractions)
   }
 
   /**

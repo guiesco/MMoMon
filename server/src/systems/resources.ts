@@ -155,6 +155,15 @@ export function processResourceCollection(
     );
   }
 
+  // Calcular total de recursos coletados para o log
+  const totalCollected = getTotalResourcesCollected(player);
+
+  // Log de coleta bem-sucedida (similar aos logs de captura)
+  console.log(
+    `[Resource] Sucesso! Jogador ${playerId} coletou ${resource.quantity}x ${resource.resourceType} ` +
+    `| Total coletado: ${totalCollected}`
+  );
+
   return {
     success: true,
     resourceType: resource.resourceType,
@@ -236,6 +245,18 @@ export function processAutoCollection(
   // Remover recursos coletados (em ordem reversa para não afetar índices)
   for (let i = resourcesToRemove.length - 1; i >= 0; i--) {
     room.resources.splice(resourcesToRemove[i], 1);
+  }
+
+  // Log de recursos coletados automaticamente (similar aos logs de captura)
+  if (results.length > 0) {
+    // Calcular total uma vez após todas as coletas
+    const totalCollected = getTotalResourcesCollected(player);
+    for (const result of results) {
+      console.log(
+        `[Resource] Sucesso! Jogador ${playerId} coletou ${result.quantity}x ${result.resourceType} ` +
+        `| Total coletado: ${totalCollected}`
+      );
+    }
   }
 
   return results;

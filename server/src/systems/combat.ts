@@ -300,7 +300,7 @@ export function processAttackIntent(
             creature.y += knockbackNy * MELEE_KNOCKBACK_DISTANCE;
           }
           
-          // TODO: Broadcast damageResult para clientes via callback
+          // Broadcast de damageResult é feito através do callback onDamageApplied no gameLoop
         }
       }
     }
@@ -346,6 +346,16 @@ export function processAttackIntent(
   // Atualizar cooldown do jogador
   player.lastAttackTime = currentTime;
 
+  // Debug: log criação de projétil
+  if (process.env.DEBUG_PROJECTILES === "true") {
+    console.log(
+      `[Combat] Projétil criado: ${projectile.id} por ${playerId} ` +
+      `em (${player.x.toFixed(1)}, ${player.y.toFixed(1)}) ` +
+      `vel=(${velocityX.toFixed(1)}, ${velocityY.toFixed(1)}) ` +
+      `dano=${creatureStats.damage} range=${creatureStats.range}`
+    );
+  }
+
   return {
     success: true,
     projectileId: projectile.id
@@ -388,7 +398,18 @@ export function updateProjectiles(
   const damageResults: DamageResult[] = [];
   const projectilesToKeep: ServerProjectile[] = [];
 
+  // Filtrar criaturas mortas antes de processar colisões (evita processar criaturas já mortas)
+  const aliveCreatures = room.creatures.filter(c => c.currentHp > 0);
+  
+  const DEBUG_PROJECTILES = process.env.DEBUG_PROJECTILES === "true";
+  const initialProjectileCount = room.projectiles.length;
+
   for (const proj of room.projectiles) {
+    // Validação: projétil deve ter velocidade válida
+    if (!isFinite(proj.velocityX) || !isFinite(proj.velocityY)) {
+      continue; // Projétil inválido, remover
+    }
+
     // 1. Atualizar posição
     proj.x += proj.velocityX * deltaTime;
     proj.y += proj.velocityY * deltaTime;
@@ -398,22 +419,38 @@ export function updateProjectiles(
 
     // 3. Verificar se expirou por tempo
     if (proj.lifetime <= 0) {
+      if (DEBUG_PROJECTILES) {
+        console.log(`[Combat] Projétil ${proj.id} expirou por tempo (lifetime=${proj.lifetime.toFixed(3)})`);
+      }
       continue; // Não adiciona em projectilesToKeep = remove
     }
 
     // 4. Verificar se excedeu distância máxima
     const distanceTraveled = Math.hypot(proj.x - proj.startX, proj.y - proj.startY);
     if (distanceTraveled >= proj.maxDistance) {
+      if (DEBUG_PROJECTILES) {
+        console.log(
+          `[Combat] Projétil ${proj.id} excedeu distância máxima ` +
+          `(traveled=${distanceTraveled.toFixed(1)}, max=${proj.maxDistance.toFixed(1)})`
+        );
+      }
       continue; // Não adiciona em projectilesToKeep = remove
     }
 
     let hit = false;
 
-    // 4. Detectar colisões
+    // 5. Detectar colisões
     if (proj.isPlayerProjectile) {
-      // Projétil de jogador: colide com criaturas
-      for (const creature of room.creatures) {
+      // Projétil de jogador: colide com criaturas vivas
+      for (const creature of aliveCreatures) {
         if (checkProjectileCreatureCollision(proj, creature)) {
+          if (DEBUG_PROJECTILES) {
+            console.log(
+              `[Combat] Projétil ${proj.id} colidiu com criatura ${creature.id} ` +
+              `em (${proj.x.toFixed(1)}, ${proj.y.toFixed(1)})`
+            );
+          }
+          
           const damageResult = applyDamageToCreature(
             creature,
             proj.damage,
@@ -421,8 +458,8 @@ export function updateProjectiles(
           );
           damageResults.push(damageResult);
           
-          // ✅ NOVO: Aplicar knockback leve em projéteis
-          if (!damageResult.died) {
+          // Aplicar knockback leve em projéteis
+          if (!damageResult.died && creature.currentHp > 0) {
             const PROJECTILE_KNOCKBACK_DISTANCE = 6; // Menor que melee
             const speed = Math.hypot(proj.velocityX, proj.velocityY);
             
@@ -436,14 +473,21 @@ export function updateProjectiles(
           }
           
           hit = true;
-          break;
+          break; // Projétil colidiu, não precisa verificar outras criaturas
         }
       }
     } else {
-      // Projétil de criatura: colide com jogadores
+      // Projétil de criatura: colide com jogadores vivos
       for (const [playerId, player] of room.players) {
         if (player.isDead) continue;
         if (checkProjectilePlayerCollision(proj, player)) {
+          if (DEBUG_PROJECTILES) {
+            console.log(
+              `[Combat] Projétil ${proj.id} colidiu com jogador ${playerId} ` +
+              `em (${proj.x.toFixed(1)}, ${proj.y.toFixed(1)})`
+            );
+          }
+          
           const damageResult = applyDamageToPlayer(
             playerId,
             player,
@@ -452,22 +496,30 @@ export function updateProjectiles(
           );
           damageResults.push(damageResult);
           hit = true;
-          break;
+          break; // Projétil colidiu, não precisa verificar outros jogadores
         }
       }
     }
 
-    // 5. Manter projétil se não expirou e não colidiu
+    // 6. Manter projétil se não expirou e não colidiu
     if (!hit) {
       projectilesToKeep.push(proj);
     }
   }
 
-  // Atualizar lista de projéteis
+  // Atualizar lista de projéteis (remover os que colidiram, expiraram ou são inválidos)
+  const removedCount = initialProjectileCount - projectilesToKeep.length;
   room.projectiles = projectilesToKeep;
 
-  // Remover criaturas mortas
-  room.creatures = room.creatures.filter(c => c.currentHp > 0);
+  // Atualizar lista de criaturas (remover as que morreram)
+  room.creatures = aliveCreatures;
+
+  if (DEBUG_PROJECTILES && removedCount > 0) {
+    console.log(
+      `[Combat] Projéteis atualizados: ${initialProjectileCount} -> ${projectilesToKeep.length} ` +
+      `(removidos: ${removedCount}, colisões: ${damageResults.length})`
+    );
+  }
 
   return damageResults;
 }
@@ -1036,10 +1088,47 @@ export function updateSkillZones(
           );
           damageResults.push(damageResult);
 
-          // TODO: Aplicar efeitos adicionais baseados no tipo de skill
-          // - fire_fog: slow
-          // - root_trap: immobilize
-          // - electric_surge: knockback
+          // Aplicar efeitos adicionais baseados no tipo de skill
+          if (zone.skillType === "fire_fog") {
+            // Nevoeiro incendiário: slow moderado (30% mais lento)
+            if (!creature.buffs) {
+              creature.buffs = [];
+            }
+            const existingSlow = creature.buffs.find(b => b.type === 'slow');
+            if (!existingSlow || existingSlow.duration < 0.8) {
+              // Aplicar slow de 0.8s (dura até próximo tick)
+              creature.buffs.push({
+                type: 'slow',
+                duration: 0.8,
+                value: 0.7, // 30% mais lento
+                sourceId: zone.ownerId,
+                appliedAt: Date.now()
+              });
+            }
+          } else if (zone.skillType === "root_trap") {
+            // Armadilha de raízes: freeze (imobiliza)
+            if (!creature.buffs) {
+              creature.buffs = [];
+            }
+            const existingFreeze = creature.buffs.find(b => b.type === 'freeze');
+            if (!existingFreeze || existingFreeze.duration < 1.0) {
+              creature.buffs.push({
+                type: 'freeze',
+                duration: 1.0,
+                sourceId: zone.ownerId,
+                appliedAt: Date.now()
+              });
+            }
+          } else if (zone.skillType === "electric_surge") {
+            // Pulso elétrico: knockback leve
+            if (distance > 0 && !damageResult.died) {
+              const knockbackDistance = 30; // Distância de knockback
+              const nx = dx / distance;
+              const ny = dy / distance;
+              creature.x += nx * knockbackDistance;
+              creature.y += ny * knockbackDistance;
+            }
+          }
         }
       }
     }

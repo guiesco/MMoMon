@@ -46,6 +46,21 @@ export async function createUser(
 
   const now = new Date();
 
+  // Criar criatura inicial (starter) - Pyrognat nível 5
+  const starterInstanceId = `starter-pyrognat-${Date.now()}`;
+  const starterCreature: UserCreature = {
+    instanceId: starterInstanceId,
+    definitionId: 'pyrognat',
+    level: 5,
+    currentHp: 80, // HP base do Pyrognat
+    maxHp: 80,
+    experience: 0,
+    rank: 1,
+    copiesFused: 0,
+    totalExpeditionXp: 0,
+    capturedAt: now
+  };
+
   const newUser: UserDocument = {
     profile: {
       displayName: data.displayName,
@@ -55,17 +70,19 @@ export async function createUser(
     },
     inventory: {
       items: {
-        'pokeball-basic': 5, // Começar com 5 pokébolas básicas
+        'poke-ball-basic': 5, // Começar com 5 pokébolas básicas (corrigido nome)
       },
       teamSlots: data.initialTeamSlots || 3,
       movementSpeedBonus: 0,
       captureChanceBonus: 0,
       inventoryCapacity: data.initialInventoryCapacity || 20
     },
-    creatures: {},
+    creatures: {
+      [starterInstanceId]: starterCreature
+    },
     activeTeam: {
-      creatureIds: [],
-      selectedMapId: 'forest'
+      creatureIds: [starterInstanceId], // Time inicial com a criatura starter
+      selectedMapId: 'floresta-celestial' // Mapa padrão
     },
     stats: {
       expeditionsCompleted: 0,
@@ -111,6 +128,9 @@ export async function getUser(userId: string): Promise<UserDocument | null> {
 
 /**
  * Salva/atualiza dados completos de um usuário
+ * 
+ * IMPORTANTE: Para sincronização de crafting/evolução, usa set() completo (sem merge)
+ * para garantir que itens consumidos e criaturas fundidas sejam removidos corretamente.
  */
 export async function saveUserData(
   userId: string,
@@ -128,9 +148,14 @@ export async function saveUserData(
   const userDoc = await userRef.get();
   
   if (userDoc.exists) {
-    // Atualizar usuário existente (merge)
-    await userRef.set(data, { merge: true });
-    console.log(`[Firestore] ✅ Dados atualizados para usuário ${userId}`);
+    // IMPORTANTE: Usar set() completo (sem merge) para garantir que:
+    // - Itens consumidos sejam removidos do inventário
+    // - Criaturas fundidas sejam removidas da coleção
+    // - O estado do cliente seja o estado final no Firebase
+    await userRef.set(data, { merge: false });
+    console.log(`[Firestore] ✅ Dados sincronizados completamente para usuário ${userId}`);
+    console.log(`[Firestore] - Inventário: ${Object.keys(data.inventory.items).length} tipos de itens`);
+    console.log(`[Firestore] - Criaturas: ${Object.keys(data.creatures).length} criaturas`);
   } else {
     // Criar novo usuário
     await userRef.set(data);
@@ -156,8 +181,10 @@ export async function saveUserData(
 export async function saveExpeditionRewards(
   data: SaveExpeditionData
 ): Promise<boolean> {
+  console.log(`[Firestore] 💾 Iniciando salvamento de recompensas para usuário ${data.userId}...`);
+  
   if (!isFirebaseAvailable()) {
-    console.warn('[Firestore] Firebase não disponível - recompensas não salvas');
+    console.warn('[Firestore] ⚠️  Firebase não disponível - recompensas não salvas');
     return false;
   }
 
@@ -168,11 +195,13 @@ export async function saveExpeditionRewards(
     const userRef = db.collection('users').doc(data.userId);
 
     // Verificar se usuário existe
+    console.log(`[Firestore] 🔍 Verificando se usuário ${data.userId} existe no Firestore...`);
     const userDoc = await userRef.get();
     if (!userDoc.exists) {
-      console.error(`[Firestore] Usuário ${data.userId} não existe`);
+      console.error(`[Firestore] ❌ Usuário ${data.userId} não existe no Firestore`);
       return false;
     }
+    console.log(`[Firestore] ✅ Usuário ${data.userId} encontrado no Firestore`);
 
     // ========================================================================
     // 1. ATUALIZAR INVENTÁRIO (Recursos)
@@ -184,6 +213,7 @@ export async function saveExpeditionRewards(
     }
 
     if (Object.keys(inventoryUpdates).length > 0) {
+      console.log(`[Firestore] 📦 Atualizando inventário: ${Object.keys(inventoryUpdates).length} tipos de recursos`);
       batch.update(userRef, inventoryUpdates);
     }
 
@@ -213,6 +243,7 @@ export async function saveExpeditionRewards(
     }
 
     if (Object.keys(newCreatures).length > 0) {
+      console.log(`[Firestore] 🐾 Adicionando ${Object.keys(newCreatures).length} criaturas capturadas`);
       batch.update(userRef, {
         creatures: { ...userData.creatures, ...newCreatures }
       });
@@ -223,6 +254,8 @@ export async function saveExpeditionRewards(
     // ========================================================================
     const totalResourcesCollected = Array.from(data.rewards.resources.values())
       .reduce((sum, qty) => sum + qty, 0);
+
+    console.log(`[Firestore] 📊 Atualizando estatísticas: ${data.success ? 'expedição completada' : 'expedição falhou'}`);
 
     const statsUpdates: Record<string, any> = {
       'stats.expeditionsCompleted': FieldValue.increment(data.success ? 1 : 0),
@@ -238,6 +271,7 @@ export async function saveExpeditionRewards(
     // ========================================================================
     // 4. SALVAR HISTÓRICO DE EXPEDIÇÃO
     // ========================================================================
+    console.log(`[Firestore] 📝 Salvando histórico da expedição no mapa ${data.mapId}`);
     const expeditionRef = db.collection('expeditions').doc();
     
     const expeditionDoc: ExpeditionDocument = {
@@ -259,10 +293,11 @@ export async function saveExpeditionRewards(
     // ========================================================================
     // COMMIT BATCH (Transação Atômica)
     // ========================================================================
+    console.log(`[Firestore] 🔄 Executando commit do batch (transação atômica)...`);
     await batch.commit();
 
-    console.log(`[Firestore] ✅ Recompensas salvas para usuário ${data.userId}`);
-    console.log(`[Firestore] ℹ️  Recursos: ${totalResourcesCollected}, Criaturas: ${data.rewards.capturedCreatures.length}`);
+    console.log(`[Firestore] ✅ Recompensas salvas com sucesso para usuário ${data.userId}`);
+    console.log(`[Firestore] ℹ️  Resumo: ${totalResourcesCollected} recursos, ${data.rewards.capturedCreatures.length} criaturas capturadas`);
 
     return true;
   } catch (error) {

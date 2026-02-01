@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { PlayerState } from "../game/playerState";
 import { getCreatureById } from "../game/creatures";
 import type { OwnedCreature } from "../game/types";
+import { syncPlayerStateToServer } from "../services/firebaseSync";
 
 export class TeamManagementScene extends Phaser.Scene {
   private listTexts: Phaser.GameObjects.Text[] = [];
@@ -267,9 +268,10 @@ export class TeamManagementScene extends Phaser.Scene {
     this.infoText.setText(lines.join("\n"));
   }
 
-  private returnToBase() {
+  private async returnToBase() {
     // Persistir novo time ativo de forma validada
     PlayerState.setActiveTeam(this.tempTeamIds);
+    await syncPlayerStateToServer();
     this.scene.start("BaseHubScene");
   }
 }

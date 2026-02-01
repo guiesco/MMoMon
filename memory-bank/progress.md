@@ -1,6 +1,16 @@
 # PokéExtract: Wild Expedition – Progress
 
 ## Estado Atual
+- Janeiro 2026 – **🏗️ REFATORAÇÃO MULTIPLAYER-FIRST COMPLETA** ✅
+  - Arquitetura unificada: sempre usa servidor
+  - Removida flag `isMultiplayer` e toda lógica duplicada
+  - Servidor sempre inicializa mundo completo
+  - Cliente apenas renderiza e envia intents
+  - Documentações consolidadas: `ARCHITECTURE.md`, `FIREBASE_INTEGRATION.md`
+  - 40+ documentações obsoletas removidas
+  - Zero erros de linter/TypeScript
+  - **Status**: ✅ Arquitetura limpa e unificada
+
 - 29/01/2026 – **🔥 FIREBASE INTEGRADO: Persistência na Nuvem Completa** ✅
   - Firebase Admin SDK configurado no servidor
   - Firebase Client SDK configurado no cliente

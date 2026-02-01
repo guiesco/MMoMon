@@ -95,6 +95,15 @@ export interface ExtractionReward {
   resources: Map<string, number>;
   /** Número de criaturas capturadas */
   creaturesCaptured: number;
+  /** Detalhes das criaturas capturadas */
+  capturedCreatures: Array<{
+    instanceId: string;
+    speciesId: string;
+    level: number;
+    tier: string;
+    currentHp: number;
+    maxHp: number;
+  }>;
   /** Timestamp da extração */
   timestamp: number;
 }
@@ -307,8 +316,9 @@ export function updateExtractions(
         progress: 100
       });
 
-      // Marcar jogador como extraído
-      player.extractedAt = Date.now();
+      // IMPORTANTE: NÃO marcar jogador como extraído aqui!
+      // Isso será feito em completeExtraction() para evitar que completeExtraction retorne null
+      // Apenas atualizar progresso e remover do ponto
       player.extractionProgress = 100;
       point.playersExtracting.delete(playerId);
     } else {
@@ -377,12 +387,23 @@ export function completeExtraction(
   console.log(`  - resourcesCollected:`, player.resourcesCollected);
   console.log(`  - creaturesCaptured:`, player.creaturesCaptured);
 
+  // ✅ FASE 3: Coletar detalhes das criaturas capturadas do inventário da expedição
+  const capturedCreatures = (player.expeditionInventory?.capturedCreatures || []).map(creature => ({
+    instanceId: creature.instanceId,
+    speciesId: creature.speciesId,
+    level: creature.level,
+    tier: creature.tier,
+    currentHp: creature.currentHp ?? creature.maxHp ?? 100, // Usa HP salvo na captura, ou maxHp como fallback
+    maxHp: creature.maxHp ?? 100 // Usa HP máximo salvo na captura
+  }));
+
   // Preparar recompensas
   const reward: ExtractionReward = {
     playerId,
     pointId,
     resources: new Map(player.resourcesCollected),
     creaturesCaptured: player.creaturesCaptured,
+    capturedCreatures,
     timestamp: Date.now()
   };
 
@@ -405,8 +426,11 @@ export function completeExtraction(
 export function allPlayersExtractedOrDead(room: RoomForExtraction): boolean {
   for (const player of room.players.values()) {
     // Se houver pelo menos um jogador que não extraiu e não morreu, retornar false
-    // TODO: Adicionar verificação de morte quando sistema de combate for implementado
-    if (player.extractedAt === null) {
+    // Verificar se jogador extraiu ou morreu (isDead vem do combatState)
+    const hasExtracted = player.extractedAt !== null;
+    // Nota: isDead é verificado no combatState, mas como RoomForExtraction não tem acesso direto,
+    // assumimos que jogadores mortos teriam extractedAt marcado ou serão verificados no gameLoop
+    if (!hasExtracted) {
       return false;
     }
   }

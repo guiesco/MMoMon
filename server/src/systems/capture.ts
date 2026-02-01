@@ -88,6 +88,8 @@ export interface PlayerExpeditionInventory {
     level: number;
     tier: string;
     capturedAt: number;
+    currentHp: number;
+    maxHp: number;
   }>;
 }
 
@@ -265,7 +267,9 @@ export function processCaptureIntent(
       speciesId,
       level,
       tier: creature.tier,
-      capturedAt: Date.now()
+      capturedAt: Date.now(),
+      currentHp: creature.currentHp,
+      maxHp: creature.maxHp
     });
 
     // Incrementar contador de criaturas capturadas (para extração)

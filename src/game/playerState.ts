@@ -17,15 +17,18 @@ import {
   getUserId,
   subscribeToUserData,
   unsubscribeFromUserData,
+  onAuthChange,
   type UserData
 } from "../services/firebaseClient";
 import type { Unsubscribe } from "firebase/firestore";
+import type { User } from "firebase/auth";
 
 const LOCAL_STORAGE_KEY = "pokextract_player_progress_v1";
 
 class PlayerStateManager {
   private progress: PlayerProgress;
   private firebaseUnsubscribe: Unsubscribe | null = null;
+  private authUnsubscribe: (() => void) | null = null;
   private useFirebase: boolean = false;
 
   constructor() {
@@ -52,40 +55,77 @@ class PlayerStateManager {
     }
 
     try {
-      // Aguardar autenticação (feita na AuthScene)
-      // Verificar periodicamente se há usuário autenticado
-      const maxAttempts = 10;
-      let attempts = 0;
-      
-      while (attempts < maxAttempts) {
-        const user = getCurrentUser();
+      // Escutar mudanças de autenticação em tempo real
+      onAuthChange(async (user: User | null) => {
         if (user) {
           console.log('[PlayerState] ✅ Usuário autenticado:', user.uid);
           this.useFirebase = true;
           
-          // Escutar mudanças em tempo real
-          this.firebaseUnsubscribe = subscribeToUserData(user.uid, (data) => {
-            if (data) {
-              this.syncFromFirebase(data);
-            } else {
-              // Primeira vez - migrar dados do localStorage
-              console.log('[PlayerState] 📦 Primeira vez - migrando dados do localStorage');
-              this.migrateLocalDataToFirebase(user.uid);
-            }
-          });
+          // Pequeno delay para garantir que Firebase está pronto
+          await new Promise(resolve => setTimeout(resolve, 100));
           
-          return;
+          this.setupFirebaseSync(user.uid);
+        } else {
+          console.log('[PlayerState] ⚠️  Usuário deslogado');
+          this.useFirebase = false;
+          if (this.firebaseUnsubscribe) {
+            this.firebaseUnsubscribe();
+            this.firebaseUnsubscribe = null;
+          }
         }
+      });
+
+      // Verificar se já há usuário autenticado (caso de refresh da página)
+      const currentUser = getCurrentUser();
+      if (currentUser) {
+        console.log('[PlayerState] ✅ Usuário já autenticado:', currentUser.uid);
+        this.useFirebase = true;
         
-        // Aguardar 100ms antes de tentar novamente
+        // Pequeno delay para garantir que Firebase está pronto
         await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
+        
+        this.setupFirebaseSync(currentUser.uid);
+      } else {
+        console.log('[PlayerState] ⏳ Aguardando autenticação...');
       }
-      
-      console.warn('[PlayerState] Timeout aguardando autenticação - usando localStorage');
     } catch (error) {
       console.error('[PlayerState] Erro ao inicializar Firebase:', error);
       this.useFirebase = false;
+    }
+  }
+
+  /**
+   * Configura sincronização em tempo real com Firebase
+   */
+  private setupFirebaseSync(userId: string): void {
+    // Limpar subscription anterior se existir
+    if (this.firebaseUnsubscribe) {
+      console.log('[PlayerState] 🔄 Limpando subscription anterior');
+      this.firebaseUnsubscribe();
+      this.firebaseUnsubscribe = null;
+    }
+
+    console.log(`[PlayerState] 🔍 Configurando sincronização para usuário ${userId}...`);
+
+    // Escutar mudanças em tempo real
+    this.firebaseUnsubscribe = subscribeToUserData(userId, (data) => {
+      if (data) {
+        console.log('[PlayerState] 📥 Dados recebidos do Firebase - sincronizando...');
+        console.log(`[PlayerState] - Criaturas: ${Object.keys(data.creatures || {}).length}`);
+        console.log(`[PlayerState] - Itens: ${Object.keys(data.inventory?.items || {}).length}`);
+        this.syncFromFirebase(data);
+      } else {
+        // Primeira vez - migrar dados do localStorage
+        console.log('[PlayerState] 📦 Usuário não encontrado no Firebase - primeira vez');
+        console.log('[PlayerState] 📦 Iniciando migração de dados do localStorage...');
+        this.migrateLocalDataToFirebase(userId);
+      }
+    });
+
+    if (!this.firebaseUnsubscribe) {
+      console.error('[PlayerState] ❌ Falha ao configurar sincronização Firebase');
+    } else {
+      console.log('[PlayerState] ✅ Sincronização configurada com sucesso');
     }
   }
 
@@ -104,27 +144,54 @@ class PlayerStateManager {
       localData.inventory.length > 2 || // Mais que os itens iniciais
       localData.displayName !== "Convidado";
     
-    if (!hasSignificantData) {
-      console.log('[PlayerState] ℹ️  Nenhum dado significativo para migrar');
-      return;
+    // Criar usuário no Firebase se não existir
+    const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:3004";
+    
+    try {
+      console.log('[PlayerState] 📝 Criando usuário no Firebase...');
+      const response = await fetch(`${SERVER_URL}/api/create-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          displayName: localData.displayName || 'Convidado'
+        })
+      });
+      
+      if (response.ok) {
+        console.log('[PlayerState] ✅ Usuário criado no Firebase');
+        
+        // Atualizar UID para o Firebase
+        this.progress.uid = userId;
+        
+        // Salvar no localStorage com novo UID
+        this.saveToStorage(this.progress);
+        
+        // Aguardar um pouco para garantir que o documento foi criado e o snapshot atualize
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Se há dados significativos, sincronizar após criar usuário
+        if (hasSignificantData) {
+          console.log('[PlayerState] 📤 Sincronizando dados locais para Firebase...');
+          console.log(`[PlayerState] - Criaturas: ${localData.creatures.length}`);
+          console.log(`[PlayerState] - Itens: ${localData.inventory.length}`);
+          console.log(`[PlayerState] - Nome: ${localData.displayName}`);
+          
+          // Sincronizar dados locais via servidor
+          const { syncPlayerStateToServer } = await import('../services/firebaseSync');
+          await syncPlayerStateToServer();
+        } else {
+          // Mesmo sem dados significativos, aguardar snapshot atualizar
+          // O onSnapshot vai disparar quando o documento for criado
+          console.log('[PlayerState] ℹ️  Aguardando snapshot atualizar com dados do Firebase...');
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('[PlayerState] ❌ Erro ao criar usuário:', errorText);
+      }
+    } catch (error) {
+      console.error('[PlayerState] ❌ Erro ao criar usuário:', error);
     }
-    
-    console.log('[PlayerState] 📤 Enviando dados para Firebase...');
-    console.log(`[PlayerState] - Criaturas: ${localData.creatures.length}`);
-    console.log(`[PlayerState] - Itens: ${localData.inventory.length}`);
-    console.log(`[PlayerState] - Nome: ${localData.displayName}`);
-    
-    // Atualizar UID para o Firebase
-    this.progress.uid = userId;
-    
-    // Salvar no localStorage com novo UID
-    this.saveToStorage(this.progress);
-    
-    // Nota: A sincronização com Firebase será feita pelo servidor
-    // quando o jogador completar uma expedição ou realizar ações
-    // O cliente tem acesso SOMENTE LEITURA ao Firestore
-    
-    console.log('[PlayerState] ✅ Migração preparada - dados serão sincronizados pelo servidor');
   }
 
   /**
@@ -134,38 +201,72 @@ class PlayerStateManager {
     console.log('[PlayerState] 📥 Sincronizando dados do Firebase...');
 
     // Converter formato Firebase para PlayerProgress
-    const creatures: OwnedCreature[] = Object.values(data.creatures || {}).map((c: any) => ({
+    let creatures: OwnedCreature[] = Object.values(data.creatures || {}).map((c: any) => ({
       instanceId: c.instanceId,
       definitionId: c.definitionId,
-      level: c.level,
-      currentHp: c.currentHp,
-      experience: c.experience,
-      rank: c.rank,
-      copiesFused: c.copiesFused,
-      totalExpeditionXp: c.totalExpeditionXp
+      level: c.level || 1,
+      currentHp: c.currentHp || c.maxHp || 80,
+      experience: c.experience || 0,
+      rank: c.rank || 1,
+      copiesFused: c.copiesFused || 0,
+      totalExpeditionXp: c.totalExpeditionXp || 0
     }));
+
+    // Se não houver criaturas, criar starter (fallback de segurança)
+    if (creatures.length === 0) {
+      console.log('[PlayerState] ⚠️  Nenhuma criatura encontrada - criando starter...');
+      const starter = CREATURES[0];
+      const starterInstance: OwnedCreature = {
+        instanceId: `starter-${starter.id}-${Date.now()}`,
+        definitionId: starter.id,
+        level: 5,
+        currentHp: starter.stats.hp,
+        experience: 0,
+        rank: 1,
+        copiesFused: 0,
+        totalExpeditionXp: 0,
+      };
+      creatures = [starterInstance];
+    }
 
     const inventory: PlayerInventoryEntry[] = Object.entries(data.inventory.items || {}).map(
       ([itemId, quantity]) => ({ itemId, quantity: quantity as number })
     );
 
+    // Garantir que há pelo menos 5 pokébolas básicas (fallback)
+    const hasPokeballs = inventory.some(item => item.itemId === 'poke-ball-basic');
+    if (!hasPokeballs) {
+      console.log('[PlayerState] ⚠️  Nenhuma pokébola encontrada - adicionando 5 básicas...');
+      inventory.push({ itemId: 'poke-ball-basic', quantity: 5 });
+    }
+
+    // Garantir que há pelo menos uma criatura no time ativo
+    let activeTeamIds = data.activeTeam.creatureIds || [];
+    if (activeTeamIds.length === 0 && creatures.length > 0) {
+      console.log('[PlayerState] ⚠️  Time vazio - adicionando primeira criatura...');
+      activeTeamIds = [creatures[0].instanceId];
+    }
+
     this.progress = {
       uid: getUserId() || 'local-offline',
       displayName: data.profile.displayName,
-      teamSlots: data.inventory.teamSlots,
-      movementSpeedBonus: data.inventory.movementSpeedBonus,
-      captureChanceBonus: data.inventory.captureChanceBonus,
-      inventoryCapacity: data.inventory.inventoryCapacity,
+      teamSlots: data.inventory.teamSlots || 3,
+      movementSpeedBonus: data.inventory.movementSpeedBonus || 0,
+      captureChanceBonus: data.inventory.captureChanceBonus || 0,
+      inventoryCapacity: data.inventory.inventoryCapacity || 50,
       creatures,
       inventory,
-      activeTeamIds: data.activeTeam.creatureIds,
-      selectedMapId: data.activeTeam.selectedMapId as MapId
+      activeTeamIds,
+      selectedMapId: (data.activeTeam.selectedMapId as MapId) || DEFAULT_MAP_ID
     };
 
     // Salvar também no localStorage como backup
     this.saveToStorage(this.progress);
 
     console.log('[PlayerState] ✅ Dados sincronizados do Firebase');
+    console.log(`[PlayerState] - Criaturas: ${creatures.length}`);
+    console.log(`[PlayerState] - Itens: ${inventory.length}`);
+    console.log(`[PlayerState] - Time ativo: ${activeTeamIds.length} criaturas`);
   }
 
   /**
@@ -182,6 +283,10 @@ class PlayerStateManager {
     if (this.firebaseUnsubscribe) {
       this.firebaseUnsubscribe();
       this.firebaseUnsubscribe = null;
+    }
+    if (this.authUnsubscribe) {
+      this.authUnsubscribe();
+      this.authUnsubscribe = null;
     }
     unsubscribeFromUserData();
   }
