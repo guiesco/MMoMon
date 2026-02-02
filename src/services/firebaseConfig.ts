@@ -21,6 +21,14 @@
  * 5. Copie os valores do objeto firebaseConfig
  */
 
+// Debug: Log das variáveis de ambiente (apenas em desenvolvimento)
+if (import.meta.env.DEV) {
+  console.log('[Firebase Config] Debug - Variáveis de ambiente:');
+  console.log('VITE_FIREBASE_API_KEY:', import.meta.env.VITE_FIREBASE_API_KEY ? '✅ Definida' : '❌ Não definida');
+  console.log('VITE_FIREBASE_AUTH_DOMAIN:', import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ? '✅ Definida' : '❌ Não definida');
+  console.log('VITE_FIREBASE_PROJECT_ID:', import.meta.env.VITE_FIREBASE_PROJECT_ID ? '✅ Definida' : '❌ Não definida');
+}
+
 export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",

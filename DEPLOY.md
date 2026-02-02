@@ -155,6 +155,17 @@ Após alguns minutos, acesse:
 
 ## 🔧 Configuração Pós-Deploy
 
+### Configurar Firebase para GitHub Pages
+
+⚠️ **IMPORTANTE**: Antes de testar o jogo, você precisa configurar o Firebase para aceitar requisições do GitHub Pages.
+
+Consulte o guia completo em: **[FIREBASE_DEPLOY_CONFIG.md](./FIREBASE_DEPLOY_CONFIG.md)**
+
+**Resumo rápido:**
+1. Adicione o domínio do GitHub Pages em **Authentication > Settings > Authorized domains**
+2. Habilite **Authentication > Sign-in method > Anonymous**
+3. Publique as regras do Firestore (arquivo `firestore.rules`)
+
 ### Atualizar CORS no servidor
 
 Após fazer deploy do cliente, atualize o CORS no servidor:
@@ -169,7 +180,8 @@ flyctl deploy
 1. Abra o jogo no GitHub Pages
 2. Abra o console do navegador (F12)
 3. Verifique se não há erros de CORS ou conexão
-4. Teste uma expedição multiplayer
+4. Verifique se o Firebase está conectando (deve aparecer logs de autenticação)
+5. Teste uma expedição multiplayer
 
 ## 🐛 Troubleshooting
 

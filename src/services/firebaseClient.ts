@@ -45,6 +45,13 @@ export function initializeFirebaseClient(): boolean {
   try {
     if (!firebaseConfig || !firebaseConfig.apiKey) {
       console.warn('[Firebase Client] ⚠️  Firebase não configurado');
+      console.warn('[Firebase Client] ⚠️  apiKey está vazio. Verifique se as variáveis de ambiente estão configuradas.');
+      console.warn('[Firebase Client] ⚠️  Variáveis esperadas: VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN, etc.');
+      if (import.meta.env.DEV) {
+        console.warn('[Firebase Client] ⚠️  Em desenvolvimento, crie um arquivo .env na raiz do projeto');
+      } else {
+        console.warn('[Firebase Client] ⚠️  Em produção, verifique se os secrets estão configurados no GitHub Actions');
+      }
       return false;
     }
 
