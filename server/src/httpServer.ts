@@ -14,14 +14,20 @@ import type { SaveExpeditionData } from './firebaseTypes';
 
 const app = express();
 
-console.log('[HTTP Server] 🔧 Configurando CORS customizado - VERSÃO NOVA');
+// Configurar trust proxy para Fly.io (necessário para obter IP real e headers corretos)
+app.set('trust proxy', true);
+
+console.log('[HTTP Server] 🔧 Configurando CORS customizado - VERSÃO PRODUÇÃO');
 
 // Middleware CORS - configuração manual completa
 app.use((req, res, next) => {
-  const origin = req.headers.origin || 'http://localhost:5173';
-  console.log(`[HTTP] ${req.method} ${req.path} - Origin: ${origin}`);
+  const origin = req.headers.origin;
+  const method = req.method;
+  const path = req.path;
   
-  // Lista de origens permitidas
+  console.log(`[HTTP] ${method} ${path} - Origin: ${origin || '(none)'}`);
+  
+  // Lista de origens permitidas (normalizadas - sem trailing slash)
   const allowedOrigins = [
     'http://localhost:5173',
     'http://localhost:3000',
@@ -30,26 +36,53 @@ app.use((req, res, next) => {
     // GitHub Pages (ajuste com seu username/repo)
     process.env.CLIENT_URL || 'https://YOUR_USERNAME.github.io',
     // Domínios customizados (se houver)
-    ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [])
-  ];
+    ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : [])
+  ].filter(Boolean).map(o => o.replace(/\/$/, '')); // Remove trailing slashes
   
-  // Verificar se a origem está na lista permitida
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  } else if (!req.headers.origin) {
-    // Se não há header origin (requisições do mesmo domínio), permitir
-    res.setHeader('Access-Control-Allow-Origin', '*');
+  // Log de origens permitidas (apenas na primeira requisição para não poluir logs)
+  if (!(global as any).__cors_logged) {
+    console.log('[HTTP Server] 📋 Origens permitidas:', allowedOrigins);
+    console.log('[HTTP Server] 🔐 CLIENT_URL:', process.env.CLIENT_URL || '(não configurado)');
+    console.log('[HTTP Server] 🔐 ALLOWED_ORIGINS:', process.env.ALLOWED_ORIGINS || '(não configurado)');
+    (global as any).__cors_logged = true;
   }
   
+  // Normalizar origem (remover trailing slash)
+  const normalizedOrigin = origin ? origin.replace(/\/$/, '') : null;
+  
+  // Verificar se a origem está na lista permitida
+  let isOriginAllowed = false;
+  if (normalizedOrigin && allowedOrigins.includes(normalizedOrigin)) {
+    isOriginAllowed = true;
+    res.setHeader('Access-Control-Allow-Origin', origin!);
+  } else if (!origin) {
+    // Se não há header origin (requisições do mesmo domínio), permitir
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    isOriginAllowed = true;
+  }
+  // Se origem não permitida, não definir Access-Control-Allow-Origin (browser bloqueará)
+  
+  // Sempre definir headers CORS (necessários para preflight)
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Max-Age', '86400'); // 24 horas de cache para preflight
   
-  // Handle preflight
-  if (req.method === 'OPTIONS') {
-    console.log(`[HTTP] ✓ Preflight request para ${req.path} - Origin permitida: ${origin}`);
+  // Handle preflight - SEMPRE responder com 204, mesmo se origem não permitida
+  // (o browser bloqueará a requisição real se origem não permitida)
+  if (method === 'OPTIONS') {
+    if (isOriginAllowed) {
+      console.log(`[HTTP] ✓ Preflight OK para ${path} - Origin: ${origin}`);
+    } else {
+      console.log(`[HTTP] ⚠️ Preflight para ${path} - Origin NÃO permitida: ${origin}`);
+    }
     return res.status(204).end();
+  }
+  
+  // Para requisições não-OPTIONS, verificar origem antes de continuar
+  if (origin && !isOriginAllowed) {
+    console.log(`[HTTP] ❌ Requisição bloqueada - Origin não permitida: ${origin}`);
+    return res.status(403).json({ error: 'Origin not allowed' });
   }
   
   next();
