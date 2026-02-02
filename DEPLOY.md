@@ -49,7 +49,7 @@ Configure as variáveis de ambiente no Fly.io:
 
 ```bash
 # URL do cliente (GitHub Pages)
-flyctl secrets set CLIENT_URL=https://YOUR_USERNAME.github.io/MMoMon
+flyctl secrets set CLIENT_URL=https://guiesco.github.io/MMoMon
 
 # Origens permitidas adicionais (se necessário)
 flyctl secrets set ALLOWED_ORIGINS=https://meusite.com
@@ -57,26 +57,21 @@ flyctl secrets set ALLOWED_ORIGINS=https://meusite.com
 
 ### 5. Configurar Firebase Service Account
 
-O servidor precisa do arquivo `firebase-service-account.json`. No Fly.io, você pode:
+O servidor precisa das credenciais do Firebase. O código já está configurado para ler de um secret do Fly.io (recomendado) ou de um arquivo local (desenvolvimento).
 
-**Opção A: Usar secrets do Fly.io (Recomendado)**
+**Configurar secret no Fly.io (Recomendado para produção):**
 
 ```bash
 # Converter o JSON para base64
 cat firebase-service-account.json | base64 | pbcopy
 
-# Configurar como secret
+# Configurar como secret no Fly.io
 flyctl secrets set FIREBASE_SERVICE_ACCOUNT="<cole o base64 aqui>"
 ```
 
-Depois, atualize o código para ler do secret se necessário.
-
-**Opção B: Incluir no Dockerfile (menos seguro)**
-
-Adicione ao Dockerfile antes do build:
-```dockerfile
-COPY firebase-service-account.json ./
-```
+O código automaticamente:
+1. Primeiro tenta ler do secret `FIREBASE_SERVICE_ACCOUNT` (produção)
+2. Se não encontrar, tenta ler do arquivo `firebase-service-account.json` (desenvolvimento)
 
 ⚠️ **Atenção**: Não commite o arquivo `firebase-service-account.json` no Git!
 
