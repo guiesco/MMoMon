@@ -12,9 +12,26 @@ VITE_WS_URL=wss://YOUR_APP_NAME.fly.dev:443
 # URL do servidor HTTP (Fly.io)
 # Exemplo: https://mmomon-server.fly.dev
 VITE_SERVER_URL=https://YOUR_APP_NAME.fly.dev
+
+# Firebase Client SDK Credentials
+# Obtenha essas credenciais no Firebase Console > Project Settings > General > Your apps > Web app
+VITE_FIREBASE_API_KEY=your-api-key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
+VITE_FIREBASE_APP_ID=1:123456789:web:abc123
 ```
 
-**Para produção (GitHub Pages)**: Configure essas variáveis como secrets no GitHub Actions (Settings > Secrets and variables > Actions).
+**Para produção (GitHub Pages)**: Configure todas essas variáveis como secrets no GitHub Actions (Settings > Secrets and variables > Actions):
+- `VITE_WS_URL`
+- `VITE_SERVER_URL`
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_STORAGE_BUCKET`
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`
+- `VITE_FIREBASE_APP_ID`
 
 ## Servidor (Backend)
 

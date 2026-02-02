@@ -13,7 +13,6 @@ npm-debug.log*
 # Firebase Credentials (NUNCA COMMITAR!)
 firebase-service-account.json
 server/firebase-service-account.json
-src/services/firebaseConfig.ts
 .env
 .env.local
 

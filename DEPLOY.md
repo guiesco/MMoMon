@@ -116,8 +116,17 @@ Após o deploy, você terá:
 
 Vá em **Settings** > **Secrets and variables** > **Actions** e adicione:
 
-- `VITE_WS_URL`: URL do WebSocket (ex: `wss://mmomon-server.fly.dev`)
+**URLs do Servidor:**
+- `VITE_WS_URL`: URL do WebSocket (ex: `wss://mmomon-server.fly.dev:443`)
 - `VITE_SERVER_URL`: URL do servidor HTTP (ex: `https://mmomon-server.fly.dev`)
+
+**Firebase Client SDK (obtenha no Firebase Console > Project Settings > General > Your apps > Web app):**
+- `VITE_FIREBASE_API_KEY`: API Key do Firebase
+- `VITE_FIREBASE_AUTH_DOMAIN`: Auth Domain (ex: `your-project.firebaseapp.com`)
+- `VITE_FIREBASE_PROJECT_ID`: Project ID
+- `VITE_FIREBASE_STORAGE_BUCKET`: Storage Bucket (ex: `your-project.appspot.com`)
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`: Messaging Sender ID
+- `VITE_FIREBASE_APP_ID`: App ID
 
 ### 3. Ajustar base path (se necessário)
 
