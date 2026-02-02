@@ -50,6 +50,17 @@ export interface PlayerPresence {
   name: string;
   x: number;
   y: number;
+  /** Inventário temporário de pokébolas e criaturas capturadas durante a expedição */
+  expeditionInventory?: {
+    capturedCreatures: Array<{
+      instanceId: string;
+      speciesId: string;
+      level: number;
+      tier: string;
+      currentHp: number;
+      maxHp: number;
+    }>;
+  };
   /** Progresso de extração (0-100) */
   extractionProgress: number;
   /** Timestamp quando extraiu com sucesso (null se ainda não extraiu) */
@@ -388,7 +399,14 @@ export function completeExtraction(
   console.log(`  - creaturesCaptured:`, player.creaturesCaptured);
 
   // ✅ FASE 3: Coletar detalhes das criaturas capturadas do inventário da expedição
-  const capturedCreatures = (player.expeditionInventory?.capturedCreatures || []).map(creature => ({
+  const capturedCreatures = (player.expeditionInventory?.capturedCreatures || []).map((creature: {
+    instanceId: string;
+    speciesId: string;
+    level: number;
+    tier: string;
+    currentHp: number;
+    maxHp: number;
+  }) => ({
     instanceId: creature.instanceId,
     speciesId: creature.speciesId,
     level: creature.level,

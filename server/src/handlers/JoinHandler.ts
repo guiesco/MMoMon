@@ -1,6 +1,7 @@
 import { WebSocket } from "ws";
 import type { Room, JoinMessage, PlayerPresence } from "../types/ServerTypes";
-import { createExpeditionInventory, initializePlayerExtractionData } from "../systems/extraction";
+import { createExpeditionInventory } from "../systems/capture";
+import { initializePlayerExtractionData } from "../systems/extraction";
 import { getUser } from "../firestoreOperations";
 import { isFirebaseAvailable } from "../firebase";
 import { StateBroadcaster } from "../broadcast/StateBroadcaster";

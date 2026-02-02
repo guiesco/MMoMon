@@ -412,8 +412,8 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    // Se não está em uma sala e não é join, ignorar
-    if (!currentRoom && msg.type !== "join") {
+    // Se não está em uma sala, ignorar (join já foi tratado acima)
+    if (!currentRoom) {
       if (DEBUG_GAME_LOOP) {
         console.log(`[Server] ⚠️ Cliente ${clientId.slice(0, 8)}... enviou mensagem ${msg.type} sem estar em uma sala`);
       }
@@ -653,7 +653,7 @@ if (isFirebaseAvailable()) {
 
 // Iniciar servidor HTTP para sincronização
 import { startHttpServer } from './httpServer';
-const HTTP_PORT = 3004;
+const HTTP_PORT = Number(process.env.HTTP_PORT ?? 3004);
 startHttpServer(HTTP_PORT);
 
 console.log('\n=== Servidor WebSocket ===');

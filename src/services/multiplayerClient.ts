@@ -327,7 +327,7 @@ export class MultiplayerClient {
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 5;
   private reconnectDelay: number = 1000;
-  private url: string = "ws://localhost:3003";
+  private url: string = import.meta.env.VITE_WS_URL || "ws://localhost:3003";
 
   constructor(roomId: string, name: string, userId?: string | null) {
     this.roomId = roomId;
@@ -359,8 +359,8 @@ export class MultiplayerClient {
   /**
    * Conecta ao servidor WebSocket.
    */
-  connect(url: string = "ws://localhost:3003"): void {
-    this.url = url;
+  connect(url?: string): void {
+    this.url = url || import.meta.env.VITE_WS_URL || "ws://localhost:3003";
     
     try {
       this.ws = new WebSocket(url);

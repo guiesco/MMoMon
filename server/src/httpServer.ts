@@ -26,7 +26,11 @@ app.use((req, res, next) => {
     'http://localhost:5173',
     'http://localhost:3000',
     'http://127.0.0.1:5173',
-    'http://127.0.0.1:3000'
+    'http://127.0.0.1:3000',
+    // GitHub Pages (ajuste com seu username/repo)
+    process.env.CLIENT_URL || 'https://YOUR_USERNAME.github.io',
+    // Domínios customizados (se houver)
+    ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [])
   ];
   
   // Verificar se a origem está na lista permitida
