@@ -168,8 +168,17 @@ export class InventoryScene extends Phaser.Scene {
       document.removeEventListener('keydown', tabHandler, true);
     });
     
-    this.input.keyboard?.on("keydown-ESC", () => {
-      // Sync será feito automaticamente ao entrar na BaseHubScene
+    this.input.keyboard?.on("keydown-ESC", async () => {
+      // Salva mochila na Firebase antes de sair (mesmo se vazia, para garantir sincronização)
+      const preparedInventory = PlayerState.getPreparedExpeditionInventory();
+      if (isFirebaseClientAvailable()) {
+        try {
+          await saveBackpackToServer(preparedInventory);
+          console.log('[InventoryScene] ✅ Mochila salva na Firebase');
+        } catch (error) {
+          console.error('[InventoryScene] Erro ao salvar mochila:', error);
+        }
+      }
       this.scene.start("BaseHubScene");
     });
   }
@@ -578,13 +587,6 @@ export class InventoryScene extends Phaser.Scene {
         `Armazem: ${totalItens} itens  |  Mochila: ${totalPrepared} itens  |  ` +
         "↑/↓: navegar  |  ←/→: transferir  |  ENTER: detalhes  |  ESC: voltar"
       );
-      
-      // Salva mochila na Firebase
-      if (isFirebaseClientAvailable()) {
-        saveBackpackToServer(preparedInventory).catch(error => {
-          console.error('[InventoryScene] Erro ao salvar mochila:', error);
-        });
-      }
       
       this.renderEntries();
     } else {
