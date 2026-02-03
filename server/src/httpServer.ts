@@ -229,11 +229,19 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
       }
     }
 
-    // Converter criaturas
-    if (progress.creatures && Array.isArray(progress.creatures)) {
-      for (const creature of progress.creatures) {
+    // IMPORTANTE: Preservar criaturas existentes no Firebase que não estão no progress do cliente
+    // Isso evita sobrescrever criaturas capturadas em expedições que ainda não foram sincronizadas
+    const existingCreatures = existingUserData?.creatures || {};
+    const creaturesFromClient = progress.creatures || [];
+    
+    console.log(`[HTTP] 📊 Criaturas existentes no Firebase: ${Object.keys(existingCreatures).length}`);
+    console.log(`[HTTP] 📊 Criaturas enviadas pelo cliente: ${creaturesFromClient.length}`);
+    
+    // Converter criaturas do cliente
+    if (Array.isArray(creaturesFromClient)) {
+      for (const creature of creaturesFromClient) {
         // Buscar dados completos da criatura do Firebase se existir (para preservar capturedAt)
-        const existingCreature = existingUserData?.creatures?.[creature.instanceId];
+        const existingCreature = existingCreatures[creature.instanceId];
         
         userData.creatures[creature.instanceId] = {
           instanceId: creature.instanceId,
@@ -251,9 +259,19 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
       }
     }
     
+    // IMPORTANTE: Preservar criaturas que existem no Firebase mas não foram enviadas pelo cliente
+    // Isso garante que criaturas capturadas em expedições não sejam perdidas
+    for (const [instanceId, existingCreature] of Object.entries(existingCreatures)) {
+      if (!userData.creatures[instanceId]) {
+        // Criatura existe no Firebase mas não foi enviada pelo cliente - preservar
+        console.log(`[HTTP] 🔒 Preservando criatura do Firebase: ${instanceId} (${existingCreature.definitionId})`);
+        userData.creatures[instanceId] = existingCreature as any;
+      }
+    }
+    
     console.log(`[HTTP] 📊 Estado convertido:`);
     console.log(`[HTTP] - Itens no inventário: ${Object.keys(userData.inventory.items).length}`);
-    console.log(`[HTTP] - Criaturas: ${Object.keys(userData.creatures).length}`);
+    console.log(`[HTTP] - Criaturas: ${Object.keys(userData.creatures).length} (${creaturesFromClient.length} do cliente + ${Object.keys(userData.creatures).length - creaturesFromClient.length} preservadas do Firebase)`);
     console.log(`[HTTP] - Time ativo: ${userData.activeTeam.creatureIds.length} criaturas`);
 
     await saveUserData(userId, userData);

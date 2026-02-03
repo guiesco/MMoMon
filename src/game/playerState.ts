@@ -200,11 +200,26 @@ class PlayerStateManager {
    */
   private syncFromFirebase(data: UserData): void {
     console.log('[PlayerState] 📥 Sincronizando dados do Firebase...');
-    console.log(`[PlayerState] 📥 Criaturas recebidas do Firebase: ${Object.keys(data.creatures || {}).length}`);
-    console.log(`[PlayerState] 📥 IDs das criaturas:`, Object.keys(data.creatures || {}));
+    const creaturesData = data.creatures || {};
+    const creaturesCount = Object.keys(creaturesData).length;
+    console.log(`[PlayerState] 📥 Criaturas recebidas do Firebase: ${creaturesCount}`);
+    console.log(`[PlayerState] 📥 IDs das criaturas:`, Object.keys(creaturesData));
+    
+    // Log detalhado de cada criatura recebida
+    if (creaturesCount > 0) {
+      console.log('[PlayerState] 📥 Detalhes das criaturas recebidas:');
+      Object.entries(creaturesData).forEach(([id, c]: [string, any]) => {
+        console.log(`[PlayerState] 📥   - ${id}: ${c.definitionId} (nível ${c.level}, rank ${c.rank || 1})`);
+      });
+    }
 
     // Converter formato Firebase para PlayerProgress
-    let creatures: OwnedCreature[] = Object.values(data.creatures || {}).map((c: any) => {
+    let creatures: OwnedCreature[] = Object.values(creaturesData).map((c: any) => {
+      if (!c.instanceId || !c.definitionId) {
+        console.warn('[PlayerState] ⚠️  Criatura inválida encontrada:', c);
+        return null;
+      }
+      
       const creature: OwnedCreature = {
         instanceId: c.instanceId,
         definitionId: c.definitionId,
@@ -218,7 +233,7 @@ class PlayerStateManager {
       // Normalizar HP ao carregar do Firebase
       creature.currentHp = normalizeCreatureHp(creature);
       return creature;
-    });
+    }).filter((c): c is OwnedCreature => c !== null); // Filtrar criaturas inválidas
 
     // Se não houver criaturas, criar starter (fallback de segurança)
     if (creatures.length === 0) {
@@ -283,7 +298,16 @@ class PlayerStateManager {
     this.saveToStorage(this.progress);
 
     console.log('[PlayerState] ✅ Dados sincronizados do Firebase');
-    console.log(`[PlayerState] - Criaturas: ${creatures.length}`);
+    console.log(`[PlayerState] - Criaturas: ${creatures.length} (esperado: ${creaturesCount})`);
+    if (creatures.length !== creaturesCount) {
+      console.warn(`[PlayerState] ⚠️  DISCREPÂNCIA: Recebidas ${creaturesCount} criaturas do Firebase, mas apenas ${creatures.length} foram processadas`);
+      const receivedIds = Object.keys(creaturesData);
+      const processedIds = creatures.map(c => c.instanceId);
+      const missingIds = receivedIds.filter(id => !processedIds.includes(id));
+      if (missingIds.length > 0) {
+        console.warn(`[PlayerState] ⚠️  IDs não processados:`, missingIds);
+      }
+    }
     console.log(`[PlayerState] - IDs das criaturas sincronizadas:`, creatures.map(c => c.instanceId));
     console.log(`[PlayerState] - Itens: ${inventory.length}`);
     console.log(`[PlayerState] - Time ativo: ${activeTeamIds.length} criaturas`);

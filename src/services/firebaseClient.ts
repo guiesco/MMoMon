@@ -230,9 +230,19 @@ export function subscribeToUserData(
       if (snapshot.exists()) {
         const data = snapshot.data() as UserData;
         const creaturesCount = Object.keys(data.creatures || {}).length;
-        console.log('[Firebase Client] 📥 Dados sincronizados do servidor');
+        const timestamp = new Date().toISOString();
+        console.log(`[Firebase Client] 📥 [${timestamp}] Dados sincronizados do servidor`);
         console.log(`[Firebase Client] 📥 Criaturas no snapshot: ${creaturesCount}`);
         console.log(`[Firebase Client] 📥 IDs das criaturas:`, Object.keys(data.creatures || {}));
+        
+        // Log detalhado de cada criatura no snapshot
+        if (creaturesCount > 0) {
+          console.log('[Firebase Client] 📥 Detalhes das criaturas no snapshot:');
+          Object.entries(data.creatures || {}).forEach(([id, c]: [string, any]) => {
+            console.log(`[Firebase Client] 📥   - ${id}: ${c.definitionId || 'SEM DEFINITION_ID'} (nível ${c.level || '?'}, rank ${c.rank || '?'})`);
+          });
+        }
+        
         callback(data);
       } else {
         console.warn('[Firebase Client] ⚠️  Usuário não encontrado no Firestore');

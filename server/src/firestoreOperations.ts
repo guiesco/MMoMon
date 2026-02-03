@@ -223,8 +223,14 @@ export async function saveExpeditionRewards(
     const userData = userDoc.data() as UserDocument;
     const newCreatures: Record<string, UserCreature> = {};
 
+    // Gerar IDs únicos para cada criatura capturada
+    let creatureIndex = 0;
     for (const capturedCreature of data.rewards.capturedCreatures) {
-      const instanceId = `creature-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // Usar timestamp + índice + random para garantir unicidade
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substr(2, 9);
+      const instanceId = `creature-${timestamp}-${creatureIndex}-${random}`;
+      creatureIndex++;
       
       const creature: UserCreature = {
         instanceId,
@@ -240,6 +246,7 @@ export async function saveExpeditionRewards(
       };
 
       newCreatures[instanceId] = creature;
+      console.log(`[Firestore] 🐾 Criatura ${creatureIndex}/${data.rewards.capturedCreatures.length} preparada: ${instanceId} (${capturedCreature.definitionId}, nível ${capturedCreature.level})`);
     }
 
     if (Object.keys(newCreatures).length > 0) {
@@ -251,11 +258,21 @@ export async function saveExpeditionRewards(
         currentHp: newCreatures[id].currentHp,
         maxHp: newCreatures[id].maxHp
       })));
-      console.log(`[Firestore] 🐾 Criaturas existentes antes: ${Object.keys(userData.creatures || {}).length}`);
+      
+      const existingCreatures = userData.creatures || {};
+      const existingCount = Object.keys(existingCreatures).length;
+      console.log(`[Firestore] 🐾 Criaturas existentes antes: ${existingCount}`);
+      console.log(`[Firestore] 🐾 IDs das criaturas existentes:`, Object.keys(existingCreatures));
+      
+      // IMPORTANTE: Merge correto - preservar criaturas existentes e adicionar novas
+      const mergedCreatures = { ...existingCreatures, ...newCreatures };
+      const mergedCount = Object.keys(mergedCreatures).length;
+      console.log(`[Firestore] 🐾 Total de criaturas após merge: ${mergedCount} (${existingCount} existentes + ${Object.keys(newCreatures).length} novas)`);
+      console.log(`[Firestore] 🐾 IDs de todas as criaturas após merge:`, Object.keys(mergedCreatures));
+      
       batch.update(userRef, {
-        creatures: { ...userData.creatures, ...newCreatures }
+        creatures: mergedCreatures
       });
-      console.log(`[Firestore] 🐾 Total de criaturas após adição: ${Object.keys(userData.creatures || {}).length + Object.keys(newCreatures).length}`);
     } else {
       console.log(`[Firestore] ⚠️  Nenhuma criatura capturada para adicionar`);
     }
@@ -306,6 +323,16 @@ export async function saveExpeditionRewards(
     // ========================================================================
     console.log(`[Firestore] 🔄 Executando commit do batch (transação atômica)...`);
     await batch.commit();
+
+    // Verificar que as criaturas foram realmente salvas
+    const verifyDoc = await userRef.get();
+    if (verifyDoc.exists) {
+      const verifyData = verifyDoc.data() as UserDocument;
+      const savedCreatures = verifyData.creatures || {};
+      const savedCount = Object.keys(savedCreatures).length;
+      console.log(`[Firestore] ✅ Verificação pós-commit: ${savedCount} criaturas no documento`);
+      console.log(`[Firestore] ✅ IDs das criaturas salvas:`, Object.keys(savedCreatures));
+    }
 
     console.log(`[Firestore] ✅ Recompensas salvas com sucesso para usuário ${data.userId}`);
     console.log(`[Firestore] ℹ️  Resumo: ${totalResourcesCollected} recursos, ${data.rewards.capturedCreatures.length} criaturas capturadas`);
