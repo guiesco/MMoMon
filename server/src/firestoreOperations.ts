@@ -244,9 +244,20 @@ export async function saveExpeditionRewards(
 
     if (Object.keys(newCreatures).length > 0) {
       console.log(`[Firestore] 🐾 Adicionando ${Object.keys(newCreatures).length} criaturas capturadas`);
+      console.log(`[Firestore] 🐾 Detalhes das criaturas:`, Object.keys(newCreatures).map(id => ({
+        instanceId: id,
+        definitionId: newCreatures[id].definitionId,
+        level: newCreatures[id].level,
+        currentHp: newCreatures[id].currentHp,
+        maxHp: newCreatures[id].maxHp
+      })));
+      console.log(`[Firestore] 🐾 Criaturas existentes antes: ${Object.keys(userData.creatures || {}).length}`);
       batch.update(userRef, {
         creatures: { ...userData.creatures, ...newCreatures }
       });
+      console.log(`[Firestore] 🐾 Total de criaturas após adição: ${Object.keys(userData.creatures || {}).length + Object.keys(newCreatures).length}`);
+    } else {
+      console.log(`[Firestore] ⚠️  Nenhuma criatura capturada para adicionar`);
     }
 
     // ========================================================================

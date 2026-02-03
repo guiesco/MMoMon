@@ -228,7 +228,10 @@ export function subscribeToUserData(
     (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data() as UserData;
+        const creaturesCount = Object.keys(data.creatures || {}).length;
         console.log('[Firebase Client] 📥 Dados sincronizados do servidor');
+        console.log(`[Firebase Client] 📥 Criaturas no snapshot: ${creaturesCount}`);
+        console.log(`[Firebase Client] 📥 IDs das criaturas:`, Object.keys(data.creatures || {}));
         callback(data);
       } else {
         console.warn('[Firebase Client] ⚠️  Usuário não encontrado no Firestore');

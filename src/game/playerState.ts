@@ -200,6 +200,8 @@ class PlayerStateManager {
    */
   private syncFromFirebase(data: UserData): void {
     console.log('[PlayerState] 📥 Sincronizando dados do Firebase...');
+    console.log(`[PlayerState] 📥 Criaturas recebidas do Firebase: ${Object.keys(data.creatures || {}).length}`);
+    console.log(`[PlayerState] 📥 IDs das criaturas:`, Object.keys(data.creatures || {}));
 
     // Converter formato Firebase para PlayerProgress
     let creatures: OwnedCreature[] = Object.values(data.creatures || {}).map((c: any) => {
@@ -273,6 +275,7 @@ class PlayerStateManager {
 
     console.log('[PlayerState] ✅ Dados sincronizados do Firebase');
     console.log(`[PlayerState] - Criaturas: ${creatures.length}`);
+    console.log(`[PlayerState] - IDs das criaturas sincronizadas:`, creatures.map(c => c.instanceId));
     console.log(`[PlayerState] - Itens: ${inventory.length}`);
     console.log(`[PlayerState] - Time ativo: ${activeTeamIds.length} criaturas`);
   }
