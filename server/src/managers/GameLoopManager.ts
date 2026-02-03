@@ -417,15 +417,22 @@ function handleCaptureResult(room: Room, playerId: string, targetId: string, bal
     return;
   }
 
-  // Processar captura com acesso ao inventário
+  // ✅ VALIDAÇÃO: Garantir que expeditionInventory é individual
+  if (!player.expeditionInventory) {
+    console.warn(`[Room:${room.id}] ⚠️ Jogador ${playerId} não possui expeditionInventory - criando novo`);
+    const { createExpeditionInventory } = require("../systems/capture");
+    player.expeditionInventory = createExpeditionInventory();
+  }
+
+  // ✅ Processar captura com acesso ao inventário INDIVIDUAL do jogador
   const result = processCaptureIntent(
     playerId,
     player.x,
     player.y,
     creature,
     ballType,
-    player.expeditionInventory,
-    player
+    player.expeditionInventory, // ✅ Inventário individual
+    player // ✅ Player individual (para atualizar creaturesCaptured)
   );
 
   // Rastrear pokébola consumida
@@ -579,6 +586,9 @@ function handleSkillUsed(
 
 /**
  * Handler para recurso coletado.
+ * 
+ * IMPORTANTE: Garante que cada jogador tem seu próprio resourcesCollected Map.
+ * Não há compartilhamento de estado entre jogadores.
  */
 function handleResourceCollected(
   room: Room,
@@ -589,26 +599,37 @@ function handleResourceCollected(
 ): void {
   if (!room.gameLoop) return;
 
-  // IMPORTANTE: Sincronizar recursos coletados do combatState para o player na Room
+  // ✅ VALIDAÇÃO: Verificar que playerId está presente
+  if (!playerId) {
+    console.error(`[Room:${room.id}] ❌ playerId não fornecido ao coletar recurso`);
+    return;
+  }
+
+  // ✅ IMPORTANTE: Sincronizar recursos coletados do combatState para o player na Room
   // O sistema de extração lê os recursos do player na Room, não do combatState
   const playerInRoom = room.players.get(playerId);
-  if (playerInRoom) {
-    // Atualizar resourcesCollected na Room (usado pelo sistema de extração)
-    if (!playerInRoom.resourcesCollected) {
-      playerInRoom.resourcesCollected = new Map();
-    }
-    const currentQuantity = playerInRoom.resourcesCollected.get(resourceType) ?? 0;
-    playerInRoom.resourcesCollected.set(resourceType, currentQuantity + quantity);
-    
-    if (DEBUG_GAME_LOOP) {
-      const totalCollected = Array.from(playerInRoom.resourcesCollected.values()).reduce((a, b) => a + b, 0);
-      console.log(
-        `[Room:${room.id}] Recurso coletado: jogador ${playerId} coletou ${quantity}x ${resourceType} (${resourceId}) ` +
-        `| Total coletado: ${totalCollected}`
-      );
-    }
-  } else {
+  if (!playerInRoom) {
     console.warn(`[Room:${room.id}] ⚠️ Jogador ${playerId} não encontrado na Room ao coletar recurso`);
+    return;
+  }
+
+  // ✅ VALIDAÇÃO: Garantir que resourcesCollected é individual (não compartilhado)
+  // Criar novo Map se não existir ou se for compartilhado
+  if (!playerInRoom.resourcesCollected) {
+    playerInRoom.resourcesCollected = new Map();
+    console.log(`[Room:${room.id}] ✅ Criado novo Map de resourcesCollected para jogador ${playerId}`);
+  }
+
+  // ✅ Atualizar resourcesCollected INDIVIDUAL do jogador
+  const currentQuantity = playerInRoom.resourcesCollected.get(resourceType) ?? 0;
+  playerInRoom.resourcesCollected.set(resourceType, currentQuantity + quantity);
+  
+  if (DEBUG_GAME_LOOP) {
+    const totalCollected = Array.from(playerInRoom.resourcesCollected.values()).reduce((a, b) => a + b, 0);
+    console.log(
+      `[Room:${room.id}] ✅ Recurso INDIVIDUAL coletado: jogador ${playerId} coletou ${quantity}x ${resourceType} (${resourceId}) ` +
+      `| Total coletado por este jogador: ${totalCollected}`
+    );
   }
 
   // Broadcast remoção do recurso para todos os clientes

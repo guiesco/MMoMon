@@ -3,6 +3,7 @@ import { PlayerState } from "../game/playerState";
 import { getCreatureById } from "../game/creatures";
 import type { OwnedCreature } from "../game/types";
 import { syncPlayerStateToServer } from "../services/firebaseSync";
+import { getEffectiveStats } from "../game/creatureProgression";
 
 export class TeamManagementScene extends Phaser.Scene {
   private listTexts: Phaser.GameObjects.Text[] = [];
@@ -100,6 +101,7 @@ export class TeamManagementScene extends Phaser.Scene {
       sortedCreatures.forEach((owned, idx) => {
         const def = getCreatureById(owned.definitionId);
         const inTeam = this.tempTeamIds.includes(owned.instanceId);
+        const effectiveStats = getEffectiveStats(owned);
 
         const text = this.add
           .text(
@@ -107,7 +109,7 @@ export class TeamManagementScene extends Phaser.Scene {
             y + idx * 22,
             `${inTeam ? "★" : "  "} ${owned.nickname ?? def?.name ?? "Desconhecido"}  Lv.${
               owned.level
-            }  HP ${owned.currentHp}/${def?.stats.hp ?? "?"}`,
+            }  HP ${owned.currentHp}/${effectiveStats.hp}`,
             {
               fontSize: "14px",
               color: idx === this.cursorIndex ? "#22c55e" : inTeam ? "#e5e7eb" : "#9ca3af"
@@ -189,11 +191,12 @@ export class TeamManagementScene extends Phaser.Scene {
       const inTeam = instanceId ? this.tempTeamIds.includes(instanceId) : false;
       const owned = sortedCreatures[idx];
       const def = owned ? getCreatureById(owned.definitionId) : null;
+      const effectiveStats = owned ? getEffectiveStats(owned) : null;
 
       text.setText(
         `${inTeam ? "★" : "  "} ${owned?.nickname ?? def?.name ?? "Desconhecido"}  Lv.${
           owned?.level ?? "?"
-        }  HP ${owned?.currentHp ?? "?"}/${def?.stats.hp ?? "?"}`
+        }  HP ${owned?.currentHp ?? "?"}/${effectiveStats?.hp ?? "?"}`
       );
     });
 
@@ -248,10 +251,11 @@ export class TeamManagementScene extends Phaser.Scene {
     const inTeam = instanceId ? this.tempTeamIds.includes(instanceId) : false;
 
     const lines: string[] = [];
-    if (def) {
+    if (def && owned) {
+      const effectiveStats = getEffectiveStats(owned);
       lines.push(`${def.name} – Tipo: ${def.primaryType}${def.secondaryType ? ` / ${def.secondaryType}` : ""}`);
       lines.push(
-        `HP: ${def.stats.hp} | ATQ: ${def.stats.attackDamage} | DEF: ${def.stats.defense} | Vel: ${def.stats.moveSpeed}`
+        `HP: ${effectiveStats.hp} | ATQ: ${effectiveStats.attackDamage} | DEF: ${effectiveStats.defense} | Vel: ${effectiveStats.moveSpeed}`
       );
       lines.push(
         `Skill: ${def.specialSkill.name} (CD: ${def.specialSkill.cooldown}s)`

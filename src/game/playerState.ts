@@ -8,6 +8,7 @@ import {
   getEffectiveStats,
   type ExpeditionXpParams,
   calculateExpeditionXp,
+  normalizeCreatureHp,
 } from "./creatureProgression";
 import {
   initializeFirebaseClient,
@@ -201,16 +202,21 @@ class PlayerStateManager {
     console.log('[PlayerState] 📥 Sincronizando dados do Firebase...');
 
     // Converter formato Firebase para PlayerProgress
-    let creatures: OwnedCreature[] = Object.values(data.creatures || {}).map((c: any) => ({
-      instanceId: c.instanceId,
-      definitionId: c.definitionId,
-      level: c.level || 1,
-      currentHp: c.currentHp || c.maxHp || 80,
-      experience: c.experience || 0,
-      rank: c.rank || 1,
-      copiesFused: c.copiesFused || 0,
-      totalExpeditionXp: c.totalExpeditionXp || 0
-    }));
+    let creatures: OwnedCreature[] = Object.values(data.creatures || {}).map((c: any) => {
+      const creature: OwnedCreature = {
+        instanceId: c.instanceId,
+        definitionId: c.definitionId,
+        level: c.level || 1,
+        currentHp: c.currentHp || c.maxHp || 80,
+        experience: c.experience || 0,
+        rank: c.rank || 1,
+        copiesFused: c.copiesFused || 0,
+        totalExpeditionXp: c.totalExpeditionXp || 0
+      };
+      // Normalizar HP ao carregar do Firebase
+      creature.currentHp = normalizeCreatureHp(creature);
+      return creature;
+    });
 
     // Se não houver criaturas, criar starter (fallback de segurança)
     if (creatures.length === 0) {
@@ -220,12 +226,14 @@ class PlayerStateManager {
         instanceId: `starter-${starter.id}-${Date.now()}`,
         definitionId: starter.id,
         level: 5,
-        currentHp: starter.stats.hp,
+        currentHp: starter.stats.hp, // Será normalizado abaixo
         experience: 0,
         rank: 1,
         copiesFused: 0,
         totalExpeditionXp: 0,
       };
+      // Normalizar HP usando getEffectiveStats
+      starterInstance.currentHp = normalizeCreatureHp(starterInstance);
       creatures = [starterInstance];
     }
 
@@ -297,12 +305,15 @@ class PlayerStateManager {
       instanceId: `starter-${starter.id}`,
       definitionId: starter.id,
       level: 5,
-      currentHp: starter.stats.hp,
+      currentHp: starter.stats.hp, // Será normalizado abaixo
       experience: 0,
       rank: 1,
       copiesFused: 0,
       totalExpeditionXp: 0,
     };
+    
+    // Normalizar HP usando getEffectiveStats
+    starterInstance.currentHp = normalizeCreatureHp(starterInstance);
 
     const base: PlayerProgress = {
       uid: "local-offline",
@@ -329,7 +340,16 @@ class PlayerStateManager {
     try {
       const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
       if (!raw) return null;
-      return JSON.parse(raw) as PlayerProgress;
+      const progress = JSON.parse(raw) as PlayerProgress;
+      
+      // Normalizar HP de todas as criaturas ao carregar do localStorage
+      if (progress.creatures) {
+        progress.creatures.forEach(creature => {
+          creature.currentHp = normalizeCreatureHp(creature);
+        });
+      }
+      
+      return progress;
     } catch {
       return null;
     }
@@ -410,12 +430,15 @@ class PlayerStateManager {
       )}`,
       definitionId: base.id,
       level,
-      currentHp: base.stats.hp,
+      currentHp: base.stats.hp, // Será normalizado abaixo
       experience: 0,
       rank: 1,
       copiesFused: 0,
       totalExpeditionXp: 0,
     };
+
+    // Normalizar HP usando getEffectiveStats
+    instance.currentHp = normalizeCreatureHp(instance);
 
     this.progress.creatures.push(instance);
     if (this.progress.activeTeamIds.length < this.progress.teamSlots) {
@@ -491,16 +514,28 @@ class PlayerStateManager {
     while (creature.level < LEVEL_CONFIG.maxLevel) {
       const xpNeeded = getXpRequiredForLevel(creature.level + 1);
       if (creature.experience >= xpNeeded) {
+        // Antes de subir de nível, calcular HP atual proporcionalmente
+        const oldEffectiveStats = getEffectiveStats(creature);
+        const oldMaxHp = oldEffectiveStats.hp;
+        const hpRatio = oldMaxHp > 0 ? creature.currentHp / oldMaxHp : 1;
+
         creature.experience -= xpNeeded;
         creature.level += 1;
 
-        // Atualiza HP máximo ao subir de nível
-        const effectiveStats = getEffectiveStats(creature);
-        creature.currentHp = effectiveStats.hp;
+        // Atualiza HP proporcionalmente ao novo maxHp
+        const newEffectiveStats = getEffectiveStats(creature);
+        const newMaxHp = newEffectiveStats.hp;
+        creature.currentHp = Math.floor(newMaxHp * hpRatio);
+        
+        // Garantir que HP não ultrapasse o máximo
+        creature.currentHp = Math.min(creature.currentHp, newMaxHp);
       } else {
         break;
       }
     }
+    
+    // Normalizar HP após processar level ups (garantir que está dentro do range válido)
+    creature.currentHp = normalizeCreatureHp(creature);
 
     this.saveToStorage(this.progress);
 
@@ -616,13 +651,22 @@ class PlayerStateManager {
       );
     }
 
+    // Antes de promover, calcular HP atual proporcionalmente
+    const oldEffectiveStats = getEffectiveStats(creature);
+    const oldMaxHp = oldEffectiveStats.hp;
+    const hpRatio = oldMaxHp > 0 ? creature.currentHp / oldMaxHp : 1;
+
     // Atualiza a criatura principal
     creature.rank = nextRank;
     creature.copiesFused = totalCopiesNeeded;
 
-    // Atualiza HP com o novo multiplicador de rank
-    const effectiveStats = getEffectiveStats(creature);
-    creature.currentHp = effectiveStats.hp;
+    // Atualiza HP proporcionalmente ao novo maxHp
+    const newEffectiveStats = getEffectiveStats(creature);
+    const newMaxHp = newEffectiveStats.hp;
+    creature.currentHp = Math.floor(newMaxHp * hpRatio);
+    
+    // Normalizar HP para garantir que está dentro do range válido
+    creature.currentHp = normalizeCreatureHp(creature);
 
     this.saveToStorage(this.progress);
 

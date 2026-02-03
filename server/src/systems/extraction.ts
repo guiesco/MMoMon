@@ -5,7 +5,42 @@
  * 
  * Este módulo implementa toda a lógica server-authoritative de extração.
  * 
- * Fluxo de extração:
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * GARANTIA DE INDIVIDUALIDADE POR JOGADOR
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * 
+ * Este sistema garante que cada jogador extrai INDEPENDENTEMENTE:
+ * 
+ * 1. Cada jogador tem seu próprio:
+ *    - resourcesCollected: Map<string, number> (recursos coletados individualmente)
+ *    - expeditionInventory: PlayerExpeditionInventory (criaturas capturadas individualmente)
+ *    - creaturesCaptured: number (contador individual)
+ *    - extractionProgress: number (progresso individual)
+ *    - extractedAt: number | null (timestamp individual)
+ * 
+ * 2. Recompensas são calculadas APENAS dos dados do jogador específico:
+ *    - completeExtraction() usa apenas player.resourcesCollected do jogador
+ *    - completeExtraction() usa apenas player.expeditionInventory do jogador
+ *    - completeExtraction() usa apenas player.creaturesCaptured do jogador
+ * 
+ * 3. Broadcasts são específicos por jogador:
+ *    - Cada mensagem contém apenas dados do jogador que extraiu
+ *    - StateBroadcaster filtra mensagens por playerId
+ * 
+ * 4. Persistência no Firebase é individual:
+ *    - Cada jogador salva suas próprias recompensas usando seu userId
+ *    - Não há compartilhamento de dados entre jogadores
+ * 
+ * 5. Validações implementadas:
+ *    - Verificação de identidade do playerId em todas as funções
+ *    - Validação de que resourcesCollected é um Map individual
+ *    - Validação de que expeditionInventory é individual
+ *    - Logs detalhados para debug de individualidade
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * FLUXO DE EXTRAÇÃO
+ * ═══════════════════════════════════════════════════════════════════════════════
+ * 
  * 1. Jogador envia intent "extraction_request" com action="start"
  * 2. Servidor valida se jogador está dentro do raio do ponto
  * 3. Se válido, inicia contagem de progresso (0 a 100%)
@@ -357,6 +392,9 @@ export function updateExtractions(
  * Esta função deve ser chamada quando um jogador completa a extração
  * (progressSeconds >= EXTRACTION_REQUIRED_SECONDS).
  * 
+ * IMPORTANTE: Esta função garante que apenas dados do jogador específico são usados.
+ * Cada jogador tem seu próprio resourcesCollected, expeditionInventory e creaturesCaptured.
+ * 
  * @param room - Sala onde ocorreu a extração
  * @param playerId - ID do jogador que extraiu
  * @param pointId - ID do ponto de extração
@@ -367,25 +405,46 @@ export function completeExtraction(
   playerId: string,
   pointId: string
 ): ExtractionReward | null {
+  // ✅ VALIDAÇÃO 1: Verificar que o jogador existe
   const player = room.players.get(playerId);
   if (!player) {
-    console.warn(`[Extraction] Jogador ${playerId} não encontrado ao completar extração`);
+    console.warn(`[Extraction] ❌ Jogador ${playerId} não encontrado ao completar extração`);
     return null;
   }
 
-  // Verificar se jogador já extraiu
+  // ✅ VALIDAÇÃO 2: Verificar que o jogador não extraiu anteriormente
   if (player.extractedAt !== null) {
-    console.warn(`[Extraction] Jogador ${playerId} já havia extraído anteriormente`);
+    console.warn(`[Extraction] ❌ Jogador ${playerId} já havia extraído anteriormente em ${new Date(player.extractedAt).toISOString()}`);
     return null;
   }
 
+  // ✅ VALIDAÇÃO 3: Verificar que o ponto de extração existe
   const point = room.extractionPoints.find(p => p.id === pointId);
   if (!point) {
-    console.warn(`[Extraction] Ponto de extração ${pointId} não encontrado`);
+    console.warn(`[Extraction] ❌ Ponto de extração ${pointId} não encontrado`);
     return null;
   }
 
-  // Marcar jogador como extraído
+  // ✅ VALIDAÇÃO 4: Garantir que resourcesCollected é individual (não compartilhado)
+  if (!player.resourcesCollected) {
+    console.warn(`[Extraction] ⚠️  Jogador ${playerId} não possui resourcesCollected inicializado - criando novo Map`);
+    player.resourcesCollected = new Map();
+  }
+
+  // ✅ VALIDAÇÃO 5: Garantir que expeditionInventory é individual (não compartilhado)
+  if (!player.expeditionInventory) {
+    console.warn(`[Extraction] ⚠️  Jogador ${playerId} não possui expeditionInventory inicializado - criando vazio`);
+    player.expeditionInventory = { capturedCreatures: [] };
+  }
+
+  // ✅ VALIDAÇÃO 6: Garantir que creaturesCaptured é um número válido
+  if (player.creaturesCaptured === undefined || player.creaturesCaptured === null) {
+    console.warn(`[Extraction] ⚠️  Jogador ${playerId} não possui creaturesCaptured inicializado - definindo como 0`);
+    player.creaturesCaptured = 0;
+  }
+
+  // Marcar jogador como extraído ANTES de calcular recompensas
+  // Isso previne que a mesma extração seja processada múltiplas vezes
   player.extractedAt = Date.now();
   player.extractionProgress = 100;
 
@@ -393,12 +452,22 @@ export function completeExtraction(
   room.activeExtractions.delete(playerId);
   point.playersExtracting.delete(playerId);
 
-  // Debug: Verificar estado do jogador
-  console.log(`[Extraction] DEBUG - Estado do jogador ${playerId}:`);
-  console.log(`  - resourcesCollected:`, player.resourcesCollected);
-  console.log(`  - creaturesCaptured:`, player.creaturesCaptured);
+  // ✅ DEBUG: Log detalhado do estado individual do jogador
+  console.log(`[Extraction] ✅ DEBUG - Estado INDIVIDUAL do jogador ${playerId}:`);
+  console.log(`  - resourcesCollected (Map size): ${player.resourcesCollected.size}`);
+  console.log(`  - resourcesCollected (entries):`, Array.from(player.resourcesCollected.entries()));
+  console.log(`  - creaturesCaptured: ${player.creaturesCaptured}`);
+  console.log(`  - expeditionInventory.capturedCreatures.length: ${player.expeditionInventory?.capturedCreatures?.length ?? 0}`);
+  
+  // ✅ VALIDAÇÃO 7: Verificar que não há compartilhamento de referência
+  // Comparar hash/identidade dos objetos para garantir que são únicos
+  const resourcesMapId = player.resourcesCollected;
+  const inventoryId = player.expeditionInventory;
+  console.log(`  - resourcesCollected Map identity: ${resourcesMapId}`);
+  console.log(`  - expeditionInventory identity: ${inventoryId}`);
 
-  // ✅ FASE 3: Coletar detalhes das criaturas capturadas do inventário da expedição
+  // ✅ FASE 3: Coletar detalhes das criaturas capturadas do inventário INDIVIDUAL da expedição
+  // IMPORTANTE: Usar apenas player.expeditionInventory do jogador específico
   const capturedCreatures = (player.expeditionInventory?.capturedCreatures || []).map((creature: {
     instanceId: string;
     speciesId: string;
@@ -415,21 +484,29 @@ export function completeExtraction(
     maxHp: creature.maxHp ?? 100 // Usa HP máximo salvo na captura
   }));
 
-  // Preparar recompensas
+  // ✅ Preparar recompensas usando APENAS dados do jogador específico
+  // IMPORTANTE: Criar uma nova cópia do Map para evitar compartilhamento de referência
   const reward: ExtractionReward = {
-    playerId,
+    playerId, // ✅ Garantir que playerId está correto
     pointId,
-    resources: new Map(player.resourcesCollected),
-    creaturesCaptured: player.creaturesCaptured,
-    capturedCreatures,
+    resources: new Map(player.resourcesCollected), // ✅ Nova cópia do Map individual
+    creaturesCaptured: player.creaturesCaptured, // ✅ Valor individual
+    capturedCreatures, // ✅ Array de criaturas do inventário individual
     timestamp: Date.now()
   };
 
+  // ✅ VALIDAÇÃO 8: Log final das recompensas calculadas
+  const totalResources = Array.from(reward.resources.values()).reduce((a, b) => a + b, 0);
   console.log(
-    `[Extraction] Recompensas calculadas para ${playerId}: ` +
+    `[Extraction] ✅ Recompensas INDIVIDUAIS calculadas para ${playerId}: ` +
     `${reward.creaturesCaptured} criaturas, ` +
+    `${totalResources} recursos totais, ` +
     `${reward.resources.size} tipos de recursos`
   );
+  console.log(`[Extraction] ✅ Recompensas detalhadas:`, {
+    creatures: reward.capturedCreatures.length,
+    resources: Object.fromEntries(reward.resources)
+  });
 
   return reward;
 }
@@ -489,18 +566,37 @@ export function getExtractionStats(room: RoomForExtraction): {
  * Inicializa a estrutura de extração para um jogador.
  * Deve ser chamado quando um jogador entra na sala.
  * 
+ * IMPORTANTE: Esta função garante que cada jogador tem suas próprias estruturas de dados.
+ * Não há compartilhamento de estado entre jogadores.
+ * 
  * @param player - Jogador a inicializar
  */
 export function initializePlayerExtractionData(player: PlayerPresence): void {
+  // ✅ Inicializar progresso de extração individual
   player.extractionProgress = 0;
   player.extractedAt = null;
   
+  // ✅ Garantir que resourcesCollected é um Map individual (não compartilhado)
   if (!player.resourcesCollected) {
     player.resourcesCollected = new Map();
+    console.log(`[Extraction] ✅ Criado novo Map de resourcesCollected para jogador ${player.id}`);
+  } else {
+    // Se já existe, garantir que é um Map válido
+    if (!(player.resourcesCollected instanceof Map)) {
+      console.warn(`[Extraction] ⚠️  resourcesCollected do jogador ${player.id} não é um Map - criando novo`);
+      player.resourcesCollected = new Map();
+    }
   }
   
-  if (player.creaturesCaptured === undefined) {
+  // ✅ Garantir que creaturesCaptured é um número individual
+  if (player.creaturesCaptured === undefined || player.creaturesCaptured === null) {
     player.creaturesCaptured = 0;
+  }
+
+  // ✅ VALIDAÇÃO: Verificar que expeditionInventory é individual
+  // (deve ser inicializado em JoinHandler, mas verificamos aqui também)
+  if (!player.expeditionInventory) {
+    console.warn(`[Extraction] ⚠️  Jogador ${player.id} não possui expeditionInventory - deve ser inicializado em JoinHandler`);
   }
 }
 

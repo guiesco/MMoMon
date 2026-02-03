@@ -374,3 +374,15 @@ export function getRankDisplay(rank: CreatureRank): string {
 export function getRankColorHex(rank: CreatureRank): string {
   return "#" + RANK_CONFIG[rank].color.toString(16).padStart(6, "0");
 }
+
+/**
+ * Normaliza o HP atual de uma criatura para garantir que está dentro do range válido.
+ * Garante que 0 <= currentHp <= maxHp (onde maxHp é calculado via getEffectiveStats).
+ * @param creature A criatura a normalizar
+ * @returns O HP normalizado
+ */
+export function normalizeCreatureHp(creature: OwnedCreature): number {
+  const effectiveStats = getEffectiveStats(creature);
+  const maxHp = effectiveStats.hp;
+  return Math.max(0, Math.min(creature.currentHp, maxHp));
+}

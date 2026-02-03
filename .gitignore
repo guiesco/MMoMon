@@ -16,6 +16,9 @@ server/firebase-service-account.json
 .env
 .env.local
 
+# Cloudflare Tunnel Config (contém informações sensíveis)
+server/cloudflare-config.yml
+
 # IDE
 .vscode/
 .idea/

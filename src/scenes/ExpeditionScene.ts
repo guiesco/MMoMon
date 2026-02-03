@@ -9,6 +9,7 @@ import {
   type ExpeditionXpParams,
   formatXp,
   getRankDisplay,
+  getEffectiveStats,
 } from "../game/creatureProgression";
 import {
   MultiplayerClient,
@@ -781,12 +782,13 @@ export class ExpeditionScene extends Phaser.Scene {
           const def = owned ? getCreatureById(owned.definitionId) : null;
           if (!owned || !def) return null;
           
+          const effectiveStats = getEffectiveStats(owned);
           return {
             instanceId: owned.instanceId,
             definitionId: owned.definitionId,
             level: owned.level,
             currentHp: owned.currentHp,
-            maxHp: def.stats.hp,
+            maxHp: effectiveStats.hp,
             rank: owned.rank
           };
         }).filter((c): c is NonNullable<typeof c> => c !== null);
@@ -1876,8 +1878,11 @@ export class ExpeditionScene extends Phaser.Scene {
         hp = this.activeCreatureHp;
         maxHp = this.activeCreatureMaxHp;
       } else {
-        hp = this.creatureHpByInstance.get(instanceId) ?? (def?.stats.hp ?? 100);
-        maxHp = def?.stats.hp ?? 100;
+        const owned = progress.creatures.find(c => c.instanceId === instanceId);
+        const effectiveStats = owned ? getEffectiveStats(owned) : null;
+        const maxHpValue = effectiveStats?.hp ?? def?.stats.hp ?? 100;
+        hp = this.creatureHpByInstance.get(instanceId) ?? maxHpValue;
+        maxHp = maxHpValue;
       }
 
       this.hpBarManager.updateAllyBar(instanceId, hp, maxHp, isActive);
@@ -2334,10 +2339,11 @@ export class ExpeditionScene extends Phaser.Scene {
     this.activeCreatureDef = def;
 
     const storedHp = this.creatureHpByInstance.get(instanceId);
-    this.activeCreatureMaxHp = def.stats.hp;
+    const effectiveStats = getEffectiveStats(owned);
+    this.activeCreatureMaxHp = effectiveStats.hp;
     this.activeCreatureHp = Math.min(
-      def.stats.hp,
-      storedHp ?? owned.currentHp ?? def.stats.hp
+      effectiveStats.hp,
+      storedHp ?? owned.currentHp ?? effectiveStats.hp
     );
 
     this.speed = def.stats.moveSpeed;
@@ -5156,16 +5162,26 @@ export class ExpeditionScene extends Phaser.Scene {
       // Feedback visual de sucesso
       // FASE 4: Usar FeedbackManager
       this.feedbackManager.createCaptureSuccessFeedback(feedbackX, feedbackY);
-      this.feedbackManager.createEnhancedFloatingText(
-        feedbackX,
-        feedbackY - 20,
-        "✅ CAPTURADO!",
-        0x10b981,
-        24 // Tamanho maior para sucesso
-      );
+      
+      // Mensagem de sucesso com offset maior para aparecer acima de "Capturando..."
+      // Usa tamanho maior e duração maior para garantir visibilidade
+      // Pequeno delay para garantir que apareça após "Capturando..." ter sido visível
+      this.time.delayedCall(300, () => {
+        this.feedbackManager.createEnhancedFloatingText(
+          feedbackX,
+          feedbackY - 50, // Offset maior para aparecer acima de "Capturando..." (que está em y - 20)
+          "✅ CAPTURADO!",
+          0x10b981,
+          28, // Tamanho maior para sucesso (era 24)
+          2000 // Duração maior (2 segundos) para garantir visibilidade
+        );
+      });
 
       // FASE 5: Remove criatura do worldState (unificado)
-      this.removeCreature(result.targetId);
+      // Pequeno delay para garantir que a mensagem seja visível antes de remover a criatura
+      this.time.delayedCall(500, () => {
+        this.removeCreature(result.targetId);
+      });
 
       // Adiciona criatura capturada (se incluído no resultado)
       if (result.capturedCreature) {

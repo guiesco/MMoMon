@@ -40,7 +40,7 @@ app.use((req, res, next) => {
     'http://127.0.0.1:5173',
     'http://127.0.0.1:3000',
     // GitHub Pages (ajuste com seu username/repo)
-    process.env.CLIENT_URL || 'https://YOUR_USERNAME.github.io',
+    process.env.CLIENT_URL || 'https://guiesco.github.io',
     // Domínios customizados (se houver)
     ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : [])
   ].filter(Boolean).map(o => o.replace(/\/$/, '')); // Remove trailing slashes

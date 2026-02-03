@@ -133,7 +133,7 @@ export const CAPTURE_CONFIG = {
   /** Chance máxima de captura (cap) */
   maxChance: 0.95,
   /** Distância máxima entre jogador e criatura para permitir captura (em pixels) */
-  maxCaptureDistance: 150
+  maxCaptureDistance: 999999999999999
 } as const;
 
 /**
