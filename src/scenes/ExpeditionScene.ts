@@ -5629,12 +5629,24 @@ export class ExpeditionScene extends Phaser.Scene {
         }
       }
       
+      // Retornar itens não usados ao inventário permanente
+      if (state.rewards.unusedItems) {
+        for (const [itemId, qty] of Object.entries(state.rewards.unusedItems)) {
+          if (qty > 0) {
+            LocalPlayerState.addItem(itemId, qty);
+            console.log(`[Extraction] Item não usado retornado: ${itemId} x${qty}`);
+          }
+        }
+      }
+      
       const creaturesCaptured = state.rewards.creaturesCaptured || 0;
       const savedToCloud = state.rewards.savedToCloud ?? false;
+      const unusedItemsCount = Object.keys(state.rewards.unusedItems ?? {}).length;
       
       console.log(`[Extraction] ✅ Extração completada!`);
       console.log(`[Extraction] - Recursos: ${Object.keys(state.rewards.resources ?? {}).length} tipos`);
       console.log(`[Extraction] - Criaturas capturadas: ${creaturesCaptured}`);
+      console.log(`[Extraction] - Itens não usados retornados: ${unusedItemsCount} tipos`);
       console.log(`[Extraction] - Salvo no Firebase: ${savedToCloud ? 'Sim' : 'Não'}`);
       
       // IMPORTANTE: Criaturas são salvas diretamente no Firebase pelo servidor

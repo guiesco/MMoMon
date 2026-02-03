@@ -181,6 +181,7 @@ export interface ExtractionState {
   rewards?: {
     resources?: Record<string, number>;
     creaturesCaptured?: number;
+    unusedItems?: Record<string, number>; // Itens não usados que serão retornados ao inventário permanente
     savedToCloud?: boolean;
     error?: string;
   };

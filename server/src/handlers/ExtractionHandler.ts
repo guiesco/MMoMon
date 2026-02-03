@@ -202,6 +202,7 @@ async function handleExtractionCompleted(
     {
       resources: Object.fromEntries(reward.resources), // ✅ Recursos individuais
       creaturesCaptured: reward.creaturesCaptured, // ✅ Contador individual
+      unusedItems: reward.unusedItems ? Object.fromEntries(reward.unusedItems) : undefined, // ✅ Itens não usados
       savedToCloud: saved,
       ...(saved ? {} : { error: "Failed to save to cloud" })
     }

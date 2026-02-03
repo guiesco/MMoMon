@@ -150,6 +150,8 @@ export interface ExtractionReward {
     currentHp: number;
     maxHp: number;
   }>;
+  /** Itens não usados do inventário de expedição (pokébolas, etc) que serão retornados */
+  unusedItems?: Map<string, number>;
   /** Timestamp da extração */
   timestamp: number;
 }
@@ -484,6 +486,17 @@ export function completeExtraction(
     maxHp: creature.maxHp ?? 100 // Usa HP máximo salvo na captura
   }));
 
+  // ✅ Calcular itens não usados do inventário de expedição (pokébolas que não foram consumidas)
+  const unusedItems = new Map<string, number>();
+  if (player.expeditionInventory?.pokeballs) {
+    player.expeditionInventory.pokeballs.forEach((quantity, ballType) => {
+      if (quantity > 0) {
+        unusedItems.set(ballType, quantity);
+        console.log(`[Extraction] Retornando ${quantity}x ${ballType} não usada(s) ao inventário permanente`);
+      }
+    });
+  }
+
   // ✅ Preparar recompensas usando APENAS dados do jogador específico
   // IMPORTANTE: Criar uma nova cópia do Map para evitar compartilhamento de referência
   const reward: ExtractionReward = {
@@ -492,6 +505,7 @@ export function completeExtraction(
     resources: new Map(player.resourcesCollected), // ✅ Nova cópia do Map individual
     creaturesCaptured: player.creaturesCaptured, // ✅ Valor individual
     capturedCreatures, // ✅ Array de criaturas do inventário individual
+    unusedItems: unusedItems.size > 0 ? unusedItems : undefined, // ✅ Itens não usados
     timestamp: Date.now()
   };
 

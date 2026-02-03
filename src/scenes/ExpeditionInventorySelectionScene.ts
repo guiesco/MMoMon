@@ -50,6 +50,12 @@ export class ExpeditionInventorySelectionScene extends Phaser.Scene {
 
     const { width, height } = this.scale;
     const progress = PlayerState.getProgress();
+    const preparedInventory = PlayerState.getPreparedExpeditionInventory();
+    
+    // Inicializa selectedItems com o inventário preparado existente
+    for (const entry of preparedInventory) {
+      this.selectedItems.set(entry.itemId, entry.quantity);
+    }
 
     // Fundo
     this.add
@@ -103,6 +109,9 @@ export class ExpeditionInventorySelectionScene extends Phaser.Scene {
         
         const visuals = getItemVisuals(def.kind, def.tier, entry.itemId);
         
+        // Verifica se já está no inventário preparado
+        const preparedQty = preparedInventory.find(e => e.itemId === entry.itemId)?.quantity ?? 0;
+        
         return {
           itemId: entry.itemId,
           name: def.name,
@@ -111,7 +120,7 @@ export class ExpeditionInventorySelectionScene extends Phaser.Scene {
           quantity: entry.quantity,
           description: def.description,
           category: this.getCategoryKey(def.kind, entry.itemId),
-          selectedQuantity: 0 // Inicialmente nenhum selecionado
+          selectedQuantity: preparedQty // Usa quantidade já preparada
         } as DisplayInventoryEntry;
       })
       .filter((e): e is DisplayInventoryEntry => Boolean(e))
@@ -395,10 +404,23 @@ export class ExpeditionInventorySelectionScene extends Phaser.Scene {
   }
 
   private confirmAndStart() {
-    // Prepara o objeto com os itens selecionados
+    // Atualiza o inventário preparado no PlayerState
+    // Primeiro, limpa o inventário preparado atual
+    PlayerState.clearPreparedExpeditionInventory();
+    
+    // Adiciona os itens selecionados ao inventário preparado
+    for (const [itemId, quantity] of this.selectedItems.entries()) {
+      if (quantity > 0) {
+        PlayerState.addToPreparedExpeditionInventory(itemId, quantity);
+      }
+    }
+    
+    // Prepara o objeto com os itens selecionados para a expedição
     const selectedItemsData: Record<string, number> = {};
     this.selectedItems.forEach((quantity, itemId) => {
-      selectedItemsData[itemId] = quantity;
+      if (quantity > 0) {
+        selectedItemsData[itemId] = quantity;
+      }
     });
 
     // Inicia a expedição passando os itens selecionados

@@ -257,6 +257,14 @@ class PlayerStateManager {
       activeTeamIds = [creatures[0].instanceId];
     }
 
+    // Converter preparedExpeditionInventory do Firebase (se existir)
+    const preparedExpeditionInventory: PlayerInventoryEntry[] = 
+      data.preparedExpeditionInventory 
+        ? Object.entries(data.preparedExpeditionInventory).map(
+            ([itemId, quantity]) => ({ itemId, quantity: quantity as number })
+          )
+        : [];
+
     this.progress = {
       uid: getUserId() || 'local-offline',
       displayName: data.profile.displayName,
@@ -267,7 +275,8 @@ class PlayerStateManager {
       creatures,
       inventory,
       activeTeamIds,
-      selectedMapId: (data.activeTeam.selectedMapId as MapId) || DEFAULT_MAP_ID
+      selectedMapId: (data.activeTeam.selectedMapId as MapId) || DEFAULT_MAP_ID,
+      preparedExpeditionInventory
     };
 
     // Salvar também no localStorage como backup
@@ -331,7 +340,8 @@ class PlayerStateManager {
         { itemId: "resource-ferro-cristalino", quantity: 4 }
       ],
       activeTeamIds: [starterInstance.instanceId],
-      selectedMapId: DEFAULT_MAP_ID
+      selectedMapId: DEFAULT_MAP_ID,
+      preparedExpeditionInventory: [] // Inicializa vazio
     };
 
     this.saveToStorage(base);
@@ -350,6 +360,11 @@ class PlayerStateManager {
         progress.creatures.forEach(creature => {
           creature.currentHp = normalizeCreatureHp(creature);
         });
+      }
+      
+      // Garantir que preparedExpeditionInventory existe
+      if (!progress.preparedExpeditionInventory) {
+        progress.preparedExpeditionInventory = [];
       }
       
       return progress;
@@ -697,6 +712,116 @@ class PlayerStateManager {
       creature.currentHp = effectiveStats.hp;
     }
     this.saveToStorage(this.progress);
+  }
+
+  // ============================================================================
+  // GERENCIAMENTO DE INVENTÁRIO PREPARADO PARA EXPEDIÇÃO
+  // ============================================================================
+
+  /**
+   * Retorna o inventário preparado para expedição.
+   */
+  getPreparedExpeditionInventory(): PlayerInventoryEntry[] {
+    return this.progress.preparedExpeditionInventory || [];
+  }
+
+  /**
+   * Adiciona um item ao inventário preparado para expedição.
+   */
+  addToPreparedExpeditionInventory(itemId: string, quantity: number): boolean {
+    if (!this.progress.preparedExpeditionInventory) {
+      this.progress.preparedExpeditionInventory = [];
+    }
+
+    // Verifica se o jogador tem o item no inventário permanente
+    const availableQuantity = this.getItemQuantity(itemId);
+    if (availableQuantity < quantity) {
+      return false; // Não tem quantidade suficiente
+    }
+
+    const existing = this.progress.preparedExpeditionInventory.find(e => e.itemId === itemId);
+    if (existing) {
+      existing.quantity += quantity;
+    } else {
+      this.progress.preparedExpeditionInventory.push({ itemId, quantity });
+    }
+
+    this.saveToStorage(this.progress);
+    return true;
+  }
+
+  /**
+   * Remove um item do inventário preparado para expedição.
+   */
+  removeFromPreparedExpeditionInventory(itemId: string, quantity: number): boolean {
+    if (!this.progress.preparedExpeditionInventory) {
+      return false;
+    }
+
+    const existing = this.progress.preparedExpeditionInventory.find(e => e.itemId === itemId);
+    if (!existing || existing.quantity < quantity) {
+      return false; // Não tem quantidade suficiente
+    }
+
+    existing.quantity -= quantity;
+    if (existing.quantity <= 0) {
+      this.progress.preparedExpeditionInventory = this.progress.preparedExpeditionInventory.filter(
+        e => e.itemId !== itemId
+      );
+    }
+
+    this.saveToStorage(this.progress);
+    return true;
+  }
+
+  /**
+   * Transfere um item do inventário permanente para o preparado (ou vice-versa).
+   * @param itemId - ID do item
+   * @param quantity - Quantidade a transferir
+   * @param toPrepared - true para transferir para preparado, false para retornar ao permanente
+   */
+  transferItem(itemId: string, quantity: number, toPrepared: boolean): boolean {
+    if (toPrepared) {
+      // Transferir do permanente para preparado
+      if (!this.consumeItem(itemId, quantity)) {
+        return false; // Não tem quantidade suficiente no permanente
+      }
+      return this.addToPreparedExpeditionInventory(itemId, quantity);
+    } else {
+      // Retornar do preparado para permanente
+      if (!this.removeFromPreparedExpeditionInventory(itemId, quantity)) {
+        return false; // Não tem quantidade suficiente no preparado
+      }
+      this.addItem(itemId, quantity);
+      return true;
+    }
+  }
+
+  /**
+   * Limpa o inventário preparado (retorna todos os itens ao permanente).
+   */
+  clearPreparedExpeditionInventory(): void {
+    if (!this.progress.preparedExpeditionInventory) {
+      return;
+    }
+
+    // Retorna todos os itens ao inventário permanente
+    for (const entry of this.progress.preparedExpeditionInventory) {
+      this.addItem(entry.itemId, entry.quantity);
+    }
+
+    this.progress.preparedExpeditionInventory = [];
+    this.saveToStorage(this.progress);
+  }
+
+  /**
+   * Obtém a quantidade de um item no inventário preparado.
+   */
+  getPreparedItemQuantity(itemId: string): number {
+    if (!this.progress.preparedExpeditionInventory) {
+      return 0;
+    }
+    return this.progress.preparedExpeditionInventory.find(e => e.itemId === itemId)?.quantity ?? 0;
   }
 }
 

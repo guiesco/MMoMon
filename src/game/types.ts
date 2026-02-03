@@ -126,5 +126,7 @@ export interface PlayerProgress {
   activeTeamIds: string[]; // instanceIds
   /** Último mapa/bioma selecionado para expedições */
   selectedMapId?: MapId;
+  /** Inventário preparado para a próxima expedição (itens selecionados para levar) */
+  preparedExpeditionInventory?: PlayerInventoryEntry[];
 }
 

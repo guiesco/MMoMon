@@ -181,6 +181,7 @@ export function onAuthChange(callback: (user: User | null) => void): void {
 // ============================================================================
 
 export interface UserData {
+  preparedExpeditionInventory?: Record<string, number>; // Inventário preparado para expedição
   profile: {
     displayName: string;
     createdAt: Date;
