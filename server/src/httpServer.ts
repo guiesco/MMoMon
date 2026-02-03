@@ -9,7 +9,7 @@
 
 import express, { Request, Response } from 'express';
 import { isFirebaseAvailable } from './firebase';
-import { saveUserData, saveExpeditionRewards, createUser } from './firestoreOperations';
+import { saveUserData, saveExpeditionRewards, createUser, craftItem, promoteCreature } from './firestoreOperations';
 import type { SaveExpeditionData } from './firebaseTypes';
 
 const app = express();
@@ -177,7 +177,53 @@ app.post('/api/create-user', async (req: Request, res: Response) => {
 });
 
 /**
- * Sincroniza estado completo do jogador
+ * Busca dados do jogador (apenas leitura - não sobrescreve nada)
+ * Usado para sincronizar dados após expedições ou ao entrar na base
+ */
+app.get('/api/get-player', async (req: Request, res: Response) => {
+  try {
+    const userId = req.query.userId as string;
+
+    if (!userId) {
+      return res.status(400).json({
+        error: 'userId é obrigatório'
+      });
+    }
+
+    if (!isFirebaseAvailable()) {
+      return res.status(503).json({
+        error: 'Firebase não disponível'
+      });
+    }
+
+    console.log(`[HTTP] 📖 Buscando dados do jogador ${userId} (apenas leitura)`);
+
+    const { getUser } = await import('./firestoreOperations');
+    const userData = await getUser(userId);
+
+    if (!userData) {
+      return res.status(404).json({
+        error: 'Usuário não encontrado'
+      });
+    }
+
+    console.log(`[HTTP] ✅ Dados encontrados: ${Object.keys(userData.creatures || {}).length} criaturas, ${Object.keys(userData.inventory?.items || {}).length} tipos de itens`);
+
+    res.json({
+      success: true,
+      userData
+    });
+  } catch (error) {
+    console.error('[HTTP] ❌ Erro ao buscar dados do jogador:', error);
+    res.status(500).json({
+      error: 'Erro ao buscar dados do jogador'
+    });
+  }
+});
+
+/**
+ * Sincroniza estado completo do jogador (DEPRECATED - usar endpoints específicos)
+ * Mantido apenas para compatibilidade, mas não deve ser usado para sync básico
  */
 app.post('/api/sync-player', async (req: Request, res: Response) => {
   try {
@@ -314,6 +360,128 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
     console.error('[HTTP] ❌ Erro ao sincronizar estado:', error);
     res.status(500).json({
       error: 'Erro ao sincronizar estado'
+    });
+  }
+});
+
+/**
+ * Executa crafting de forma protegida (valida e aplica no servidor)
+ */
+app.post('/api/craft-item', async (req: Request, res: Response) => {
+  try {
+    const { userId, recipeId, ingredients, resultItemId, resultQuantity, teamSlotsIncrease } = req.body;
+
+    if (!userId || !recipeId || !ingredients || !resultItemId) {
+      return res.status(400).json({
+        error: 'userId, recipeId, ingredients e resultItemId são obrigatórios'
+      });
+    }
+
+    if (!isFirebaseAvailable()) {
+      return res.status(503).json({
+        error: 'Firebase não disponível'
+      });
+    }
+
+    console.log(`[HTTP] 🔨 Executando crafting para usuário ${userId}: ${recipeId}`);
+
+    const result = await craftItem(
+      userId,
+      recipeId,
+      ingredients,
+      resultItemId,
+      resultQuantity || 1,
+      teamSlotsIncrease
+    );
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error
+      });
+    }
+
+    // Buscar dados atualizados do Firebase para retornar ao cliente
+    const { getUser } = await import('./firestoreOperations');
+    const updatedUserData = await getUser(userId);
+
+    if (!updatedUserData) {
+      return res.status(500).json({
+        error: 'Erro ao recuperar dados atualizados'
+      });
+    }
+
+    console.log(`[HTTP] ✅ Crafting executado com sucesso para ${userId}`);
+
+    res.json({
+      success: true,
+      message: 'Crafting executado com sucesso',
+      userData: updatedUserData
+    });
+  } catch (error) {
+    console.error('[HTTP] ❌ Erro ao executar crafting:', error);
+    res.status(500).json({
+      error: 'Erro ao executar crafting'
+    });
+  }
+});
+
+/**
+ * Promove criatura (evolução) de forma protegida (valida e aplica no servidor)
+ */
+app.post('/api/promote-creature', async (req: Request, res: Response) => {
+  try {
+    const { userId, targetCreatureId, sacrificeCreatureIds, newRank } = req.body;
+
+    if (!userId || !targetCreatureId || !sacrificeCreatureIds || !Array.isArray(sacrificeCreatureIds) || newRank === undefined) {
+      return res.status(400).json({
+        error: 'userId, targetCreatureId, sacrificeCreatureIds (array) e newRank são obrigatórios'
+      });
+    }
+
+    if (!isFirebaseAvailable()) {
+      return res.status(503).json({
+        error: 'Firebase não disponível'
+      });
+    }
+
+    console.log(`[HTTP] ⭐ Executando evolução para usuário ${userId}: criatura ${targetCreatureId} -> rank ${newRank}`);
+
+    const result = await promoteCreature(
+      userId,
+      targetCreatureId,
+      sacrificeCreatureIds,
+      newRank
+    );
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error
+      });
+    }
+
+    // Buscar dados atualizados do Firebase para retornar ao cliente
+    const { getUser } = await import('./firestoreOperations');
+    const updatedUserData = await getUser(userId);
+
+    if (!updatedUserData) {
+      return res.status(500).json({
+        error: 'Erro ao recuperar dados atualizados'
+      });
+    }
+
+    console.log(`[HTTP] ✅ Evolução executada com sucesso para ${userId}`);
+
+    res.json({
+      success: true,
+      message: 'Evolução executada com sucesso',
+      userData: updatedUserData
+    });
+  } catch (error) {
+    console.error('[HTTP] ❌ Erro ao executar evolução:', error);
+    res.status(500).json({
+      error: 'Erro ao executar evolução'
     });
   }
 });

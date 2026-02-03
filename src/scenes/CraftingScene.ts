@@ -9,6 +9,7 @@ import {
   hexToCSS,
   type ItemCategory
 } from "../game/itemVisuals";
+import { craftItemOnServer } from "../services/firebaseSync";
 
 export class CraftingScene extends Phaser.Scene {
   private recipeIndex = 0;
@@ -251,11 +252,11 @@ export class CraftingScene extends Phaser.Scene {
     });
   }
 
-  private tryCraft() {
+  private async tryCraft() {
     const recipe = CRAFTING_RECIPES[this.recipeIndex];
     const progress = PlayerState.getProgress();
 
-    // Verificar se possui todos ingredientes
+    // Verificar se possui todos ingredientes (validação local antes de enviar ao servidor)
     for (const ing of recipe.ingredients) {
       const owned =
         progress.inventory.find((e) => e.itemId === ing.itemId)?.quantity ?? 0;
@@ -265,32 +266,47 @@ export class CraftingScene extends Phaser.Scene {
       }
     }
 
-    // Consumir ingredientes
-    for (const ing of recipe.ingredients) {
-      PlayerState.consumeItem(ing.itemId, ing.quantity);
+    // Preparar dados para o servidor
+    const ingredients = recipe.ingredients.map(ing => ({
+      itemId: ing.itemId,
+      quantity: ing.quantity
+    }));
+
+    let teamSlotsIncrease: number | undefined;
+    if (recipe.id === "recipe-upgrade-team-slot") {
+      teamSlotsIncrease = 1;
     }
 
-    // Alguns crafts aplicam upgrades diretos de base em vez de gerar item utilizável
-    if (recipe.id === "recipe-upgrade-team-slot") {
-      PlayerState.increaseTeamSlots(1);
-      this.statusText.setText(
-        "★ Upgrade aplicado: +1 slot de criatura na equipe da expedição!"
-      );
-      // Recarrega a cena para atualizar visualmente slots/e inventário, preservando índice
-      const currentIndex = this.recipeIndex;
-      this.time.delayedCall(300, () => this.scene.restart({ preserveIndex: currentIndex }));
+    // Executar crafting no servidor (protegido)
+    this.statusText.setText("Executando crafting...");
+    
+    const result = await craftItemOnServer(
+      recipe.id,
+      ingredients,
+      recipe.resultItemId,
+      1,
+      teamSlotsIncrease
+    );
+
+    if (!result.success) {
+      this.statusText.setText(result.error || "Erro ao executar crafting.");
       return;
     }
 
-    // Adicionar item final ao inventário
-    PlayerState.addItem(recipe.resultItemId, 1);
+    // Sucesso - atualizar UI
     const item = getItemById(recipe.resultItemId);
     const itemKind = item?.kind ?? "consumable";
     const categoryConfig = CATEGORY_VISUALS[this.getCategoryKey(itemKind, recipe.resultItemId)];
     
-    this.statusText.setText(
-      `${categoryConfig.symbol} Você craftou: ${item?.name ?? recipe.resultItemId}!`
-    );
+    if (recipe.id === "recipe-upgrade-team-slot") {
+      this.statusText.setText(
+        "★ Upgrade aplicado: +1 slot de criatura na equipe da expedição!"
+      );
+    } else {
+      this.statusText.setText(
+        `${categoryConfig.symbol} Você craftou: ${item?.name ?? recipe.resultItemId}!`
+      );
+    }
 
     // Recarrega a cena após breve delay para atualizar quantidades e cores, preservando índice
     const currentIndex = this.recipeIndex;

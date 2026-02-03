@@ -13,7 +13,7 @@ import {
 } from "../game/creatureProgression";
 import type { CreatureRank, ItemKind } from "../game/types";
 import { getItemVisuals, TIER_VISUALS, hexToCSS } from "../game/itemVisuals";
-import { syncPlayerStateToServer } from "../services/firebaseSync";
+import { fetchPlayerDataFromServer } from "../services/firebaseSync";
 import { isFirebaseClientAvailable, getUserId } from "../services/firebaseClient";
 import { LoadingOverlay } from "./expedition/ui/LoadingOverlay";
 
@@ -44,16 +44,16 @@ export class BaseHubScene extends Phaser.Scene {
     // Inicializar loading overlay
     this.loadingOverlay = new LoadingOverlay(this);
 
-    // Sincronizar com Firebase ao entrar na base
+    // Buscar dados do servidor ao entrar na base (apenas leitura - não sobrescreve)
     if (isFirebaseClientAvailable() && getUserId()) {
       this.loadingOverlay.show("Sincronizando dados...");
       
       try {
-        await syncPlayerStateToServer();
-        console.log('[BaseHubScene] ✅ Dados sincronizados ao entrar na base');
+        await fetchPlayerDataFromServer();
+        console.log('[BaseHubScene] ✅ Dados atualizados do servidor');
       } catch (error) {
-        console.error('[BaseHubScene] ❌ Erro ao sincronizar:', error);
-        // Continuar mesmo se sync falhar
+        console.error('[BaseHubScene] ❌ Erro ao buscar dados:', error);
+        // Continuar mesmo se busca falhar
       } finally {
         this.loadingOverlay.hide();
       }

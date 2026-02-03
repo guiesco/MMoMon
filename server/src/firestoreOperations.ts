@@ -426,3 +426,146 @@ export async function fuseCreature(
   await batch.commit();
   console.log(`[Firestore] ✅ Criatura ${targetCreatureId} fusionada (rank +1)`);
 }
+
+/**
+ * Executa crafting de forma protegida (valida e aplica no servidor)
+ */
+export async function craftItem(
+  userId: string,
+  recipeId: string,
+  ingredients: Array<{ itemId: string; quantity: number }>,
+  resultItemId: string,
+  resultQuantity: number = 1,
+  teamSlotsIncrease?: number
+): Promise<{ success: boolean; error?: string }> {
+  if (!isFirebaseAvailable()) {
+    return { success: false, error: 'Firebase não disponível' };
+  }
+
+  const db = getDb();
+  const userRef = db.collection('users').doc(userId);
+
+  // Buscar dados atuais do usuário
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) {
+    return { success: false, error: 'Usuário não encontrado' };
+  }
+
+  const userData = userDoc.data() as UserDocument;
+  const currentInventory = userData.inventory?.items || {};
+
+  // Validar se possui todos os ingredientes
+  for (const ing of ingredients) {
+    const currentQuantity = currentInventory[ing.itemId] || 0;
+    if (currentQuantity < ing.quantity) {
+      return {
+        success: false,
+        error: `Quantidade insuficiente de ${ing.itemId}. Necessário: ${ing.quantity}, possui: ${currentQuantity}`
+      };
+    }
+  }
+
+  const batch = db.batch();
+
+  // Consumir ingredientes
+  for (const ing of ingredients) {
+    const currentQuantity = currentInventory[ing.itemId] || 0;
+    const newQuantity = currentQuantity - ing.quantity;
+    
+    if (newQuantity > 0) {
+      batch.update(userRef, {
+        [`inventory.items.${ing.itemId}`]: newQuantity
+      });
+    } else {
+      // Remover item se quantidade chegar a zero
+      batch.update(userRef, {
+        [`inventory.items.${ing.itemId}`]: FieldValue.delete()
+      });
+    }
+  }
+
+  // Adicionar item resultante
+  const currentResultQuantity = currentInventory[resultItemId] || 0;
+  batch.update(userRef, {
+    [`inventory.items.${resultItemId}`]: currentResultQuantity + resultQuantity
+  });
+
+  // Aplicar upgrade de slots se necessário
+  if (teamSlotsIncrease && teamSlotsIncrease > 0) {
+    const currentSlots = userData.inventory?.teamSlots || 3;
+    batch.update(userRef, {
+      'inventory.teamSlots': Math.min(6, currentSlots + teamSlotsIncrease)
+    });
+  }
+
+  await batch.commit();
+  console.log(`[Firestore] ✅ Crafting executado: ${recipeId} -> ${resultItemId}`);
+  return { success: true };
+}
+
+/**
+ * Promove criatura (aumenta rank) de forma protegida (valida e aplica no servidor)
+ */
+export async function promoteCreature(
+  userId: string,
+  targetCreatureId: string,
+  sacrificeCreatureIds: string[],
+  newRank: number
+): Promise<{ success: boolean; error?: string }> {
+  if (!isFirebaseAvailable()) {
+    return { success: false, error: 'Firebase não disponível' };
+  }
+
+  const db = getDb();
+  const userRef = db.collection('users').doc(userId);
+
+  // Buscar dados atuais do usuário
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) {
+    return { success: false, error: 'Usuário não encontrado' };
+  }
+
+  const userData = userDoc.data() as UserDocument;
+  const creatures = userData.creatures || {};
+
+  // Validar se a criatura alvo existe
+  const targetCreature = creatures[targetCreatureId];
+  if (!targetCreature) {
+    return { success: false, error: 'Criatura alvo não encontrada' };
+  }
+
+  // Validar se todas as criaturas sacrificadas existem
+  for (const sacrificeId of sacrificeCreatureIds) {
+    if (!creatures[sacrificeId]) {
+      return { success: false, error: `Criatura sacrificada ${sacrificeId} não encontrada` };
+    }
+  }
+
+  const batch = db.batch();
+
+  // Atualizar criatura alvo
+  batch.update(userRef, {
+    [`creatures.${targetCreatureId}.rank`]: newRank,
+    [`creatures.${targetCreatureId}.copiesFused`]: (targetCreature.copiesFused || 0) + sacrificeCreatureIds.length
+  });
+
+  // Remover criaturas sacrificadas
+  for (const sacrificeId of sacrificeCreatureIds) {
+    batch.update(userRef, {
+      [`creatures.${sacrificeId}`]: FieldValue.delete()
+    });
+  }
+
+  // Remover criaturas sacrificadas do time ativo se estiverem lá
+  const activeTeamIds = userData.activeTeam?.creatureIds || [];
+  const updatedTeamIds = activeTeamIds.filter(id => !sacrificeCreatureIds.includes(id));
+  if (updatedTeamIds.length !== activeTeamIds.length) {
+    batch.update(userRef, {
+      'activeTeam.creatureIds': updatedTeamIds
+    });
+  }
+
+  await batch.commit();
+  console.log(`[Firestore] ✅ Criatura ${targetCreatureId} promovida para rank ${newRank}`);
+  return { success: true };
+}

@@ -13,41 +13,33 @@ import type { UserData } from "./firebaseClient";
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:3004";
 
 /**
- * Sincroniza o estado completo do jogador com o servidor
+ * Busca dados do jogador do servidor (apenas leitura - não sobrescreve nada)
+ * Usado para sincronizar dados após expedições ou ao entrar na base
  */
-export async function syncPlayerStateToServer(): Promise<boolean> {
+export async function fetchPlayerDataFromServer(): Promise<boolean> {
   const userId = getUserId();
   if (!userId) {
-    console.warn('[FirebaseSync] Usuário não autenticado - sync de estado ignorado');
+    console.warn('[FirebaseSync] Usuário não autenticado - busca de dados ignorada');
     return false;
   }
 
-  const progress = PlayerState.getProgress();
-
   try {
-    console.log('[FirebaseSync] 📤 Enviando estado do jogador para servidor...');
-    console.log('[FirebaseSync] URL:', `${SERVER_URL}/api/sync-player`);
-    console.log('[FirebaseSync] UserId:', userId);
-    console.log('[FirebaseSync] Progress items:', progress.inventory?.length || 0, 'itens');
-    console.log('[FirebaseSync] Progress creatures:', progress.creatures?.length || 0, 'criaturas');
+    console.log('[FirebaseSync] 📖 Buscando dados do jogador do servidor...');
+    console.log('[FirebaseSync] URL:', `${SERVER_URL}/api/get-player?userId=${userId}`);
     
-    const response = await fetch(`${SERVER_URL}/api/sync-player`, {
-      method: 'POST',
+    const response = await fetch(`${SERVER_URL}/api/get-player?userId=${userId}`, {
+      method: 'GET',
       mode: 'cors',
       headers: {
         'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        userId,
-        progress
-      })
+      }
     });
 
-    console.log('[FirebaseSync] Response status (sync-player):', response.status);
+    console.log('[FirebaseSync] Response status (get-player):', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[FirebaseSync] Response error (sync-player):', errorText);
+      console.error('[FirebaseSync] Response error (get-player):', errorText);
       throw new Error(`Erro HTTP: ${response.status} - ${errorText}`);
     }
 
@@ -61,22 +53,153 @@ export async function syncPlayerStateToServer(): Promise<boolean> {
       console.log(`[FirebaseSync] - Itens recebidos: ${Object.keys(result.userData.inventory?.items || {}).length}`);
       
       // Sincronizar dados retornados diretamente no PlayerState
-      // Isso evita usar dados desatualizados do localStorage
       PlayerState.syncFromRemoteData(result.userData as UserData);
       
-      console.log('[FirebaseSync] ✅ Estado sincronizado e atualizado com dados do Firebase');
+      console.log('[FirebaseSync] ✅ Dados atualizados com sucesso do Firebase');
     } else {
-      console.log('[FirebaseSync] ✅ Estado sincronizado com sucesso (sem dados retornados)');
+      console.log('[FirebaseSync] ⚠️  Dados não retornados pelo servidor');
     }
     
     return true;
   } catch (error) {
-    console.error('[FirebaseSync] ❌ Erro ao sincronizar estado:', error);
+    console.error('[FirebaseSync] ❌ Erro ao buscar dados:', error);
     if (error instanceof Error) {
       console.error('[FirebaseSync] Mensagem:', error.message);
     }
     return false;
   }
+}
+
+/**
+ * Executa crafting de forma protegida no servidor
+ */
+export async function craftItemOnServer(
+  recipeId: string,
+  ingredients: Array<{ itemId: string; quantity: number }>,
+  resultItemId: string,
+  resultQuantity: number = 1,
+  teamSlotsIncrease?: number
+): Promise<{ success: boolean; error?: string; userData?: UserData }> {
+  const userId = getUserId();
+  if (!userId) {
+    return { success: false, error: 'Usuário não autenticado' };
+  }
+
+  try {
+    console.log('[FirebaseSync] 🔨 Executando crafting no servidor...');
+    console.log('[FirebaseSync] Recipe:', recipeId, '->', resultItemId);
+    
+    const response = await fetch(`${SERVER_URL}/api/craft-item`, {
+      method: 'POST',
+      mode: 'cors',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId,
+        recipeId,
+        ingredients,
+        resultItemId,
+        resultQuantity,
+        teamSlotsIncrease
+      })
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Erro ao executar crafting';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      return { success: false, error: errorMessage };
+    }
+
+    const result = await response.json();
+    
+    if (result.success && result.userData) {
+      // Atualizar PlayerState com dados retornados
+      PlayerState.syncFromRemoteData(result.userData as UserData);
+      console.log('[FirebaseSync] ✅ Crafting executado com sucesso');
+      return { success: true, userData: result.userData as UserData };
+    } else {
+      return { success: false, error: result.error || 'Erro desconhecido' };
+    }
+  } catch (error) {
+    console.error('[FirebaseSync] ❌ Erro ao executar crafting:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+}
+
+/**
+ * Promove criatura (evolução) de forma protegida no servidor
+ */
+export async function promoteCreatureOnServer(
+  targetCreatureId: string,
+  sacrificeCreatureIds: string[],
+  newRank: number
+): Promise<{ success: boolean; error?: string; userData?: UserData }> {
+  const userId = getUserId();
+  if (!userId) {
+    return { success: false, error: 'Usuário não autenticado' };
+  }
+
+  try {
+    console.log('[FirebaseSync] ⭐ Executando evolução no servidor...');
+    console.log('[FirebaseSync] Target:', targetCreatureId, '-> Rank', newRank);
+    console.log('[FirebaseSync] Sacrificando:', sacrificeCreatureIds.length, 'criaturas');
+    
+    const response = await fetch(`${SERVER_URL}/api/promote-creature`, {
+      method: 'POST',
+      mode: 'cors',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId,
+        targetCreatureId,
+        sacrificeCreatureIds,
+        newRank
+      })
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Erro ao executar evolução';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      return { success: false, error: errorMessage };
+    }
+
+    const result = await response.json();
+    
+    if (result.success && result.userData) {
+      // Atualizar PlayerState com dados retornados
+      PlayerState.syncFromRemoteData(result.userData as UserData);
+      console.log('[FirebaseSync] ✅ Evolução executada com sucesso');
+      return { success: true, userData: result.userData as UserData };
+    } else {
+      return { success: false, error: result.error || 'Erro desconhecido' };
+    }
+  } catch (error) {
+    console.error('[FirebaseSync] ❌ Erro ao executar evolução:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+}
+
+/**
+ * Sincroniza o estado completo do jogador com o servidor (DEPRECATED)
+ * Mantido apenas para compatibilidade - usar fetchPlayerDataFromServer() para leitura
+ */
+export async function syncPlayerStateToServer(): Promise<boolean> {
+  // Redirecionar para fetchPlayerDataFromServer (apenas leitura)
+  return fetchPlayerDataFromServer();
 }
 
 /**

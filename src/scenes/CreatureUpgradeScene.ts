@@ -13,6 +13,7 @@ import {
   RANK_CONFIG,
 } from "../game/creatureProgression";
 import type { CreatureRank, OwnedCreature } from "../game/types";
+import { promoteCreatureOnServer } from "../services/firebaseSync";
 
 /**
  * Cena de evolução/fusão de criaturas.
@@ -393,7 +394,7 @@ export class CreatureUpgradeScene extends Phaser.Scene {
     this.renderCreatureDetails();
   }
 
-  private tryFusion() {
+  private async tryFusion() {
     if (this.creatureList.length === 0) return;
 
     const creature = this.creatureList[this.selectedIndex];
@@ -402,28 +403,67 @@ export class CreatureUpgradeScene extends Phaser.Scene {
     const def = getCreatureById(creature.definitionId);
     if (!def) return;
 
-    const result = PlayerState.promoteCreatureRank(creature.instanceId);
-
-    if (result.success) {
-      const newRankStr = result.newRank ? getRankDisplay(result.newRank) : "";
-      this.showFeedback(
-        `✨ ${def.name} evoluiu para ${RANK_CONFIG[result.newRank!].name} ${newRankStr}! ✨`,
-        "#22c55e"
-      );
-
-      // Atualiza a UI
-      const progress = PlayerState.getProgress();
-      this.creatureList = [...progress.creatures];
-      if (this.selectedIndex >= this.creatureList.length) {
-        this.selectedIndex = Math.max(0, this.creatureList.length - 1);
-      }
-      this.renderCreatureList();
-      this.renderCreatureDetails();
-
-      // Sync será feito automaticamente ao entrar na BaseHubScene
-    } else {
-      this.showFeedback(result.error ?? "Fusão não disponível", "#ef4444");
+    // Validar localmente (sem modificar estado)
+    const currentRank: CreatureRank = creature.rank ?? 1;
+    if (currentRank >= 5) {
+      this.showFeedback("Criatura já está no rank máximo", "#ef4444");
+      return;
     }
+
+    const nextRank = (currentRank + 1) as CreatureRank;
+    const currentCopiesFused = creature.copiesFused ?? 0;
+    const totalCopiesNeeded = RANK_CONFIG[nextRank].copiesRequired;
+    const copiesNeeded = totalCopiesNeeded - currentCopiesFused;
+
+    // Buscar cópias disponíveis
+    const availableCopies = PlayerState.getCreatureCopies(
+      creature.definitionId,
+      creature.instanceId
+    );
+
+    if (availableCopies.length < copiesNeeded) {
+      this.showFeedback(
+        `Cópias insuficientes. Necessário: ${copiesNeeded}, disponível: ${availableCopies.length}`,
+        "#ef4444"
+      );
+      return;
+    }
+
+    // Obter IDs das criaturas que serão sacrificadas
+    const sacrificeCreatureIds = availableCopies
+      .slice(0, copiesNeeded)
+      .map(c => c.instanceId);
+
+    // Mostrar feedback de processamento
+    this.showFeedback("Executando evolução...", "#fbbf24");
+
+    // Executar evolução no servidor (protegido)
+    const result = await promoteCreatureOnServer(
+      creature.instanceId,
+      sacrificeCreatureIds,
+      nextRank
+    );
+
+    if (!result.success) {
+      this.showFeedback(result.error || "Erro ao executar evolução.", "#ef4444");
+      return;
+    }
+
+    // Sucesso - atualizar UI
+    const newRankStr = getRankDisplay(nextRank);
+    this.showFeedback(
+      `✨ ${def.name} evoluiu para ${RANK_CONFIG[nextRank].name} ${newRankStr}! ✨`,
+      "#22c55e"
+    );
+
+    // Atualiza a UI com dados do servidor
+    const progress = PlayerState.getProgress();
+    this.creatureList = [...progress.creatures];
+    if (this.selectedIndex >= this.creatureList.length) {
+      this.selectedIndex = Math.max(0, this.creatureList.length - 1);
+    }
+    this.renderCreatureList();
+    this.renderCreatureDetails();
   }
 
   private showFeedback(message: string, color: string) {
