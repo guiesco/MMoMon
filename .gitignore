@@ -2,6 +2,8 @@
 node_modules/
 server/node_modules/
 
+memory-bank/
+
 # Build
 dist/
 server/dist/
