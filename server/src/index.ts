@@ -412,8 +412,8 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    // Se não está em uma sala, ignorar (join já foi tratado acima)
-    if (!currentRoom) {
+    // Se não está em uma sala e não é join, ignorar
+    if (!currentRoom && msg.type !== "join") {
       if (DEBUG_GAME_LOOP) {
         console.log(`[Server] ⚠️ Cliente ${clientId.slice(0, 8)}... enviou mensagem ${msg.type} sem estar em uma sala`);
       }
@@ -650,7 +650,6 @@ if (isFirebaseAvailable()) {
   console.log('⚠️  Firebase não disponível - dados não serão persistidos');
   console.log('ℹ️  Para habilitar Firebase, configure firebase-service-account.json');
 }
-
 // Iniciar servidor HTTP para sincronização
 import { startHttpServer } from './httpServer';
 const HTTP_PORT = Number(process.env.HTTP_PORT ?? 3004);
@@ -660,3 +659,4 @@ console.log('\n=== Servidor WebSocket ===');
 console.log(`PokéExtract WebSocket server listening on ws://localhost:${PORT}`);
 console.log(`Debug mode: ${DEBUG_GAME_LOOP ? "ENABLED" : "disabled"}`);
 console.log(`Tick rate: 20 ticks/second, State broadcast: every 3 ticks`);
+

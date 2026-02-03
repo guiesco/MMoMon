@@ -1,0 +1,23 @@
+# Configuração do Cloudflare Tunnel
+# 
+# INSTRUÇÕES:
+# 1. Copie este arquivo para cloudflare-config.yml
+# 2. Substitua TUNNEL_ID pelo ID do seu tunnel (obtido com: cloudflared tunnel list)
+# 3. Substitua CREDENTIALS_PATH pelo caminho do arquivo de credenciais
+# 4. Substitua os hostnames pelos seus subdomínios
+# 5. Configure os registros DNS no painel do Cloudflare
+
+tunnel: TUNNEL_ID  # Substitua pelo ID do seu tunnel
+credentials-file: CREDENTIALS_PATH  # Ex: /Users/seu-usuario/.cloudflared/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.json
+
+ingress:
+  # WebSocket (porta 3003)
+  - hostname: ws.mmomon.seudominio.com  # Substitua pelo seu subdomínio
+    service: ws://localhost:3003
+  
+  # HTTP (porta 3004)
+  - hostname: api.mmomon.seudominio.com  # Substitua pelo seu subdomínio
+    service: http://localhost:3004
+  
+  # Catch-all (redireciona tudo que não corresponder)
+  - service: http_status:404

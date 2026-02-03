@@ -14,18 +14,24 @@ import type { SaveExpeditionData } from './firebaseTypes';
 
 const app = express();
 
-// Configurar trust proxy para Fly.io (necessário para obter IP real e headers corretos)
+// Configurar trust proxy para Cloudflare Tunnel (necessário para obter IP real e headers corretos)
+// Cloudflare Tunnel passa headers de proxy, então precisamos confiar no proxy
 app.set('trust proxy', true);
 
 console.log('[HTTP Server] 🔧 Configurando CORS customizado - VERSÃO PRODUÇÃO');
 
 // Middleware CORS - configuração manual completa
+// IMPORTANTE: Este middleware deve ser o PRIMEIRO, antes de qualquer outro middleware
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   const method = req.method;
   const path = req.path;
   
-  console.log(`[HTTP] ${method} ${path} - Origin: ${origin || '(none)'}`);
+  // Log detalhado para debug
+  console.log(`[HTTP] ${method} ${path} - Origin: ${origin || '(none)'} - Headers:`, {
+    'access-control-request-method': req.headers['access-control-request-method'],
+    'access-control-request-headers': req.headers['access-control-request-headers']
+  });
   
   // Lista de origens permitidas (normalizadas - sem trailing slash)
   const allowedOrigins = [
@@ -54,30 +60,56 @@ app.use((req, res, next) => {
   let isOriginAllowed = false;
   if (normalizedOrigin && allowedOrigins.includes(normalizedOrigin)) {
     isOriginAllowed = true;
-    res.setHeader('Access-Control-Allow-Origin', origin!);
   } else if (!origin) {
     // Se não há header origin (requisições do mesmo domínio), permitir
-    res.setHeader('Access-Control-Allow-Origin', '*');
     isOriginAllowed = true;
   }
-  // Se origem não permitida, não definir Access-Control-Allow-Origin (browser bloqueará)
   
-  // Sempre definir headers CORS (necessários para preflight)
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Max-Age', '86400'); // 24 horas de cache para preflight
-  
-  // Handle preflight - SEMPRE responder com 204, mesmo se origem não permitida
-  // (o browser bloqueará a requisição real se origem não permitida)
+  // Para preflight OPTIONS: SEMPRE incluir Access-Control-Allow-Origin com a origem da requisição
+  // (o navegador precisa desse header no preflight, mesmo que bloqueie depois)
   if (method === 'OPTIONS') {
+    // CRÍTICO: Sempre definir Access-Control-Allow-Origin no preflight
+    // O navegador precisa desse header para aceitar a resposta do preflight
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    
+    // Headers obrigatórios para preflight
+    const requestedMethod = req.headers['access-control-request-method'] || 'POST, GET, OPTIONS';
+    const requestedHeaders = req.headers['access-control-request-headers'] || 'Content-Type, Authorization';
+    
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', requestedHeaders);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Max-Age', '86400'); // 24 horas de cache para preflight
+    
+    // Log detalhado
     if (isOriginAllowed) {
       console.log(`[HTTP] ✓ Preflight OK para ${path} - Origin: ${origin}`);
     } else {
-      console.log(`[HTTP] ⚠️ Preflight para ${path} - Origin NÃO permitida: ${origin}`);
+      console.log(`[HTTP] ⚠️ Preflight para ${path} - Origin NÃO permitida: ${origin} (mas respondendo com header)`);
+      console.log(`[HTTP]   Requested Method: ${requestedMethod}, Requested Headers: ${requestedHeaders}`);
     }
+    
+    // CRÍTICO: Retornar 204 imediatamente, sem processar mais nada
     return res.status(204).end();
   }
+  
+  // Para requisições não-OPTIONS: definir Access-Control-Allow-Origin apenas se origem permitida
+  if (isOriginAllowed) {
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+  }
+  
+  // Sempre definir headers CORS para requisições reais também
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   
   // Para requisições não-OPTIONS, verificar origem antes de continuar
   if (origin && !isOriginAllowed) {
