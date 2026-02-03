@@ -350,11 +350,15 @@ export function validateCaptureIntent(
 export function createExpeditionInventory(
   initialPokeballs?: Partial<Record<BallType, number>>
 ): PlayerExpeditionInventory {
+  // Se initialPokeballs foi fornecido, usa os valores fornecidos (ou 0 se não especificado)
+  // Se não foi fornecido, usa valores padrão (para compatibilidade com código antigo)
+  const useDefaults = initialPokeballs === undefined;
+  
   return {
     pokeballs: new Map([
-      ["poke-ball-basic", initialPokeballs?.["poke-ball-basic"] ?? 5],
-      ["poke-ball-precisa", initialPokeballs?.["poke-ball-precisa"] ?? 2],
-      ["poke-ball-ultra", initialPokeballs?.["poke-ball-ultra"] ?? 1]
+      ["poke-ball-basic", useDefaults ? 5 : (initialPokeballs?.["poke-ball-basic"] ?? 0)],
+      ["poke-ball-precisa", useDefaults ? 2 : (initialPokeballs?.["poke-ball-precisa"] ?? 0)],
+      ["poke-ball-ultra", useDefaults ? 1 : (initialPokeballs?.["poke-ball-ultra"] ?? 0)]
     ]),
     capturedCreatures: []
   };

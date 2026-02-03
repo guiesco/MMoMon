@@ -93,6 +93,8 @@ export interface JoinMessage extends BaseMessage {
   name: string;
   /** Firebase UID do jogador (opcional - para recuperar time do Firebase) */
   userId?: string;
+  /** Itens selecionados do inventário permanente para levar na expedição (opcional) */
+  selectedItems?: Record<string, number>;
 }
 
 export interface MoveMessage extends BaseMessage {

@@ -29,6 +29,7 @@ export class JoinHandler {
     
     // Recuperar time do Firebase se userId fornecido
     let activeCreatureId: string | undefined;
+    let userData: any = null; // Armazena userData para reutilizar
     
     if (!msg.userId) {
       console.log(`[Firebase] ⚠️  Jogador ${msg.name} (${clientId}) entrou sem userId`);
@@ -39,7 +40,7 @@ export class JoinHandler {
     } else {
       console.log(`[Firebase] 🔍 Buscando dados do usuário ${msg.userId}...`);
       
-      const userData = await getUser(msg.userId);
+      userData = await getUser(msg.userId);
       
       if (!userData) {
         console.log(`[Firebase] ❌ Usuário ${msg.userId} não encontrado no Firebase - conexão bloqueada`);
@@ -56,6 +57,63 @@ export class JoinHandler {
       }
     }
     
+    // Preparar inventário de expedição com itens selecionados
+    let expeditionInventory = createExpeditionInventory();
+    
+    // Se o jogador enviou itens selecionados, usar eles
+    if (msg.selectedItems && Object.keys(msg.selectedItems).length > 0) {
+      console.log(`[JoinHandler] Jogador ${msg.name} selecionou ${Object.keys(msg.selectedItems).length} tipos de itens para expedição`);
+      
+      // Inicializa o inventário de expedição com os itens selecionados
+      // Filtra apenas pokébolas (outros itens podem ser adicionados depois)
+      const pokeballTypes: Array<"poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra"> = [
+        "poke-ball-basic",
+        "poke-ball-precisa",
+        "poke-ball-ultra"
+      ];
+      
+      const initialPokeballs: Partial<Record<"poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra", number>> = {};
+      
+      for (const [itemId, quantity] of Object.entries(msg.selectedItems)) {
+        if (pokeballTypes.includes(itemId as any) && quantity > 0) {
+          initialPokeballs[itemId as "poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra"] = quantity;
+          console.log(`[JoinHandler] Adicionando ${quantity}x ${itemId} ao inventário de expedição`);
+        }
+      }
+      
+      // Cria inventário com as pokébolas selecionadas
+      expeditionInventory = createExpeditionInventory(initialPokeballs);
+      
+      console.log(`[JoinHandler] Inventário de expedição inicializado com:`);
+      expeditionInventory.pokeballs.forEach((qty, ballType) => {
+        console.log(`[JoinHandler] - ${ballType}: ${qty}`);
+      });
+    } else if (userData?.inventory?.items) {
+      // Se não enviou itens selecionados, tentar buscar do inventário permanente do Firebase (reutiliza userData já buscado)
+      console.log(`[JoinHandler] Buscando pokébolas do inventário permanente do Firebase...`);
+      
+      const pokeballTypes: Array<"poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra"> = [
+        "poke-ball-basic",
+        "poke-ball-precisa",
+        "poke-ball-ultra"
+      ];
+      
+      const initialPokeballs: Partial<Record<"poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra", number>> = {};
+      
+      for (const ballType of pokeballTypes) {
+        const quantity = userData.inventory.items[ballType] as number | undefined;
+        if (quantity && quantity > 0) {
+          initialPokeballs[ballType] = quantity;
+          console.log(`[JoinHandler] Copiando ${quantity}x ${ballType} do inventário permanente`);
+        }
+      }
+      
+      if (Object.keys(initialPokeballs).length > 0) {
+        expeditionInventory = createExpeditionInventory(initialPokeballs);
+        console.log(`[JoinHandler] Inventário de expedição inicializado com pokébolas do Firebase`);
+      }
+    }
+    
     // Criar jogador
     const newPlayer: PlayerPresence = {
       id: clientId,
@@ -64,7 +122,7 @@ export class JoinHandler {
       x: Math.random() * 800 + 80,
       y: Math.random() * 400 + 80,
       activeCreatureId,
-      expeditionInventory: createExpeditionInventory(),
+      expeditionInventory,
       extractionProgress: 0,
       extractedAt: null,
       resourcesCollected: new Map(),

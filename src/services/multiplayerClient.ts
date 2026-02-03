@@ -181,6 +181,8 @@ export interface ExtractionState {
   rewards?: {
     resources?: Record<string, number>;
     creaturesCaptured?: number;
+    savedToCloud?: boolean;
+    error?: string;
   };
 }
 
@@ -322,6 +324,7 @@ export class MultiplayerClient {
   private roomId: string;
   private name: string;
   private userId: string | null = null;
+  private selectedItems?: Record<string, number>; // Itens selecionados para expedição
   private events: Partial<MultiplayerEvents> = {};
   private clientId: string | null = null;
   private reconnectAttempts: number = 0;
@@ -329,10 +332,11 @@ export class MultiplayerClient {
   private reconnectDelay: number = 1000;
   private url: string = import.meta.env.VITE_WS_URL || "ws://localhost:3003";
 
-  constructor(roomId: string, name: string, userId?: string | null) {
+  constructor(roomId: string, name: string, userId?: string | null, selectedItems?: Record<string, number>) {
     this.roomId = roomId;
     this.name = name;
     this.userId = userId || null;
+    this.selectedItems = selectedItems;
   }
 
   /**
@@ -380,6 +384,11 @@ export class MultiplayerClient {
       // ✅ FASE 3: Incluir userId se disponível (para recuperar time do Firebase)
       if (this.userId) {
         joinMessage.userId = this.userId;
+      }
+      
+      // ✅ Incluir itens selecionados para expedição
+      if (this.selectedItems && Object.keys(this.selectedItems).length > 0) {
+        joinMessage.selectedItems = this.selectedItems;
       }
       
       this.ws?.send(JSON.stringify(joinMessage));

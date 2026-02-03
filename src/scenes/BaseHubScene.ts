@@ -295,7 +295,8 @@ export class BaseHubScene extends Phaser.Scene {
   private confirmSelection() {
     const selected = this.options[this.menuIndex];
     if (selected === "Iniciar Expedição Solo") {
-      this.scene.start("ExpeditionScene");
+      // Abre a cena de seleção de inventário antes de iniciar a expedição
+      this.scene.start("ExpeditionInventorySelectionScene");
     } else if (selected === "Gerenciar Equipe") {
       this.scene.start("TeamManagementScene");
     } else if (selected === "Evoluir Criaturas") {

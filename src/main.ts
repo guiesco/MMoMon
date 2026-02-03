@@ -7,6 +7,7 @@ import { CreatureUpgradeScene } from "./scenes/CreatureUpgradeScene";
 import { ExpeditionScene } from "./scenes/ExpeditionScene";
 import { InventoryScene } from "./scenes/InventoryScene";
 import { TeamManagementScene } from "./scenes/TeamManagementScene";
+import { ExpeditionInventorySelectionScene } from "./scenes/ExpeditionInventorySelectionScene";
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -36,6 +37,7 @@ const config: Phaser.Types.Core.GameConfig = {
     CreatureUpgradeScene,
     InventoryScene,
     TeamManagementScene,
+    ExpeditionInventorySelectionScene,
     ExpeditionScene
   ]
 };
