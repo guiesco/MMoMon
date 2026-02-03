@@ -428,6 +428,115 @@ export async function fuseCreature(
 }
 
 /**
+ * Executa múltiplos crafts em batch de forma protegida
+ */
+export async function craftItemsBatch(
+  userId: string,
+  crafts: Array<{
+    recipeId: string;
+    ingredients: Array<{ itemId: string; quantity: number }>;
+    resultItemId: string;
+    resultQuantity?: number;
+    teamSlotsIncrease?: number;
+  }>
+): Promise<{ success: boolean; error?: string; failedIndex?: number }> {
+  if (!isFirebaseAvailable()) {
+    return { success: false, error: 'Firebase não disponível' };
+  }
+
+  const db = getDb();
+  const userRef = db.collection('users').doc(userId);
+
+  // Buscar dados atuais do usuário
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) {
+    return { success: false, error: 'Usuário não encontrado' };
+  }
+
+  const userData = userDoc.data() as UserDocument;
+  let currentInventory = { ...(userData.inventory?.items || {}) };
+  let currentTeamSlots = userData.inventory?.teamSlots || 3;
+
+  // Validar todos os crafts antes de executar qualquer um
+  for (let i = 0; i < crafts.length; i++) {
+    const craft = crafts[i];
+    
+    // Validar ingredientes
+    for (const ing of craft.ingredients) {
+      const currentQuantity = currentInventory[ing.itemId] || 0;
+      if (currentQuantity < ing.quantity) {
+        return {
+          success: false,
+          error: `Craft ${i + 1}/${crafts.length}: Quantidade insuficiente de ${ing.itemId}. Necessário: ${ing.quantity}, possui: ${currentQuantity}`,
+          failedIndex: i
+        };
+      }
+    }
+
+    // Simular consumo para validação do próximo craft
+    for (const ing of craft.ingredients) {
+      currentInventory[ing.itemId] = (currentInventory[ing.itemId] || 0) - ing.quantity;
+      if (currentInventory[ing.itemId] <= 0) {
+        delete currentInventory[ing.itemId];
+      }
+    }
+
+    // Simular adição do resultado
+    currentInventory[craft.resultItemId] = (currentInventory[craft.resultItemId] || 0) + (craft.resultQuantity || 1);
+
+    // Simular upgrade de slots
+    if (craft.teamSlotsIncrease && craft.teamSlotsIncrease > 0) {
+      currentTeamSlots = Math.min(6, currentTeamSlots + craft.teamSlotsIncrease);
+    }
+  }
+
+  // Se chegou aqui, todos os crafts são válidos - executar em batch
+  const batch = db.batch();
+  currentInventory = { ...(userData.inventory?.items || {}) };
+  currentTeamSlots = userData.inventory?.teamSlots || 3;
+
+  for (const craft of crafts) {
+    // Consumir ingredientes
+    for (const ing of craft.ingredients) {
+      const currentQuantity = currentInventory[ing.itemId] || 0;
+      const newQuantity = currentQuantity - ing.quantity;
+      
+      if (newQuantity > 0) {
+        currentInventory[ing.itemId] = newQuantity;
+        batch.update(userRef, {
+          [`inventory.items.${ing.itemId}`]: newQuantity
+        });
+      } else {
+        delete currentInventory[ing.itemId];
+        batch.update(userRef, {
+          [`inventory.items.${ing.itemId}`]: FieldValue.delete()
+        });
+      }
+    }
+
+    // Adicionar item resultante
+    const currentResultQuantity = currentInventory[craft.resultItemId] || 0;
+    const newResultQuantity = currentResultQuantity + (craft.resultQuantity || 1);
+    currentInventory[craft.resultItemId] = newResultQuantity;
+    batch.update(userRef, {
+      [`inventory.items.${craft.resultItemId}`]: newResultQuantity
+    });
+
+    // Aplicar upgrade de slots se necessário
+    if (craft.teamSlotsIncrease && craft.teamSlotsIncrease > 0) {
+      currentTeamSlots = Math.min(6, currentTeamSlots + craft.teamSlotsIncrease);
+      batch.update(userRef, {
+        'inventory.teamSlots': currentTeamSlots
+      });
+    }
+  }
+
+  await batch.commit();
+  console.log(`[Firestore] ✅ Batch crafting executado: ${crafts.length} crafts`);
+  return { success: true };
+}
+
+/**
  * Executa crafting de forma protegida (valida e aplica no servidor)
  */
 export async function craftItem(
@@ -500,6 +609,61 @@ export async function craftItem(
 
   await batch.commit();
   console.log(`[Firestore] ✅ Crafting executado: ${recipeId} -> ${resultItemId}`);
+  return { success: true };
+}
+
+/**
+ * Atualiza equipe ativa de forma protegida (valida e aplica no servidor)
+ */
+export async function setActiveTeam(
+  userId: string,
+  creatureIds: string[]
+): Promise<{ success: boolean; error?: string }> {
+  if (!isFirebaseAvailable()) {
+    return { success: false, error: 'Firebase não disponível' };
+  }
+
+  const db = getDb();
+  const userRef = db.collection('users').doc(userId);
+
+  // Buscar dados atuais do usuário
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) {
+    return { success: false, error: 'Usuário não encontrado' };
+  }
+
+  const userData = userDoc.data() as UserDocument;
+  const creatures = userData.creatures || {};
+  const teamSlots = userData.inventory?.teamSlots || 3;
+
+  // Validar que todas as criaturas existem
+  for (const creatureId of creatureIds) {
+    if (!creatures[creatureId]) {
+      return { success: false, error: `Criatura ${creatureId} não encontrada` };
+    }
+  }
+
+  // Validar número de slots
+  if (creatureIds.length > teamSlots) {
+    return { success: false, error: `Número de criaturas (${creatureIds.length}) excede slots disponíveis (${teamSlots})` };
+  }
+
+  // Garantir que há pelo menos uma criatura se o jogador tiver criaturas
+  if (creatureIds.length === 0 && Object.keys(creatures).length > 0) {
+    // Se não há criaturas selecionadas mas o jogador tem criaturas, usar a primeira
+    const firstCreatureId = Object.keys(creatures)[0];
+    creatureIds = [firstCreatureId];
+  }
+
+  // Remover duplicatas
+  const uniqueCreatureIds = Array.from(new Set(creatureIds));
+
+  // Atualizar equipe ativa
+  await userRef.update({
+    'activeTeam.creatureIds': uniqueCreatureIds
+  });
+
+  console.log(`[Firestore] ✅ Equipe ativa atualizada: ${uniqueCreatureIds.length} criaturas`);
   return { success: true };
 }
 

@@ -9,13 +9,19 @@ import {
   hexToCSS,
   type ItemCategory
 } from "../game/itemVisuals";
-import { craftItemOnServer } from "../services/firebaseSync";
+import { craftItemOnServer, craftItemsBatch } from "../services/firebaseSync";
 
 export class CraftingScene extends Phaser.Scene {
   private recipeIndex = 0;
   private recipeTexts: Phaser.GameObjects.Text[] = [];
   private recipeBackgrounds: Phaser.GameObjects.Rectangle[] = [];
   private statusText!: Phaser.GameObjects.Text;
+  
+  // Modal de confirmação
+  private modalContainer!: Phaser.GameObjects.Container;
+  private modalQuantity: number = 1;
+  private isModalOpen: boolean = false;
+  private modalTexts: Phaser.GameObjects.Text[] = [];
 
   constructor() {
     super("CraftingScene");
@@ -181,12 +187,49 @@ export class CraftingScene extends Phaser.Scene {
       })
       .setOrigin(0, 0.5);
 
-    this.input.keyboard?.on("keydown-UP", () => this.moveSelection(-1));
-    this.input.keyboard?.on("keydown-DOWN", () => this.moveSelection(1));
-    this.input.keyboard?.on("keydown-ENTER", () => this.tryCraft());
+    // Inicializar modal (invisível inicialmente)
+    this.modalContainer = this.add.container(0, 0).setVisible(false);
+    this.isModalOpen = false;
+    this.modalQuantity = 1;
+
+    this.input.keyboard?.on("keydown-UP", () => {
+      if (this.isModalOpen) {
+        this.adjustModalQuantity(1);
+      } else {
+        this.moveSelection(-1);
+      }
+    });
+    this.input.keyboard?.on("keydown-DOWN", () => {
+      if (this.isModalOpen) {
+        this.adjustModalQuantity(-1);
+      } else {
+        this.moveSelection(1);
+      }
+    });
+    this.input.keyboard?.on("keydown-LEFT", () => {
+      if (this.isModalOpen) {
+        this.adjustModalQuantity(-10);
+      }
+    });
+    this.input.keyboard?.on("keydown-RIGHT", () => {
+      if (this.isModalOpen) {
+        this.adjustModalQuantity(10);
+      }
+    });
+    this.input.keyboard?.on("keydown-ENTER", () => {
+      if (this.isModalOpen) {
+        this.confirmCraft();
+      } else {
+        this.showCraftModal();
+      }
+    });
     this.input.keyboard?.on("keydown-ESC", () => {
-      // Sync será feito automaticamente ao entrar na BaseHubScene
-      this.scene.start("BaseHubScene");
+      if (this.isModalOpen) {
+        this.closeCraftModal();
+      } else {
+        // Sync será feito automaticamente ao entrar na BaseHubScene
+        this.scene.start("BaseHubScene");
+      }
     });
   }
 
@@ -252,11 +295,13 @@ export class CraftingScene extends Phaser.Scene {
     });
   }
 
-  private async tryCraft() {
+
+
+  private showCraftModal() {
     const recipe = CRAFTING_RECIPES[this.recipeIndex];
     const progress = PlayerState.getProgress();
 
-    // Verificar se possui todos ingredientes (validação local antes de enviar ao servidor)
+    // Verificar se possui ingredientes para pelo menos 1 craft
     for (const ing of recipe.ingredients) {
       const owned =
         progress.inventory.find((e) => e.itemId === ing.itemId)?.quantity ?? 0;
@@ -266,7 +311,277 @@ export class CraftingScene extends Phaser.Scene {
       }
     }
 
-    // Preparar dados para o servidor
+    this.isModalOpen = true;
+    this.modalQuantity = 1;
+    this.renderCraftModal();
+  }
+
+  private closeCraftModal() {
+    this.isModalOpen = false;
+    this.modalContainer.setVisible(false);
+    this.modalTexts.forEach(t => t.destroy());
+    this.modalTexts = [];
+  }
+
+  private adjustModalQuantity(delta: number) {
+    const recipe = CRAFTING_RECIPES[this.recipeIndex];
+    const progress = PlayerState.getProgress();
+    
+    // Calcular quantidade máxima possível
+    let maxQuantity = Infinity;
+    for (const ing of recipe.ingredients) {
+      const owned =
+        progress.inventory.find((e) => e.itemId === ing.itemId)?.quantity ?? 0;
+      const possibleQuantity = Math.floor(owned / ing.quantity);
+      maxQuantity = Math.min(maxQuantity, possibleQuantity);
+    }
+
+    // Limitar upgrade de slot a 1
+    if (recipe.id === "recipe-upgrade-team-slot") {
+      maxQuantity = 1;
+    }
+
+    const newQuantity = Math.max(1, Math.min(maxQuantity, this.modalQuantity + delta));
+    if (newQuantity !== this.modalQuantity) {
+      this.modalQuantity = newQuantity;
+      this.renderCraftModal();
+    }
+  }
+
+  private renderCraftModal() {
+    // Limpar textos anteriores
+    this.modalTexts.forEach(t => t.destroy());
+    this.modalTexts = [];
+    this.modalContainer.removeAll(true);
+
+    const { width, height } = this.scale;
+    const recipe = CRAFTING_RECIPES[this.recipeIndex];
+    const progress = PlayerState.getProgress();
+    const resultItem = getItemById(recipe.resultItemId);
+    const itemKind = resultItem?.kind ?? "consumable";
+    const categoryConfig = CATEGORY_VISUALS[this.getCategoryKey(itemKind, recipe.resultItemId)];
+
+    // Fundo escuro semi-transparente
+    const bg = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.7);
+    this.modalContainer.add(bg);
+
+    // Container do modal
+    const modalWidth = 500;
+    const modalHeight = 400;
+    const modalBg = this.add.rectangle(
+      width / 2,
+      height / 2,
+      modalWidth,
+      modalHeight,
+      0x0f172a,
+      0.95
+    ).setStrokeStyle(2, 0x1e293b, 1);
+    this.modalContainer.add(modalBg);
+
+    let y = height / 2 - modalHeight / 2 + 30;
+
+    // Título
+    const title = this.add.text(width / 2, y, `Craftar: ${resultItem?.name ?? recipe.resultItemId}`, {
+      fontSize: "20px",
+      color: "#fbbf24",
+      fontStyle: "bold"
+    }).setOrigin(0.5);
+    this.modalContainer.add(title);
+    this.modalTexts.push(title);
+    y += 40;
+
+    // Quantidade
+    const quantityText = this.add.text(width / 2, y, `Quantidade: ${this.modalQuantity}`, {
+      fontSize: "18px",
+      color: "#22c55e"
+    }).setOrigin(0.5);
+    this.modalContainer.add(quantityText);
+    this.modalTexts.push(quantityText);
+    y += 30;
+
+    // Instruções
+    const instructions = this.add.text(
+      width / 2,
+      y,
+      "↑/↓: +1/-1  |  ←/→: +10/-10",
+      {
+        fontSize: "12px",
+        color: "#94a3b8"
+      }
+    ).setOrigin(0.5);
+    this.modalContainer.add(instructions);
+    this.modalTexts.push(instructions);
+    y += 40;
+
+    // Separador
+    const separator = this.add.text(width / 2, y, "─────────────────────────", {
+      fontSize: "14px",
+      color: "#475569"
+    }).setOrigin(0.5);
+    this.modalContainer.add(separator);
+    this.modalTexts.push(separator);
+    y += 30;
+
+    // Ingredientes
+    const ingredientsTitle = this.add.text(width / 2 - 200, y, "Ingredientes:", {
+      fontSize: "16px",
+      color: "#e5e7eb",
+      fontStyle: "bold"
+    }).setOrigin(0, 0.5);
+    this.modalContainer.add(ingredientsTitle);
+    this.modalTexts.push(ingredientsTitle);
+    y += 25;
+
+    for (const ing of recipe.ingredients) {
+      const item = getItemById(ing.itemId);
+      const owned =
+        progress.inventory.find((e) => e.itemId === ing.itemId)?.quantity ?? 0;
+      const needed = ing.quantity * this.modalQuantity;
+      const remaining = owned - needed;
+      const hasEnough = owned >= needed;
+
+      const ingText = this.add.text(
+        width / 2 - 180,
+        y,
+        `${item?.name ?? ing.itemId}:`,
+        {
+          fontSize: "14px",
+          color: "#e5e7eb"
+        }
+      ).setOrigin(0, 0.5);
+      this.modalContainer.add(ingText);
+      this.modalTexts.push(ingText);
+
+      const quantityInfo = this.add.text(
+        width / 2 + 100,
+        y,
+        `${owned} → ${remaining >= 0 ? remaining : `-${Math.abs(remaining)}`} (${needed > 0 ? '-' : '+'}${needed})`,
+        {
+          fontSize: "14px",
+          color: hasEnough ? "#22c55e" : "#ef4444"
+        }
+      ).setOrigin(0.5, 0.5);
+      this.modalContainer.add(quantityInfo);
+      this.modalTexts.push(quantityInfo);
+
+      y += 22;
+    }
+
+    y += 20;
+
+    // Separador
+    const separator2 = this.add.text(width / 2, y, "─────────────────────────", {
+      fontSize: "14px",
+      color: "#475569"
+    }).setOrigin(0.5);
+    this.modalContainer.add(separator2);
+    this.modalTexts.push(separator2);
+    y += 30;
+
+    // Resultado
+    const resultTitle = this.add.text(width / 2 - 200, y, "Resultado:", {
+      fontSize: "16px",
+      color: "#e5e7eb",
+      fontStyle: "bold"
+    }).setOrigin(0, 0.5);
+    this.modalContainer.add(resultTitle);
+    this.modalTexts.push(resultTitle);
+    y += 25;
+
+    const currentResult = progress.inventory.find((e) => e.itemId === recipe.resultItemId)?.quantity ?? 0;
+    const newResult = currentResult + (this.modalQuantity * 1); // resultQuantity sempre 1 por craft
+
+    const resultText = this.add.text(
+      width / 2 - 180,
+      y,
+      `${categoryConfig.symbol} ${resultItem?.name ?? recipe.resultItemId}:`,
+      {
+        fontSize: "14px",
+        color: "#e5e7eb"
+      }
+    ).setOrigin(0, 0.5);
+    this.modalContainer.add(resultText);
+    this.modalTexts.push(resultText);
+
+    const resultQuantityInfo = this.add.text(
+      width / 2 + 100,
+      y,
+      `${currentResult} → ${newResult} (+${this.modalQuantity})`,
+      {
+        fontSize: "14px",
+        color: "#22c55e"
+      }
+    ).setOrigin(0.5, 0.5);
+    this.modalContainer.add(resultQuantityInfo);
+    this.modalTexts.push(resultQuantityInfo);
+
+    y += 40;
+
+    // Botões
+    const confirmText = this.add.text(
+      width / 2 - 80,
+      y,
+      "[ENTER] Confirmar",
+      {
+        fontSize: "14px",
+        color: "#22c55e",
+        backgroundColor: "#064e3b",
+        padding: { x: 10, y: 5 }
+      }
+    ).setOrigin(0.5);
+    this.modalContainer.add(confirmText);
+    this.modalTexts.push(confirmText);
+
+    const cancelText = this.add.text(
+      width / 2 + 80,
+      y,
+      "[ESC] Cancelar",
+      {
+        fontSize: "14px",
+        color: "#ef4444",
+        backgroundColor: "#7f1d1d",
+        padding: { x: 10, y: 5 }
+      }
+    ).setOrigin(0.5);
+    this.modalContainer.add(cancelText);
+    this.modalTexts.push(cancelText);
+
+    this.modalContainer.setVisible(true);
+  }
+
+  private async confirmCraft() {
+    if (this.modalQuantity <= 0) return;
+
+    const recipe = CRAFTING_RECIPES[this.recipeIndex];
+    const progress = PlayerState.getProgress();
+
+    // Validar novamente antes de executar
+    for (const ing of recipe.ingredients) {
+      const owned =
+        progress.inventory.find((e) => e.itemId === ing.itemId)?.quantity ?? 0;
+      const needed = ing.quantity * this.modalQuantity;
+      if (owned < needed) {
+        this.statusText.setText(
+          `Faltam materiais. Necessário: ${needed} ${ing.itemId}, possui: ${owned}`
+        );
+        this.closeCraftModal();
+        return;
+      }
+    }
+
+    this.closeCraftModal();
+
+    // Se quantidade é 1, usar função simples
+    if (this.modalQuantity === 1) {
+      await this.executeSingleCraft();
+    } else {
+      // Se quantidade > 1, usar batch
+      await this.executeBatchCraft(this.modalQuantity);
+    }
+  }
+
+  private async executeSingleCraft() {
+    const recipe = CRAFTING_RECIPES[this.recipeIndex];
     const ingredients = recipe.ingredients.map(ing => ({
       itemId: ing.itemId,
       quantity: ing.quantity
@@ -277,7 +592,6 @@ export class CraftingScene extends Phaser.Scene {
       teamSlotsIncrease = 1;
     }
 
-    // Executar crafting no servidor (protegido)
     this.statusText.setText("Executando crafting...");
     
     const result = await craftItemOnServer(
@@ -293,7 +607,6 @@ export class CraftingScene extends Phaser.Scene {
       return;
     }
 
-    // Sucesso - atualizar UI
     const item = getItemById(recipe.resultItemId);
     const itemKind = item?.kind ?? "consumable";
     const categoryConfig = CATEGORY_VISUALS[this.getCategoryKey(itemKind, recipe.resultItemId)];
@@ -308,7 +621,76 @@ export class CraftingScene extends Phaser.Scene {
       );
     }
 
-    // Recarrega a cena após breve delay para atualizar quantidades e cores, preservando índice
+    const currentIndex = this.recipeIndex;
+    this.time.delayedCall(300, () => this.scene.restart({ preserveIndex: currentIndex }));
+  }
+
+  private async executeBatchCraft(quantity: number) {
+    const recipe = CRAFTING_RECIPES[this.recipeIndex];
+    const progress = PlayerState.getProgress();
+
+    // Validar novamente
+    for (const ing of recipe.ingredients) {
+      const owned =
+        progress.inventory.find((e) => e.itemId === ing.itemId)?.quantity ?? 0;
+      const needed = ing.quantity * quantity;
+      if (owned < needed) {
+        this.statusText.setText(
+          `Faltam materiais para craftar ${quantity}x. Necessário: ${needed} ${ing.itemId}, possui: ${owned}`
+        );
+        return;
+      }
+    }
+
+    // Preparar crafts para batch
+    const crafts = [];
+    for (let i = 0; i < quantity; i++) {
+      const ingredients = recipe.ingredients.map(ing => ({
+        itemId: ing.itemId,
+        quantity: ing.quantity
+      }));
+
+      let teamSlotsIncrease: number | undefined;
+      if (recipe.id === "recipe-upgrade-team-slot") {
+        if (i === 0) {
+          teamSlotsIncrease = 1;
+        } else {
+          break; // Upgrade só pode ser feito uma vez
+        }
+      }
+
+      crafts.push({
+        recipeId: recipe.id,
+        ingredients,
+        resultItemId: recipe.resultItemId,
+        resultQuantity: 1,
+        teamSlotsIncrease
+      });
+    }
+
+    this.statusText.setText(`Executando ${crafts.length}x crafting...`);
+    
+    const result = await craftItemsBatch(crafts);
+
+    if (!result.success) {
+      this.statusText.setText(result.error || "Erro ao executar batch crafting.");
+      return;
+    }
+
+    const item = getItemById(recipe.resultItemId);
+    const itemKind = item?.kind ?? "consumable";
+    const categoryConfig = CATEGORY_VISUALS[this.getCategoryKey(itemKind, recipe.resultItemId)];
+    
+    if (recipe.id === "recipe-upgrade-team-slot") {
+      this.statusText.setText(
+        "★ Upgrade aplicado: +1 slot de criatura na equipe da expedição!"
+      );
+    } else {
+      this.statusText.setText(
+        `${categoryConfig.symbol} Você craftou ${crafts.length}x: ${item?.name ?? recipe.resultItemId}!`
+      );
+    }
+
     const currentIndex = this.recipeIndex;
     this.time.delayedCall(300, () => this.scene.restart({ preserveIndex: currentIndex }));
   }

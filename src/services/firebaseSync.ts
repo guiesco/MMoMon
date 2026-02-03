@@ -194,6 +194,126 @@ export async function promoteCreatureOnServer(
 }
 
 /**
+ * Atualiza equipe ativa de forma protegida no servidor
+ */
+export async function setActiveTeamOnServer(
+  creatureIds: string[]
+): Promise<{ success: boolean; error?: string; userData?: UserData }> {
+  const userId = getUserId();
+  if (!userId) {
+    return { success: false, error: 'Usuário não autenticado' };
+  }
+
+  try {
+    console.log('[FirebaseSync] 👥 Atualizando equipe ativa no servidor...');
+    console.log('[FirebaseSync] Criaturas:', creatureIds.length);
+    
+    const response = await fetch(`${SERVER_URL}/api/set-active-team`, {
+      method: 'POST',
+      mode: 'cors',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId,
+        creatureIds
+      })
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Erro ao atualizar equipe';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      return { success: false, error: errorMessage };
+    }
+
+    const result = await response.json();
+    
+    if (result.success && result.userData) {
+      // Atualizar PlayerState com dados retornados
+      PlayerState.syncFromRemoteData(result.userData as UserData);
+      console.log('[FirebaseSync] ✅ Equipe atualizada com sucesso');
+      return { success: true, userData: result.userData as UserData };
+    } else {
+      return { success: false, error: result.error || 'Erro desconhecido' };
+    }
+  } catch (error) {
+    console.error('[FirebaseSync] ❌ Erro ao atualizar equipe:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+}
+
+/**
+ * Executa múltiplos crafts em batch (reduz requisições ao servidor)
+ */
+export async function craftItemsBatch(
+  crafts: Array<{
+    recipeId: string;
+    ingredients: Array<{ itemId: string; quantity: number }>;
+    resultItemId: string;
+    resultQuantity?: number;
+    teamSlotsIncrease?: number;
+  }>
+): Promise<{ success: boolean; error?: string; userData?: UserData }> {
+  const userId = getUserId();
+  if (!userId) {
+    return { success: false, error: 'Usuário não autenticado' };
+  }
+
+  if (crafts.length === 0) {
+    return { success: false, error: 'Nenhum craft especificado' };
+  }
+
+  try {
+    console.log('[FirebaseSync] 🔨 Executando batch crafting no servidor...');
+    console.log('[FirebaseSync] Quantidade de crafts:', crafts.length);
+    
+    const response = await fetch(`${SERVER_URL}/api/craft-items-batch`, {
+      method: 'POST',
+      mode: 'cors',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId,
+        crafts
+      })
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Erro ao executar batch crafting';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      return { success: false, error: errorMessage };
+    }
+
+    const result = await response.json();
+    
+    if (result.success && result.userData) {
+      // Atualizar PlayerState com dados retornados
+      PlayerState.syncFromRemoteData(result.userData as UserData);
+      console.log('[FirebaseSync] ✅ Batch crafting executado com sucesso');
+      return { success: true, userData: result.userData as UserData };
+    } else {
+      return { success: false, error: result.error || 'Erro desconhecido' };
+    }
+  } catch (error) {
+    console.error('[FirebaseSync] ❌ Erro ao executar batch crafting:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+}
+
+/**
  * Sincroniza o estado completo do jogador com o servidor (DEPRECATED)
  * Mantido apenas para compatibilidade - usar fetchPlayerDataFromServer() para leitura
  */

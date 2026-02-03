@@ -9,7 +9,7 @@
 
 import express, { Request, Response } from 'express';
 import { isFirebaseAvailable } from './firebase';
-import { saveUserData, saveExpeditionRewards, createUser, craftItem, promoteCreature } from './firestoreOperations';
+import { saveUserData, saveExpeditionRewards, createUser, craftItem, craftItemsBatch, promoteCreature, setActiveTeam } from './firestoreOperations';
 import type { SaveExpeditionData } from './firebaseTypes';
 
 const app = express();
@@ -365,6 +365,62 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
 });
 
 /**
+ * Executa múltiplos crafts em batch (reduz requisições ao servidor)
+ */
+app.post('/api/craft-items-batch', async (req: Request, res: Response) => {
+  try {
+    const { userId, crafts } = req.body;
+
+    if (!userId || !Array.isArray(crafts) || crafts.length === 0) {
+      return res.status(400).json({
+        error: 'userId e crafts (array não vazio) são obrigatórios'
+      });
+    }
+
+    if (!isFirebaseAvailable()) {
+      return res.status(503).json({
+        error: 'Firebase não disponível'
+      });
+    }
+
+    console.log(`[HTTP] 🔨 Executando batch crafting para usuário ${userId}: ${crafts.length} crafts`);
+
+    const result = await craftItemsBatch(userId, crafts);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+        failedIndex: result.failedIndex
+      });
+    }
+
+    // Buscar dados atualizados do Firebase para retornar ao cliente
+    const { getUser } = await import('./firestoreOperations');
+    const updatedUserData = await getUser(userId);
+
+    if (!updatedUserData) {
+      return res.status(500).json({
+        error: 'Erro ao recuperar dados atualizados'
+      });
+    }
+
+    console.log(`[HTTP] ✅ Batch crafting executado com sucesso para ${userId}`);
+
+    res.json({
+      success: true,
+      message: `Batch crafting executado: ${crafts.length} crafts`,
+      userData: updatedUserData
+    });
+  } catch (error) {
+    console.error('[HTTP] ❌ Erro ao executar batch crafting:', error);
+    res.status(500).json({
+      error: 'Erro ao executar batch crafting'
+    });
+  }
+});
+
+/**
  * Executa crafting de forma protegida (valida e aplica no servidor)
  */
 app.post('/api/craft-item', async (req: Request, res: Response) => {
@@ -422,6 +478,61 @@ app.post('/api/craft-item', async (req: Request, res: Response) => {
     console.error('[HTTP] ❌ Erro ao executar crafting:', error);
     res.status(500).json({
       error: 'Erro ao executar crafting'
+    });
+  }
+});
+
+/**
+ * Atualiza equipe ativa de forma protegida (valida e aplica no servidor)
+ */
+app.post('/api/set-active-team', async (req: Request, res: Response) => {
+  try {
+    const { userId, creatureIds } = req.body;
+
+    if (!userId || !Array.isArray(creatureIds)) {
+      return res.status(400).json({
+        error: 'userId e creatureIds (array) são obrigatórios'
+      });
+    }
+
+    if (!isFirebaseAvailable()) {
+      return res.status(503).json({
+        error: 'Firebase não disponível'
+      });
+    }
+
+    console.log(`[HTTP] 👥 Atualizando equipe ativa para usuário ${userId}: ${creatureIds.length} criaturas`);
+
+    const result = await setActiveTeam(userId, creatureIds);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error
+      });
+    }
+
+    // Buscar dados atualizados do Firebase para retornar ao cliente
+    const { getUser } = await import('./firestoreOperations');
+    const updatedUserData = await getUser(userId);
+
+    if (!updatedUserData) {
+      return res.status(500).json({
+        error: 'Erro ao recuperar dados atualizados'
+      });
+    }
+
+    console.log(`[HTTP] ✅ Equipe ativa atualizada com sucesso para ${userId}`);
+
+    res.json({
+      success: true,
+      message: 'Equipe atualizada com sucesso',
+      userData: updatedUserData
+    });
+  } catch (error) {
+    console.error('[HTTP] ❌ Erro ao atualizar equipe:', error);
+    res.status(500).json({
+      error: 'Erro ao atualizar equipe'
     });
   }
 });

@@ -3,6 +3,7 @@ import { PlayerState } from "../game/playerState";
 import { getCreatureById } from "../game/creatures";
 import type { OwnedCreature } from "../game/types";
 import { getEffectiveStats } from "../game/creatureProgression";
+import { setActiveTeamOnServer } from "../services/firebaseSync";
 
 export class TeamManagementScene extends Phaser.Scene {
   private listTexts: Phaser.GameObjects.Text[] = [];
@@ -271,10 +272,17 @@ export class TeamManagementScene extends Phaser.Scene {
     this.infoText.setText(lines.join("\n"));
   }
 
-  private returnToBase() {
-    // Persistir novo time ativo de forma validada
-    PlayerState.setActiveTeam(this.tempTeamIds);
-    // Sync será feito automaticamente ao entrar na BaseHubScene
+  private async returnToBase() {
+    // Atualizar equipe no servidor (protegido)
+    const result = await setActiveTeamOnServer(this.tempTeamIds);
+    
+    if (!result.success) {
+      // Se falhar, ainda atualizar localmente e continuar
+      console.error('[TeamManagementScene] Erro ao atualizar equipe:', result.error);
+      PlayerState.setActiveTeam(this.tempTeamIds);
+    }
+    // Se sucesso, PlayerState já foi atualizado pelo setActiveTeamOnServer
+    
     this.scene.start("BaseHubScene");
   }
 }
