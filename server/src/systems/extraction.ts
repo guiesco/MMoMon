@@ -87,6 +87,7 @@ export interface PlayerPresence {
   y: number;
   /** Inventário temporário de pokébolas e criaturas capturadas durante a expedição */
   expeditionInventory?: {
+    pokeballs?: Map<string, number>; // Pokébolas não usadas
     capturedCreatures: Array<{
       instanceId: string;
       speciesId: string;
@@ -489,7 +490,7 @@ export function completeExtraction(
   // ✅ Calcular itens não usados do inventário de expedição (pokébolas que não foram consumidas)
   const unusedItems = new Map<string, number>();
   if (player.expeditionInventory?.pokeballs) {
-    player.expeditionInventory.pokeballs.forEach((quantity, ballType) => {
+    player.expeditionInventory.pokeballs.forEach((quantity: number, ballType: string) => {
       if (quantity > 0) {
         unusedItems.set(ballType, quantity);
         console.log(`[Extraction] Retornando ${quantity}x ${ballType} não usada(s) ao inventário permanente`);

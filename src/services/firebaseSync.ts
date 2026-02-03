@@ -3,10 +3,12 @@
  * 
  * Este módulo gerencia a sincronização de dados do jogador com o servidor Firebase.
  * O cliente envia dados para o servidor via HTTP, que então atualiza o Firestore.
+ * O servidor retorna os dados atualizados do Firebase para garantir sincronização.
  */
 
 import { PlayerState } from "../game/playerState";
 import { getUserId } from "./firebaseClient";
+import type { UserData } from "./firebaseClient";
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:3004";
 
@@ -50,7 +52,23 @@ export async function syncPlayerStateToServer(): Promise<boolean> {
     }
 
     const result = await response.json();
-    console.log('[FirebaseSync] ✅ Estado sincronizado com sucesso:', result);
+    
+    if (result.success && result.userData) {
+      // IMPORTANTE: Atualizar PlayerState com dados retornados do Firebase
+      // Isso garante que sempre temos a versão mais atualizada (incluindo criaturas capturadas)
+      console.log('[FirebaseSync] 📥 Atualizando PlayerState com dados do Firebase...');
+      console.log(`[FirebaseSync] - Criaturas recebidas: ${Object.keys(result.userData.creatures || {}).length}`);
+      console.log(`[FirebaseSync] - Itens recebidos: ${Object.keys(result.userData.inventory?.items || {}).length}`);
+      
+      // Sincronizar dados retornados diretamente no PlayerState
+      // Isso evita usar dados desatualizados do localStorage
+      PlayerState.syncFromRemoteData(result.userData as UserData);
+      
+      console.log('[FirebaseSync] ✅ Estado sincronizado e atualizado com dados do Firebase');
+    } else {
+      console.log('[FirebaseSync] ✅ Estado sincronizado com sucesso (sem dados retornados)');
+    }
+    
     return true;
   } catch (error) {
     console.error('[FirebaseSync] ❌ Erro ao sincronizar estado:', error);

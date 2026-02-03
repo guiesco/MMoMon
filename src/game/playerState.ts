@@ -33,15 +33,17 @@ class PlayerStateManager {
   private useFirebase: boolean = false;
 
   constructor() {
-    this.progress = this.loadFromStorage() ?? this.createDefaultProgress();
+    // IMPORTANTE: Usar localStorage apenas como fallback temporário
+    // Firebase será a fonte de verdade assim que estiver disponível
+    const cachedProgress = this.loadFromStorage();
+    this.progress = cachedProgress ?? this.createDefaultProgress();
 
     // Garante que novos campos (como selectedMapId) sejam preenchidos em saves antigos
     if (!this.progress.selectedMapId) {
       this.progress.selectedMapId = DEFAULT_MAP_ID;
-      this.saveToStorage(this.progress);
     }
 
-    // Tentar inicializar Firebase
+    // Tentar inicializar Firebase (vai sobrescrever dados do localStorage se disponível)
     this.initializeFirebase();
   }
 
@@ -165,8 +167,8 @@ class PlayerStateManager {
         // Atualizar UID para o Firebase
         this.progress.uid = userId;
         
-        // Salvar no localStorage com novo UID
-        this.saveToStorage(this.progress);
+        // Não salvar no localStorage - Firebase é a fonte de verdade
+        // O onSnapshot vai atualizar os dados automaticamente
         
         // Aguardar um pouco para garantir que o documento foi criado e o snapshot atualize
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -294,7 +296,8 @@ class PlayerStateManager {
       preparedExpeditionInventory
     };
 
-    // Salvar também no localStorage como backup
+    // saveToStorage() já verifica se Firebase está disponível automaticamente
+    // Firebase é a fonte de verdade - localStorage é apenas cache para offline
     this.saveToStorage(this.progress);
 
     console.log('[PlayerState] ✅ Dados sincronizados do Firebase');
@@ -397,10 +400,33 @@ class PlayerStateManager {
     }
   }
 
+  /**
+   * Salva progresso no localStorage
+   * IMPORTANTE: Quando Firebase está disponível, localStorage é apenas cache temporário
+   * Firebase é sempre a fonte de verdade. localStorage é usado apenas para:
+   * - Fallback quando Firebase não está disponível
+   * - Cache temporário para melhorar performance (mas será sobrescrito pelo Firebase)
+   */
   private saveToStorage(progress: PlayerProgress) {
     if (typeof window === "undefined") return;
+    
+    // Se Firebase está disponível, não salvar no localStorage
+    // O Firebase é a fonte de verdade e vai manter os dados atualizados via onSnapshot
+    // localStorage seria apenas cache desatualizado que pode causar problemas
+    if (this.useFirebase) {
+      // Apenas log para debug - não salvar
+      if (import.meta.env.DEV) {
+        console.log('[PlayerState] 💾 Firebase disponível - pulando salvamento no localStorage (Firebase é fonte de verdade)');
+      }
+      return;
+    }
+    
+    // Apenas salvar se Firebase não estiver disponível (modo offline)
     try {
       window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(progress));
+      if (import.meta.env.DEV) {
+        console.log('[PlayerState] 💾 Salvando no localStorage (Firebase não disponível)');
+      }
     } catch {
       // ignore
     }
@@ -416,16 +442,19 @@ class PlayerStateManager {
 
   setSelectedMapId(mapId: MapId) {
     this.progress.selectedMapId = mapId;
+    // saveToStorage() já verifica se Firebase está disponível automaticamente
     this.saveToStorage(this.progress);
   }
 
   setDisplayName(name: string) {
     this.progress.displayName = name;
+    // saveToStorage() já verifica se Firebase está disponível automaticamente
     this.saveToStorage(this.progress);
   }
 
   updateInventory(updater: (entries: PlayerInventoryEntry[]) => PlayerInventoryEntry[]) {
     this.progress.inventory = updater(this.progress.inventory);
+    // saveToStorage() já verifica se Firebase está disponível automaticamente
     this.saveToStorage(this.progress);
   }
 
@@ -438,7 +467,8 @@ class PlayerStateManager {
       } else {
         next.push({ itemId, quantity });
       }
-      return next.filter((e) => e.quantity > 0);
+      // Permite quantidade 0, mas remove quantidades negativas (erro de dados)
+      return next.filter((e) => e.quantity >= 0);
     });
   }
 
@@ -450,14 +480,27 @@ class PlayerStateManager {
       if (!existing || existing.quantity < quantity) return entries;
       existing.quantity -= quantity;
       success = true;
-      return next.filter((e) => e.quantity > 0);
+      // Permite quantidade 0, mas remove quantidades negativas (erro de dados)
+      return next.filter((e) => e.quantity >= 0);
     });
     return success;
   }
 
   syncFromRemote(progress: PlayerProgress) {
     this.progress = progress;
+    // saveToStorage() já verifica se Firebase está disponível automaticamente
     this.saveToStorage(progress);
+  }
+
+  /**
+   * Sincroniza dados do Firebase diretamente (usado após sync do servidor)
+   * Este método é chamado quando o servidor retorna dados atualizados após sync
+   */
+  syncFromRemoteData(userData: UserData): void {
+    console.log('[PlayerState] 📥 Sincronizando dados retornados do servidor...');
+    this.syncFromFirebase(userData);
+    // Não salvar no localStorage - Firebase é a fonte de verdade
+    // O onSnapshot vai manter os dados atualizados
   }
 
   getItemQuantity(itemId: string): number {
@@ -751,16 +794,21 @@ class PlayerStateManager {
 
   /**
    * Adiciona um item ao inventário preparado para expedição.
+   * @param itemId - ID do item
+   * @param quantity - Quantidade a adicionar
+   * @param skipQuantityCheck - Se true, pula a verificação de quantidade no inventário permanente (útil quando já foi consumido)
    */
-  addToPreparedExpeditionInventory(itemId: string, quantity: number): boolean {
+  addToPreparedExpeditionInventory(itemId: string, quantity: number, skipQuantityCheck: boolean = false): boolean {
     if (!this.progress.preparedExpeditionInventory) {
       this.progress.preparedExpeditionInventory = [];
     }
 
-    // Verifica se o jogador tem o item no inventário permanente
-    const availableQuantity = this.getItemQuantity(itemId);
-    if (availableQuantity < quantity) {
-      return false; // Não tem quantidade suficiente
+    // Verifica se o jogador tem o item no inventário permanente (apenas se não foi solicitado para pular)
+    if (!skipQuantityCheck) {
+      const availableQuantity = this.getItemQuantity(itemId);
+      if (availableQuantity < quantity) {
+        return false; // Não tem quantidade suficiente
+      }
     }
 
     const existing = this.progress.preparedExpeditionInventory.find(e => e.itemId === itemId);
@@ -810,7 +858,8 @@ class PlayerStateManager {
       if (!this.consumeItem(itemId, quantity)) {
         return false; // Não tem quantidade suficiente no permanente
       }
-      return this.addToPreparedExpeditionInventory(itemId, quantity);
+      // Pula a verificação de quantidade pois já foi consumido do permanente
+      return this.addToPreparedExpeditionInventory(itemId, quantity, true);
     } else {
       // Retornar do preparado para permanente
       if (!this.removeFromPreparedExpeditionInventory(itemId, quantity)) {

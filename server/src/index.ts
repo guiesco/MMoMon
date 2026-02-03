@@ -413,9 +413,9 @@ wss.on("connection", (ws) => {
     }
 
     // Se não está em uma sala e não é join, ignorar
-    if (!currentRoom && msg.type !== "join") {
+    if (!currentRoom) {
       if (DEBUG_GAME_LOOP) {
-        console.log(`[Server] ⚠️ Cliente ${clientId.slice(0, 8)}... enviou mensagem ${msg.type} sem estar em uma sala`);
+        console.log(`[Server] ⚠️ Cliente ${clientId.slice(0, 8)}... enviou mensagem ${(msg as any).type} sem estar em uma sala`);
       }
       return;
     }

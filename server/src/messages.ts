@@ -336,6 +336,7 @@ export interface ExtractionStateMessage extends BaseMessage {
   rewards?: {
     resources?: Record<string, number>;
     creaturesCaptured?: number;
+    unusedItems?: Record<string, number>; // Itens não usados que serão retornados ao inventário permanente
     savedToCloud?: boolean; // ✅ Indica se foi salvo no Firebase
     error?: string; // Mensagem de erro se salvamento falhou
   };

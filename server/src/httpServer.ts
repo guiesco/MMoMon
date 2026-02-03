@@ -276,11 +276,25 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
 
     await saveUserData(userId, userData);
 
-    console.log(`[HTTP] ✅ Estado sincronizado para ${userId}`);
+    // IMPORTANTE: Buscar dados atualizados do Firebase após salvar para retornar ao cliente
+    // Isso garante que o cliente sempre recebe a versão mais atualizada (incluindo criaturas capturadas)
+    const updatedUserData = await getUser(userId);
+    
+    if (!updatedUserData) {
+      console.error(`[HTTP] ❌ Erro: Dados não encontrados após salvar para ${userId}`);
+      return res.status(500).json({
+        error: 'Erro ao recuperar dados atualizados'
+      });
+    }
 
+    console.log(`[HTTP] ✅ Estado sincronizado para ${userId}`);
+    console.log(`[HTTP] 📤 Retornando dados atualizados: ${Object.keys(updatedUserData.creatures).length} criaturas, ${Object.keys(updatedUserData.inventory.items).length} tipos de itens`);
+
+    // Retornar dados atualizados do Firebase para o cliente
     res.json({
       success: true,
-      message: 'Estado sincronizado com sucesso'
+      message: 'Estado sincronizado com sucesso',
+      userData: updatedUserData // Dados atualizados do Firebase
     });
   } catch (error) {
     console.error('[HTTP] ❌ Erro ao sincronizar estado:', error);

@@ -178,7 +178,7 @@ export class InventoryScene extends Phaser.Scene {
         name: def.name,
         tier: def.tier,
         kind: def.kind,
-        quantity: entry.quantity,
+        quantity: entry.quantity ?? 0,
         preparedQuantity: preparedQty,
         description: def.description,
         category: this.getCategoryKey(def.kind, entry.itemId),
@@ -200,11 +200,18 @@ export class InventoryScene extends Phaser.Scene {
           tier: def.tier,
           kind: def.kind,
           quantity: 0,
-          preparedQuantity: entry.quantity,
+          preparedQuantity: entry.quantity ?? 0,
           description: def.description,
           category: this.getCategoryKey(def.kind, entry.itemId),
           source: "prepared"
         });
+      } else {
+        // Atualiza a quantidade preparada se o item já existe no map
+        const existing = itemMap.get(entry.itemId);
+        if (existing) {
+          existing.preparedQuantity = entry.quantity ?? 0;
+          existing.source = existing.quantity > 0 ? "both" : "prepared";
+        }
       }
     }
 
@@ -248,6 +255,11 @@ export class InventoryScene extends Phaser.Scene {
 
     const { width, height } = this.scale;
     let y = 120;
+
+    // Garante que entryIndex está dentro dos limites válidos
+    if (this.entries.length > 0) {
+      this.entryIndex = Math.max(0, Math.min(this.entryIndex, this.entries.length - 1));
+    }
 
     if (this.entries.length === 0) {
       this.emptyMessageText = this.add
@@ -314,14 +326,18 @@ export class InventoryScene extends Phaser.Scene {
       const isSelected = idx === this.entryIndex;
       const textColor = isSelected ? "#22c55e" : tierConfig.tierTextColor;
       
+      // Garante que as quantidades existem
+      const quantity = entry.quantity ?? 0;
+      const preparedQuantity = entry.preparedQuantity ?? 0;
+      
       // Monta texto mostrando quantidades em ambos os inventários
       let quantityText = "";
-      if (entry.quantity > 0 && entry.preparedQuantity > 0) {
-        quantityText = `x${entry.quantity} (Perm.) + x${entry.preparedQuantity} (Prep.)`;
-      } else if (entry.quantity > 0) {
-        quantityText = `x${entry.quantity} (Perm.)`;
-      } else if (entry.preparedQuantity > 0) {
-        quantityText = `x${entry.preparedQuantity} (Prep.)`;
+      if (quantity > 0 && preparedQuantity > 0) {
+        quantityText = `x${quantity} (Perm.) + x${preparedQuantity} (Prep.)`;
+      } else if (quantity > 0) {
+        quantityText = `x${quantity} (Perm.)`;
+      } else if (preparedQuantity > 0) {
+        quantityText = `x${preparedQuantity} (Prep.)`;
       }
 
       const text = this.add
@@ -340,8 +356,9 @@ export class InventoryScene extends Phaser.Scene {
 
       // Indicador de direção de transferência
       if (isSelected) {
-        const arrowColor = entry.quantity > 0 ? "#3b82f6" : "#ef4444";
-        const arrowText = entry.quantity > 0 ? "→" : "←";
+        const entryQuantity = entry.quantity ?? 0;
+        const arrowColor = entryQuantity > 0 ? "#3b82f6" : "#ef4444";
+        const arrowText = entryQuantity > 0 ? "→" : "←";
         const arrow = this.add
           .text(width - 120, y, arrowText, {
             fontSize: "18px",
@@ -440,24 +457,20 @@ export class InventoryScene extends Phaser.Scene {
 
   private moveSelection(delta: number) {
     if (this.entries.length === 0) return;
+    
+    // Garante que entryIndex está dentro dos limites válidos
+    this.entryIndex = Math.max(0, Math.min(this.entryIndex, this.entries.length - 1));
+    
     this.entryIndex =
       (this.entryIndex + delta + this.entries.length) % this.entries.length;
     
-    // Atualiza cores dos textos
-    this.entryTexts.forEach((t, idx) => {
-      const entry = this.entries[idx];
-      const tierConfig = TIER_VISUALS[entry.tier];
-      t.setColor(idx === this.entryIndex ? "#22c55e" : tierConfig.tierTextColor);
-    });
-
-    // Atualiza destaque do fundo
-    this.entryBackgrounds.forEach((bg, idx) => {
-      const entry = this.entries[idx];
-      const tierConfig = TIER_VISUALS[entry.tier];
-      const alpha = idx === this.entryIndex ? 0.2 : 0.08;
-      bg.setFillStyle(tierConfig.borderColor, alpha);
-    });
-
+    // Verifica se a entrada atual é válida
+    const currentEntry = this.entries[this.entryIndex];
+    if (!currentEntry) {
+      // Se a entrada não é válida, ajusta o índice
+      this.entryIndex = Math.max(0, this.entries.length - 1);
+    }
+    
     // Limpa mensagem de status ao navegar
     this.statusText.setText("");
     
@@ -469,23 +482,37 @@ export class InventoryScene extends Phaser.Scene {
     if (this.entries.length === 0) return;
     const entry = this.entries[this.entryIndex];
     
+    // Verifica se a entrada é válida
+    if (!entry) {
+      this.statusText.setText("Erro: entrada inválida.");
+      this.statusText.setColor("#ef4444");
+      return;
+    }
+    
+    // Garante que as propriedades existem
+    const quantity = entry.quantity ?? 0;
+    const preparedQuantity = entry.preparedQuantity ?? 0;
+    
     // direction > 0: transferir para preparado (→)
     // direction < 0: retornar ao permanente (←)
     const toPrepared = direction > 0;
     
     // Verifica se pode transferir
-    if (toPrepared && entry.quantity === 0) {
+    if (toPrepared && quantity === 0) {
       this.statusText.setText("Não há itens no inventário permanente para transferir.");
       this.statusText.setColor("#ef4444");
       return;
     }
     
-    if (!toPrepared && entry.preparedQuantity === 0) {
+    if (!toPrepared && preparedQuantity === 0) {
       this.statusText.setText("Não há itens no inventário preparado para retornar.");
       this.statusText.setColor("#ef4444");
       return;
     }
 
+    // Preserva o itemId selecionado para manter a seleção após reconstruir
+    const selectedItemId = entry.itemId;
+    
     // Transfere 1 unidade
     const success = PlayerState.transferItem(entry.itemId, 1, toPrepared);
     
@@ -498,6 +525,15 @@ export class InventoryScene extends Phaser.Scene {
       const progress = PlayerState.getProgress();
       const preparedInventory = PlayerState.getPreparedExpeditionInventory();
       this.entries = this.buildCombinedEntries(progress.inventory, preparedInventory);
+      
+      // Encontra o índice do item selecionado na nova lista (ou mantém o mesmo índice se possível)
+      const newIndex = this.entries.findIndex(e => e.itemId === selectedItemId);
+      if (newIndex >= 0) {
+        this.entryIndex = newIndex;
+      } else {
+        // Se o item não existe mais, ajusta o índice para não ultrapassar os limites
+        this.entryIndex = Math.min(this.entryIndex, Math.max(0, this.entries.length - 1));
+      }
       
       // Atualiza contadores no header
       const totalItens = progress.inventory.reduce((acc, e) => acc + e.quantity, 0);
@@ -517,12 +553,25 @@ export class InventoryScene extends Phaser.Scene {
 
   private showDetails() {
     if (this.entries.length === 0) return;
+    
+    // Garante que entryIndex está dentro dos limites válidos
+    this.entryIndex = Math.max(0, Math.min(this.entryIndex, this.entries.length - 1));
     const entry = this.entries[this.entryIndex];
+    
+    if (!entry) {
+      this.statusText.setText("Erro: entrada inválida.");
+      this.statusText.setColor("#ef4444");
+      return;
+    }
+    
     const categoryConfig = CATEGORY_VISUALS[entry.category];
     const tierConfig = TIER_VISUALS[entry.tier];
     
+    const quantity = entry.quantity ?? 0;
+    const preparedQuantity = entry.preparedQuantity ?? 0;
+    
     let details = `${categoryConfig.symbol} ${entry.name} (${tierConfig.label}) – ${entry.description}\n`;
-    details += `Permanente: x${entry.quantity}  |  Preparado: x${entry.preparedQuantity}`;
+    details += `Permanente: x${quantity}  |  Preparado: x${preparedQuantity}`;
     
     this.statusText.setText(details);
     this.statusText.setColor("#e5e7eb");
