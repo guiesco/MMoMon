@@ -14,7 +14,7 @@ npm install
 
 Coloque o arquivo `firebase-service-account.json` na pasta `server/`.
 
-📖 **Guia completo**: Consulte **[../FIREBASE_SERVER_SETUP.md](../FIREBASE_SERVER_SETUP.md)**
+📖 **Guia completo**: Consulte o README principal em `../README.md`
 
 ### 3. Configurar Variáveis de Ambiente
 
@@ -39,33 +39,20 @@ npm start
 - **3003**: WebSocket (multiplayer)
 - **3004**: HTTP (API REST)
 
-## 🌐 Expor Publicamente com Cloudflare Tunnel
+## 🌐 Expor Publicamente
 
-Para expor o servidor publicamente sem expor seu IP:
+Para produção, use **Fly.io** (recomendado) ou **Cloudflare Tunnel** (desenvolvimento).
 
-📖 **Guia completo**: Consulte **[../CLOUDFLARE_TUNNEL_SETUP.md](../CLOUDFLARE_TUNNEL_SETUP.md)**
+**Fly.io** (Produção):
+```bash
+flyctl launch
+flyctl deploy
+```
 
-### Resumo Rápido
-
-1. Instalar Cloudflare Tunnel:
-   ```bash
-   brew install cloudflared
-   ```
-
-2. Criar tunnel:
-   ```bash
-   cloudflared tunnel login
-   cloudflared tunnel create mmomon-server
-   ```
-
-3. Configurar:
-   - Copie `cloudflare-config.yml.example` para `cloudflare-config.yml`
-   - Edite com o ID do seu tunnel e subdomínios
-
-4. Iniciar tudo:
-   ```bash
-   ./start-all.sh
-   ```
+**Cloudflare Tunnel** (Desenvolvimento):
+1. Instale: `brew install cloudflared`
+2. Configure: `cloudflare-config.yml`
+3. Execute: `./start-all.sh`
 
 ## 📜 Scripts Disponíveis
 
@@ -115,7 +102,7 @@ kill -9 <PID>
 
 1. Verifique se `firebase-service-account.json` existe
 2. Verifique os logs do servidor
-3. Consulte [FIREBASE_SERVER_SETUP.md](../FIREBASE_SERVER_SETUP.md)
+3. Consulte o README principal em `../README.md`
 
 ### CORS errors
 
@@ -125,10 +112,8 @@ kill -9 <PID>
 
 ## 📚 Documentação Adicional
 
-- [Guia de Deploy](../DEPLOY.md)
-- [Configuração do Cloudflare Tunnel](../CLOUDFLARE_TUNNEL_SETUP.md)
-- [Configuração do Firebase](../FIREBASE_SERVER_SETUP.md)
-- [Variáveis de Ambiente](../ENV_VARIABLES.md)
+- [README Principal](../README.md) - Setup completo e configuração
+- [Arquitetura](../ARCHITECTURE.md) - Arquitetura do sistema
 
 ## 🔐 Segurança
 

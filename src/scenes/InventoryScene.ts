@@ -9,6 +9,8 @@ import {
   hexToCSS,
   type ItemCategory
 } from "../game/itemVisuals";
+import { getUserId, fetchUserDataFromFirebase, isFirebaseClientAvailable } from "../services/firebaseClient";
+import { LoadingOverlay } from "./expedition/ui/LoadingOverlay";
 
 interface DisplayInventoryEntry {
   itemId: string;
@@ -36,19 +38,48 @@ export class InventoryScene extends Phaser.Scene {
   private entries: DisplayInventoryEntry[] = [];
   private viewMode: InventoryViewMode = "both";
   private viewModeText!: Phaser.GameObjects.Text;
+  private loadingOverlay!: LoadingOverlay;
 
   constructor() {
     super("InventoryScene");
   }
 
-  create(data?: { preserveIndex?: number }) {
+  async create(data?: { preserveIndex?: number }) {
     // Preserva índice se veio de um restart após ação
     const preservedIndex = data?.preserveIndex ?? 0;
     
     // Limpa estado visual sempre que a cena é recriada
     this.clearAllVisuals();
 
+    // Inicializa loading overlay
+    this.loadingOverlay = new LoadingOverlay(this);
+
     const { width, height } = this.scale;
+
+    // ITEM 8: Buscar dados atualizados do Firebase ao abrir inventário
+    if (isFirebaseClientAvailable()) {
+      const userId = getUserId();
+      if (userId) {
+        this.loadingOverlay.show("Carregando inventário...");
+        
+        try {
+          const userData = await fetchUserDataFromFirebase(userId);
+          if (userData) {
+            // Atualizar PlayerState com dados recebidos
+            PlayerState.syncFromRemoteData(userData);
+            console.log('[InventoryScene] ✅ Dados do inventário atualizados do Firebase');
+          } else {
+            console.log('[InventoryScene] ⚠️  Dados não encontrados no Firebase, usando dados locais');
+          }
+        } catch (error) {
+          console.error('[InventoryScene] ❌ Erro ao buscar dados do Firebase:', error);
+          // Continuar com dados locais em caso de erro
+        } finally {
+          this.loadingOverlay.hide();
+        }
+      }
+    }
+
     const progress = PlayerState.getProgress();
     const preparedInventory = PlayerState.getPreparedExpeditionInventory();
 
@@ -136,7 +167,10 @@ export class InventoryScene extends Phaser.Scene {
       document.removeEventListener('keydown', tabHandler, true);
     });
     
-    this.input.keyboard?.on("keydown-ESC", () => this.scene.start("BaseHubScene"));
+    this.input.keyboard?.on("keydown-ESC", () => {
+      // Sync será feito automaticamente ao entrar na BaseHubScene
+      this.scene.start("BaseHubScene");
+    });
   }
 
   /**

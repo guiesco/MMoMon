@@ -3,7 +3,6 @@ import { PlayerState as LocalPlayerState } from "../game/playerState";
 import { getCreatureById } from "../game/creatures";
 import { getItemById } from "../game/items";
 import { getCreatureTheme, type CreatureTheme } from "../game/creatureThemes";
-import { syncPlayerStateToServer } from "../services/firebaseSync";
 import { getUserId } from "../services/firebaseClient";
 import {
   type ExpeditionXpParams,
@@ -72,6 +71,7 @@ import type {
   SkillZone
 } from "./expedition/types/ExpeditionTypes";
 import { FeedbackManager } from "./expedition/ui/FeedbackManager";
+import { LoadingOverlay } from "./expedition/ui/LoadingOverlay";
 import { MinimapManager } from "./expedition/managers/MinimapManager";
 import { HUDManager } from "./expedition/ui/HUDManager";
 import { ExtractionUI } from "./expedition/ui/ExtractionUI";
@@ -342,6 +342,7 @@ export class ExpeditionScene extends Phaser.Scene {
   // ============================================================================
   
   private feedbackManager!: FeedbackManager;
+  private loadingOverlay!: LoadingOverlay;
   private minimapManager!: MinimapManager;
   private hudManager!: HUDManager;
   private extractionUI!: ExtractionUI;
@@ -413,6 +414,7 @@ export class ExpeditionScene extends Phaser.Scene {
     
     // Inicializar sistemas de UI primeiro (precisam das dimensões da viewport)
     this.feedbackManager = new FeedbackManager(this);
+    this.loadingOverlay = new LoadingOverlay(this);
     this.hudManager = new HUDManager(this, viewportWidth, viewportHeight);
     this.extractionUI = new ExtractionUI(this, viewportWidth, viewportHeight);
     this.skillCooldownUI = new SkillCooldownUI(this, viewportWidth, viewportHeight);
@@ -754,6 +756,9 @@ export class ExpeditionScene extends Phaser.Scene {
       }
     });
 
+    // ITEM 11: Exibir loading antes de conectar ao servidor
+    this.loadingOverlay.show("Conectando ao servidor...");
+
     // Arquitetura multiplayer-first: sempre conecta ao servidor
     const name = LocalPlayerState.getProgress().displayName ?? "Convidado";
     // Usar mapId como roomId para que cada mapa tenha sua própria sala
@@ -764,6 +769,8 @@ export class ExpeditionScene extends Phaser.Scene {
       
       // Captura o ID do cliente após conexão bem-sucedida
       this.mpClient.on("joined", (data) => {
+        // ITEM 11: Remover loading após conexão bem-sucedida
+        this.loadingOverlay.hide();
         this.clientId = data.clientId;
         console.log("[MP] Conectado com ID:", this.clientId);
         
@@ -918,6 +925,8 @@ export class ExpeditionScene extends Phaser.Scene {
       
       // Handlers para erros e conexão
       this.mpClient.on("error", (reason, details) => {
+        // ITEM 11: Remover loading em caso de erro
+        this.loadingOverlay.hide();
         console.error("[MP] Erro do servidor:", reason, details);
         
         // Tratar erros específicos

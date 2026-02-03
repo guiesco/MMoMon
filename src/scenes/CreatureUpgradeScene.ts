@@ -13,7 +13,6 @@ import {
   RANK_CONFIG,
 } from "../game/creatureProgression";
 import type { CreatureRank, OwnedCreature } from "../game/types";
-import { syncPlayerStateToServer } from "../services/firebaseSync";
 
 /**
  * Cena de evolução/fusão de criaturas.
@@ -96,8 +95,8 @@ export class CreatureUpgradeScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-UP", () => this.moveSelection(-1));
     this.input.keyboard?.on("keydown-DOWN", () => this.moveSelection(1));
     this.input.keyboard?.on("keydown-ENTER", () => this.tryFusion());
-    this.input.keyboard?.on("keydown-ESC", async () => {
-      await syncPlayerStateToServer();
+    this.input.keyboard?.on("keydown-ESC", () => {
+      // Sync será feito automaticamente ao entrar na BaseHubScene
       this.scene.start("BaseHubScene");
     });
     this.input.keyboard?.on("keydown-SPACE", () => this.tryFusion());
@@ -420,6 +419,8 @@ export class CreatureUpgradeScene extends Phaser.Scene {
       }
       this.renderCreatureList();
       this.renderCreatureDetails();
+
+      // Sync será feito automaticamente ao entrar na BaseHubScene
     } else {
       this.showFeedback(result.error ?? "Fusão não disponível", "#ef4444");
     }

@@ -20,6 +20,7 @@ import {
   getFirestore, 
   Firestore,
   doc,
+  getDoc,
   onSnapshot,
   Unsubscribe
 } from 'firebase/firestore';
@@ -266,6 +267,36 @@ export function unsubscribeFromUserData(): void {
     unsubscribeUserData();
     unsubscribeUserData = null;
     console.log('[Firebase Client] 🔌 Desconectado da sincronização');
+  }
+}
+
+/**
+ * Busca dados do usuário do Firebase uma vez (não em tempo real)
+ * Útil para buscar dados atualizados ao abrir uma tela específica
+ */
+export async function fetchUserDataFromFirebase(userId: string): Promise<UserData | null> {
+  if (!db) {
+    console.warn('[Firebase Client] Firestore não inicializado');
+    return null;
+  }
+
+  try {
+    const userRef = doc(db, 'users', userId);
+    const snapshot = await getDoc(userRef);
+
+    if (snapshot.exists()) {
+      const data = snapshot.data() as UserData;
+      console.log('[Firebase Client] ✅ Dados do usuário buscados com sucesso');
+      console.log(`[Firebase Client] - Criaturas: ${Object.keys(data.creatures || {}).length}`);
+      console.log(`[Firebase Client] - Itens: ${Object.keys(data.inventory?.items || {}).length}`);
+      return data;
+    } else {
+      console.warn('[Firebase Client] ⚠️  Usuário não encontrado no Firestore');
+      return null;
+    }
+  } catch (error) {
+    console.error('[Firebase Client] ❌ Erro ao buscar dados do usuário:', error);
+    return null;
   }
 }
 

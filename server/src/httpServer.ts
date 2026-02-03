@@ -34,13 +34,24 @@ app.use((req, res, next) => {
   });
   
   // Lista de origens permitidas (normalizadas - sem trailing slash)
+  const defaultClientUrl = 'https://guiesco.github.io';
+  const clientUrl = process.env.CLIENT_URL || defaultClientUrl;
+  
+  // Adicionar tanto HTTP quanto HTTPS para GitHub Pages (caso o usuário acesse via HTTP)
+  const clientUrlVariants = [clientUrl];
+  if (clientUrl.startsWith('https://')) {
+    clientUrlVariants.push(clientUrl.replace('https://', 'http://'));
+  } else if (clientUrl.startsWith('http://')) {
+    clientUrlVariants.push(clientUrl.replace('http://', 'https://'));
+  }
+  
   const allowedOrigins = [
     'http://localhost:5173',
     'http://localhost:3000',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:3000',
-    // GitHub Pages (ajuste com seu username/repo)
-    process.env.CLIENT_URL || 'https://guiesco.github.io',
+    // GitHub Pages (inclui HTTP e HTTPS)
+    ...clientUrlVariants,
     // Domínios customizados (se houver)
     ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim()) : [])
   ].filter(Boolean).map(o => o.replace(/\/$/, '')); // Remove trailing slashes
@@ -259,14 +270,17 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
       }
     }
     
-    // IMPORTANTE: Preservar criaturas que existem no Firebase mas não foram enviadas pelo cliente
-    // Isso garante que criaturas capturadas em expedições não sejam perdidas
-    for (const [instanceId, existingCreature] of Object.entries(existingCreatures)) {
-      if (!userData.creatures[instanceId]) {
-        // Criatura existe no Firebase mas não foi enviada pelo cliente - preservar
-        console.log(`[HTTP] 🔒 Preservando criatura do Firebase: ${instanceId} (${existingCreature.definitionId})`);
-        userData.creatures[instanceId] = existingCreature as any;
-      }
+    // IMPORTANTE: NÃO preservar criaturas que não foram enviadas pelo cliente
+    // Quando o cliente faz sync de crafting/evolução, o estado do cliente é a fonte de verdade completa.
+    // Criaturas removidas na evolução não devem ser preservadas.
+    // Criaturas capturadas em expedições são salvas diretamente pelo servidor via saveExpeditionRewards(),
+    // então não precisamos preservá-las aqui.
+    // 
+    // Se houver criaturas no Firebase que não foram enviadas, elas foram removidas pelo cliente
+    // (ex: evolução) e devem ser removidas do Firebase também.
+    const preservedCount = Object.keys(existingCreatures).length - creaturesFromClient.length;
+    if (preservedCount > 0) {
+      console.log(`[HTTP] 🗑️  Removendo ${preservedCount} criatura(s) que não foram enviadas pelo cliente (provavelmente removidas na evolução)`);
     }
     
     console.log(`[HTTP] 📊 Estado convertido:`);

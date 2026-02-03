@@ -2,7 +2,6 @@ import Phaser from "phaser";
 import { PlayerState } from "../game/playerState";
 import { getCreatureById } from "../game/creatures";
 import type { OwnedCreature } from "../game/types";
-import { syncPlayerStateToServer } from "../services/firebaseSync";
 import { getEffectiveStats } from "../game/creatureProgression";
 
 export class TeamManagementScene extends Phaser.Scene {
@@ -272,10 +271,10 @@ export class TeamManagementScene extends Phaser.Scene {
     this.infoText.setText(lines.join("\n"));
   }
 
-  private async returnToBase() {
+  private returnToBase() {
     // Persistir novo time ativo de forma validada
     PlayerState.setActiveTeam(this.tempTeamIds);
-    await syncPlayerStateToServer();
+    // Sync será feito automaticamente ao entrar na BaseHubScene
     this.scene.start("BaseHubScene");
   }
 }

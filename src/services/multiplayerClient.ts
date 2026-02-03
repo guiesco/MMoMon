@@ -368,7 +368,7 @@ export class MultiplayerClient {
     this.url = url || import.meta.env.VITE_WS_URL || "ws://localhost:3003";
     
     try {
-      this.ws = new WebSocket(url);
+      this.ws = new WebSocket(this.url);
     } catch {
       console.error("[MultiplayerClient] Falha ao criar WebSocket");
       return;

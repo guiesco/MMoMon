@@ -9,7 +9,6 @@ import {
   hexToCSS,
   type ItemCategory
 } from "../game/itemVisuals";
-import { syncPlayerStateToServer } from "../services/firebaseSync";
 
 export class CraftingScene extends Phaser.Scene {
   private recipeIndex = 0;
@@ -184,8 +183,8 @@ export class CraftingScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-UP", () => this.moveSelection(-1));
     this.input.keyboard?.on("keydown-DOWN", () => this.moveSelection(1));
     this.input.keyboard?.on("keydown-ENTER", () => this.tryCraft());
-    this.input.keyboard?.on("keydown-ESC", async () => {
-      await syncPlayerStateToServer();
+    this.input.keyboard?.on("keydown-ESC", () => {
+      // Sync será feito automaticamente ao entrar na BaseHubScene
       this.scene.start("BaseHubScene");
     });
   }

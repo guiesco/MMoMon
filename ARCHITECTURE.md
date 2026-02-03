@@ -310,20 +310,4 @@ O cliente faz predição visual imediata para melhor responsividade:
 
 ---
 
-## Próximos Passos
-
-### Melhorias de Arquitetura
-- [ ] Dead Reckoning para movimento mais suave
-- [ ] Lag compensation
-- [ ] Rollback/resync em caso de dessincronização
-- [ ] Sistema de replay para debug
-
-### Escalabilidade
-- [ ] Load balancing entre múltiplos servidores
-- [ ] Sharding de salas
-- [ ] Cache de estado do mundo
-- [ ] Otimização de broadcast (só enviar mudanças)
-
----
-
 **Nota**: Esta arquitetura reflete o estado atual após a refatoração multiplayer-first (Janeiro 2026). Todas as referências a "modo single-player" ou "modo offline" foram removidas.

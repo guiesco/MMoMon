@@ -13,6 +13,9 @@ import {
 } from "../game/creatureProgression";
 import type { CreatureRank, ItemKind } from "../game/types";
 import { getItemVisuals, TIER_VISUALS, hexToCSS } from "../game/itemVisuals";
+import { syncPlayerStateToServer } from "../services/firebaseSync";
+import { isFirebaseClientAvailable, getUserId } from "../services/firebaseClient";
+import { LoadingOverlay } from "./expedition/ui/LoadingOverlay";
 
 export class BaseHubScene extends Phaser.Scene {
   private menuIndex = 0;
@@ -26,16 +29,35 @@ export class BaseHubScene extends Phaser.Scene {
   ];
   private optionTexts: Phaser.GameObjects.Text[] = [];
   private mapLabelText!: Phaser.GameObjects.Text;
+  private loadingOverlay!: LoadingOverlay;
 
   constructor() {
     super("BaseHubScene");
   }
 
-  create() {
+  async create() {
     // Garante estado limpo ao voltar de outras cenas
     this.menuIndex = 0;
     this.optionTexts.forEach((t) => t.destroy());
     this.optionTexts = [];
+
+    // Inicializar loading overlay
+    this.loadingOverlay = new LoadingOverlay(this);
+
+    // Sincronizar com Firebase ao entrar na base
+    if (isFirebaseClientAvailable() && getUserId()) {
+      this.loadingOverlay.show("Sincronizando dados...");
+      
+      try {
+        await syncPlayerStateToServer();
+        console.log('[BaseHubScene] ✅ Dados sincronizados ao entrar na base');
+      } catch (error) {
+        console.error('[BaseHubScene] ❌ Erro ao sincronizar:', error);
+        // Continuar mesmo se sync falhar
+      } finally {
+        this.loadingOverlay.hide();
+      }
+    }
 
     // Cura todas as criaturas ao voltar para a base
     PlayerState.healAllCreatures();
