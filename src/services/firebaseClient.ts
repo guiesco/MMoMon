@@ -13,6 +13,7 @@ import {
   signInAnonymously,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signOut as firebaseSignOut,
   onAuthStateChanged,
   User
 } from 'firebase/auth';
@@ -145,6 +146,25 @@ export async function createAccount(email: string, password: string): Promise<Us
   } catch (error) {
     console.error('[Firebase Client] ❌ Erro ao criar conta:', error);
     return null;
+  }
+}
+
+/**
+ * Faz logout do usuário atual
+ */
+export async function signOut(): Promise<void> {
+  if (!auth) {
+    console.warn('[Firebase Client] Auth não inicializado');
+    return;
+  }
+
+  try {
+    await firebaseSignOut(auth);
+    currentUser = null;
+    console.log('[Firebase Client] ✅ Logout realizado com sucesso');
+  } catch (error) {
+    console.error('[Firebase Client] ❌ Erro ao fazer logout:', error);
+    throw error;
   }
 }
 
