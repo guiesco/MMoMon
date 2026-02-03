@@ -20,6 +20,7 @@ import {
   type RemoteResource,
   type ExtractionState,
   type MatchEvent,
+  type MatchState,
   type PlayerDeath
 } from "../services/multiplayerClient";
 import {
@@ -118,6 +119,7 @@ export class ExpeditionScene extends Phaser.Scene {
   private expeditionTime = 0;
   private expeditionDuration = EXPEDITION_DURATION_SECONDS;
   private useServerTimer = false; // Flag para saber se está usando timer do servidor
+  private lastMatchState: MatchState | null = null; // Último estado do match recebido do servidor
 
   /**
    * TODO(server-authoritative):
@@ -368,7 +370,7 @@ export class ExpeditionScene extends Phaser.Scene {
     super("ExpeditionScene");
   }
 
-  create() {
+  create(data?: { selectedItems?: Record<string, number> }) {
     // Reset de estado para cada nova expedição
     this.state = "exploring";
     this.expeditionTime = 0;
@@ -381,6 +383,9 @@ export class ExpeditionScene extends Phaser.Scene {
     this.projectiles = [];
     this.enemyProjectiles = [];
     this.expeditionResources = new Map();
+    
+    // Itens selecionados para expedição (vindos da cena de seleção)
+    const selectedItems = data?.selectedItems || {};
     
     // Arquitetura multiplayer-first: sempre usa RemoteWorldState
     // O servidor é sempre a fonte de verdade para o estado do mundo
@@ -416,7 +421,10 @@ export class ExpeditionScene extends Phaser.Scene {
     // Inicializar SpriteManager (precisa do worldState)
     this.spriteManager = new SpriteManager(this, this.worldState);
     
-    // Inicializar MultiplayerHandlers
+    // Inicializar telemetria usando SceneInitializer (ANTES de criar MultiplayerHandlers)
+    this.telemetry = this.sceneInitializer.initializeTelemetry();
+    
+    // Inicializar MultiplayerHandlers (DEPOIS de inicializar telemetria)
     this.multiplayerHandlers = new MultiplayerHandlers(
       this.worldState,
       this.spriteManager,
@@ -450,9 +458,6 @@ export class ExpeditionScene extends Phaser.Scene {
       },
       worldState: this.worldState
     });
-
-    // Inicializar telemetria usando SceneInitializer
-    this.telemetry = this.sceneInitializer.initializeTelemetry();
 
     // ============================================================================
     // ============================================================================
@@ -685,13 +690,15 @@ export class ExpeditionScene extends Phaser.Scene {
     });
     
     // Atualizar skillSystem com a criatura ativa se já foi definida
-    if (this.activeCreatureDef && this.activeSpecialSkillKind !== null) {
-      const creatureTheme = getCreatureTheme(this.activeCreatureDef.id);
+    if (this.activeCreatureDef !== null && this.activeSpecialSkillKind !== null) {
+      // TypeScript type narrowing - após verificar !== null, sabemos que não é null
+      const creatureDef: CreatureDefinition = this.activeCreatureDef;
+      const creatureTheme = getCreatureTheme(creatureDef.id);
       this.skillSystem.setActiveSkill(
         this.activeSpecialSkillKind,
         this.activeSpecialSkillName,
         this.specialSkillCooldownTime,
-        this.activeCreatureDef,
+        creatureDef,
         creatureTheme
       );
     }
@@ -752,7 +759,8 @@ export class ExpeditionScene extends Phaser.Scene {
     // Usar mapId como roomId para que cada mapa tenha sua própria sala
     const roomId = this.mapConfig?.id ?? "default-room";
     const userId = getUserId();
-    this.mpClient = new MultiplayerClient(roomId, name, userId);
+    // Passa os itens selecionados para o MultiplayerClient
+    this.mpClient = new MultiplayerClient(roomId, name, userId, selectedItems);
       
       // Captura o ID do cliente após conexão bem-sucedida
       this.mpClient.on("joined", (data) => {
@@ -835,6 +843,8 @@ export class ExpeditionScene extends Phaser.Scene {
           this.expeditionDuration = match.durationSeconds;
           // Calcular expeditionTime a partir do timeLeft
           this.expeditionTime = match.durationSeconds - match.timeLeft;
+          // Armazenar último estado do match para usar em telemetria
+          this.lastMatchState = match;
           
           console.debug("[MP] Timer sincronizado:", {
             elapsed: match.elapsedSeconds,
@@ -852,8 +862,8 @@ export class ExpeditionScene extends Phaser.Scene {
         this.handleAttackResult(result);
       });
       this.mpClient.on("captureResult", (result) => {
-        // Atualizar telemetria via MultiplayerHandlers
-        this.multiplayerHandlers.handleCaptureResult(result);
+        // NOTA: Não atualizar telemetria aqui via MultiplayerHandlers
+        // A telemetria será atualizada em handleCaptureResult() para evitar duplicação
         // Processar resultado completo (lógica visual e de estado)
         this.handleCaptureResult(result);
       });
@@ -1924,13 +1934,15 @@ export class ExpeditionScene extends Phaser.Scene {
         this.state = "failed";
         if (!this.telemetry.extractionFailed) {
           this.telemetry.extractionFailed = true;
-          this.telemetry.timeSpent = this.expeditionTime;
+          // Usar tempo do servidor se disponível, senão usar tempo local
+          const finalTime = this.lastMatchState?.elapsedSeconds ?? this.expeditionTime;
+          this.telemetry.timeSpent = finalTime;
           
           // Servidor já salva recompensas automaticamente quando extração completa
           // Não é mais necessário sync manual do cliente
           
           // Calcula métricas finais
-          const timeMinutes = this.expeditionTime / 60;
+          const timeMinutes = finalTime / 60;
           this.telemetry.resourcesPerMinute = this.telemetry.resourcesCollected / Math.max(0.1, timeMinutes);
           this.telemetry.creaturesPerMinute = this.telemetry.creaturesCaptured / Math.max(0.1, timeMinutes);
           this.telemetry.averageCaptureChance = this.telemetry.captureAttempts > 0
@@ -3453,12 +3465,14 @@ export class ExpeditionScene extends Phaser.Scene {
     this.state = "failed";
     if (!this.telemetry.extractionFailed) {
       this.telemetry.extractionFailed = true;
-      this.telemetry.timeSpent = this.expeditionTime;
+      // Usar tempo do servidor se disponível, senão usar tempo local
+      const finalTime = this.lastMatchState?.elapsedSeconds ?? this.expeditionTime;
+      this.telemetry.timeSpent = finalTime;
 
       // Servidor já salva recompensas automaticamente quando extração completa
       // Não é mais necessário sync manual do cliente
 
-      const timeMinutes = this.expeditionTime / 60;
+      const timeMinutes = finalTime / 60;
       this.telemetry.resourcesPerMinute =
         this.telemetry.resourcesCollected / Math.max(0.1, timeMinutes);
       this.telemetry.creaturesPerMinute =
@@ -3945,23 +3959,15 @@ export class ExpeditionScene extends Phaser.Scene {
           console.log(`[Resource] ⏭️ Intent já enviado anteriormente para recurso: ${resourceId}`);
         }
 
-        // Coleta otimista local (o servidor vai validar e sincronizar)
-        this.resourcesCollected += 1;
-        this.telemetry.resourcesCollected += 1;
-        const current = this.expeditionResources.get(resourceItemId) ?? 0;
-        this.expeditionResources.set(resourceItemId, current + 1);
-
+        // NOTA: Telemetria será atualizada quando o servidor confirmar a coleta
+        // via resources_update (quando o recurso desaparecer do servidor)
+        // Isso garante que apenas recursos realmente coletados sejam contados
+        
         this.feedbackManager.createCollectionFeedback(
           resourceSprite.sprite.x,
           resourceSprite.sprite.y,
           resourceItemId
         );
-        
-        // Log de coleta
-        console.log("[TELEMETRIA] Recurso coletado", {
-          total: this.telemetry.resourcesCollected,
-          time: Math.floor(this.expeditionTime)
-        });
         
         resourcesToRemove.push(resourceSprite.id);
       }
@@ -4005,10 +4011,9 @@ export class ExpeditionScene extends Phaser.Scene {
             }
           }
 
-          this.resourcesCollected += 1;
-          this.telemetry.resourcesCollected += 1;
-          const current = this.expeditionResources.get(resourceItemId) ?? 0;
-          this.expeditionResources.set(resourceItemId, current + 1);
+          // NOTA: Telemetria será atualizada quando o servidor confirmar a coleta
+          // via resources_update (quando o recurso desaparecer do servidor)
+          // Isso garante que apenas recursos realmente coletados sejam contados
 
           // Feedback visual: partículas e texto flutuante
           // FASE 4: Usar FeedbackManager
@@ -4103,10 +4108,12 @@ export class ExpeditionScene extends Phaser.Scene {
         this.state = "failed";
         if (!this.telemetry.extractionFailed) {
           this.telemetry.extractionFailed = true;
-          this.telemetry.timeSpent = this.expeditionTime;
+          // Usar tempo do servidor se disponível, senão usar tempo local
+          const finalTime = this.lastMatchState?.elapsedSeconds ?? this.expeditionTime;
+          this.telemetry.timeSpent = finalTime;
 
           // Calcula métricas finais
-          const timeMinutes = this.expeditionTime / 60;
+          const timeMinutes = finalTime / 60;
           this.telemetry.resourcesPerMinute =
             this.telemetry.resourcesCollected / Math.max(0.1, timeMinutes);
           this.telemetry.creaturesPerMinute =
@@ -5281,8 +5288,26 @@ export class ExpeditionScene extends Phaser.Scene {
     }
 
     // Remove recursos que foram coletados (não aparecem mais no servidor)
+    // Atualiza telemetria quando recursos são realmente coletados (confirmados pelo servidor)
     for (const resourceId of this.worldState.resources.keys()) {
       if (!seen.has(resourceId)) {
+        // Recurso foi coletado - atualizar telemetria
+        const resource = this.worldState.getResource(resourceId);
+        if (resource && resource.resourceType) {
+          this.resourcesCollected += 1;
+          this.telemetry.resourcesCollected += 1;
+          const current = this.expeditionResources.get(resource.resourceType) ?? 0;
+          this.expeditionResources.set(resource.resourceType, current + (resource.quantity ?? 1));
+          
+          console.log("[TELEMETRIA] Recurso coletado confirmado pelo servidor", {
+            resourceId: resourceId.slice(0, 8),
+            resourceType: resource.resourceType,
+            quantity: resource.quantity ?? 1,
+            total: this.telemetry.resourcesCollected,
+            time: Math.floor(this.expeditionTime)
+          });
+        }
+        
         this.removeResource(resourceId);
       }
     }
@@ -5570,6 +5595,32 @@ export class ExpeditionScene extends Phaser.Scene {
     
     // Processa recompensas se extração completou
     if (state.status === "completed" && state.rewards) {
+      // Atualizar telemetria de sucesso
+      if (!this.telemetry.extractionSuccess) {
+        this.telemetry.extractionSuccess = true;
+        // Usar tempo do servidor se disponível, senão usar tempo local
+        const finalTime = this.lastMatchState?.elapsedSeconds ?? this.expeditionTime;
+        this.telemetry.timeSpent = finalTime;
+        
+        // Calcula métricas finais
+        const timeMinutes = finalTime / 60;
+        this.telemetry.resourcesPerMinute = this.telemetry.resourcesCollected / Math.max(0.1, timeMinutes);
+        this.telemetry.creaturesPerMinute = this.telemetry.creaturesCaptured / Math.max(0.1, timeMinutes);
+        this.telemetry.averageCaptureChance = this.telemetry.captureAttempts > 0
+          ? this.telemetry.totalCaptureChanceSum / this.telemetry.captureAttempts
+          : 0;
+        
+        console.log("[TELEMETRIA] Extração bem-sucedida", {
+          "Tempo Total (s)": Math.floor(this.telemetry.timeSpent),
+          "Recursos Coletados": this.telemetry.resourcesCollected,
+          "Criaturas Capturadas": this.telemetry.creaturesCaptured,
+          "Tentativas de Captura": this.telemetry.captureAttempts,
+          "Taxa de Sucesso (%)": this.telemetry.captureAttempts > 0
+            ? ((this.telemetry.creaturesCaptured / this.telemetry.captureAttempts) * 100).toFixed(1)
+            : "0.0"
+        });
+      }
+      
       // Adicionar recursos coletados
       for (const [itemId, qty] of Object.entries(state.rewards.resources ?? {})) {
         if (qty > 0) {
@@ -5578,14 +5629,26 @@ export class ExpeditionScene extends Phaser.Scene {
         }
       }
       
-      // Adicionar pokébolas equivalentes às criaturas capturadas
-      const creaturesCaptured = state.rewards.creaturesCaptured ?? 0;
-      if (creaturesCaptured > 0) {
-        LocalPlayerState.addItem("poke-ball-basic", creaturesCaptured);
-        console.log(`[Extraction] Pokébolas adicionadas: ${creaturesCaptured}`);
-      }
+      const creaturesCaptured = state.rewards.creaturesCaptured || 0;
+      const savedToCloud = state.rewards.savedToCloud ?? false;
       
-      console.log(`[Extraction] Recompensas aplicadas: ${Object.keys(state.rewards.resources ?? {}).length} tipos de recursos, ${creaturesCaptured} criaturas`);
+      console.log(`[Extraction] ✅ Extração completada!`);
+      console.log(`[Extraction] - Recursos: ${Object.keys(state.rewards.resources ?? {}).length} tipos`);
+      console.log(`[Extraction] - Criaturas capturadas: ${creaturesCaptured}`);
+      console.log(`[Extraction] - Salvo no Firebase: ${savedToCloud ? 'Sim' : 'Não'}`);
+      
+      // IMPORTANTE: Criaturas são salvas diretamente no Firebase pelo servidor
+      // O cliente deve confiar no onSnapshot para receber as atualizações
+      // Forçar uma pequena espera para garantir que o Firebase processou a atualização
+      if (savedToCloud && creaturesCaptured > 0) {
+        console.log(`[Extraction] ⏳ Aguardando sincronização do Firebase para ${creaturesCaptured} criaturas...`);
+        // O onSnapshot do Firebase Client deve disparar automaticamente
+        // Mas podemos verificar se há uma forma de forçar refresh se necessário
+        setTimeout(() => {
+          const currentCreatures = LocalPlayerState.getProgress().creatures.length;
+          console.log(`[Extraction] 📊 Criaturas no inventário após sincronização: ${currentCreatures}`);
+        }, 2000);
+      }
       
       // Feedback visual
       this.createExtractionSuccessFeedback();
@@ -5636,7 +5699,8 @@ export class ExpeditionScene extends Phaser.Scene {
           // Registrar telemetria de falha por tempo (se ainda não registrou)
           if (!this.telemetry.extractionFailed && !this.telemetry.extractionSuccess) {
             this.telemetry.extractionFailed = true;
-            this.telemetry.timeSpent = this.expeditionTime;
+            // Usar tempo do servidor se disponível, senão usar tempo local
+            this.telemetry.timeSpent = this.lastMatchState?.elapsedSeconds ?? this.expeditionTime;
 
             const timeMinutes = this.expeditionTime / 60;
             this.telemetry.resourcesPerMinute =
@@ -5683,7 +5747,8 @@ export class ExpeditionScene extends Phaser.Scene {
       // Registrar telemetria de falha
       if (!this.telemetry.extractionFailed) {
         this.telemetry.extractionFailed = true;
-        this.telemetry.timeSpent = this.expeditionTime;
+        // Usar tempo do servidor se disponível, senão usar tempo local
+        this.telemetry.timeSpent = this.lastMatchState?.elapsedSeconds ?? this.expeditionTime;
 
         const timeMinutes = this.expeditionTime / 60;
         this.telemetry.resourcesPerMinute =
