@@ -115,7 +115,21 @@ export class CraftingScene extends Phaser.Scene {
             color: nameColor
           }
         )
-        .setOrigin(0, 0.5);
+        .setOrigin(0, 0.5)
+        .setInteractive({ useHandCursor: true })
+        .on("pointerover", () => {
+          if (this.recipeIndex !== idx) {
+            this.recipeIndex = idx;
+            this.moveSelection(0); // Atualiza visual sem mover
+          }
+        })
+        .on("pointerdown", () => {
+          this.recipeIndex = idx;
+          this.moveSelection(0); // Atualiza visual sem mover
+          if (!this.isModalOpen) {
+            this.showCraftModal();
+          }
+        });
       this.recipeTexts.push(text);
 
       y += 24;
@@ -267,9 +281,11 @@ export class CraftingScene extends Phaser.Scene {
   }
 
   private moveSelection(delta: number) {
-    this.recipeIndex =
-      (this.recipeIndex + delta + CRAFTING_RECIPES.length) %
-      CRAFTING_RECIPES.length;
+    if (delta !== 0) {
+      this.recipeIndex =
+        (this.recipeIndex + delta + CRAFTING_RECIPES.length) %
+        CRAFTING_RECIPES.length;
+    }
     
     // Atualiza cores dos textos de receita
     this.recipeTexts.forEach((t, idx) => {

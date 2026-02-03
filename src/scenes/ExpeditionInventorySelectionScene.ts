@@ -226,22 +226,45 @@ export class ExpeditionInventorySelectionScene extends Phaser.Scene {
               color: textColor
             }
           )
-          .setOrigin(0, 0.5);
+          .setOrigin(0, 0.5)
+          .setInteractive({ useHandCursor: true })
+          .on("pointerover", () => {
+            if (this.entryIndex !== idx) {
+              this.entryIndex = idx;
+              this.moveSelection(0); // Atualiza visual sem mover
+            }
+          })
+          .on("pointerdown", () => {
+            this.entryIndex = idx;
+            this.moveSelection(0); // Atualiza visual sem mover
+          });
 
         this.entryTexts.push(text);
 
-        // Texto de quantidade selecionada (à direita)
+        // Texto de quantidade selecionada (à direita) - também clicável para ajustar
         const quantityText = this.add
           .text(
             width - 100,
             y,
-            `Selecionado: 0`,
+            `Selecionado: ${entry.selectedQuantity}`,
             {
               fontSize: "14px",
               color: isSelected ? "#22c55e" : "#6b7280"
             }
           )
-          .setOrigin(1, 0.5);
+          .setOrigin(1, 0.5)
+          .setInteractive({ useHandCursor: true })
+          .on("pointerdown", (pointer: Phaser.Input.Pointer, localX: number, localY: number, event: Phaser.Types.Input.EventData) => {
+            this.entryIndex = idx;
+            this.moveSelection(0);
+            // Clique esquerdo aumenta, direito diminui
+            if (event.event && (event.event as MouseEvent).button === 2) {
+              event.event.preventDefault();
+              this.adjustQuantity(-1);
+            } else {
+              this.adjustQuantity(1);
+            }
+          });
 
         this.quantityTexts.push(quantityText);
 
@@ -336,8 +359,10 @@ export class ExpeditionInventorySelectionScene extends Phaser.Scene {
 
   private moveSelection(delta: number) {
     if (this.entries.length === 0) return;
-    this.entryIndex =
-      (this.entryIndex + delta + this.entries.length) % this.entries.length;
+    if (delta !== 0) {
+      this.entryIndex =
+        (this.entryIndex + delta + this.entries.length) % this.entries.length;
+    }
     
     // Atualiza cores dos textos
     this.entryTexts.forEach((t, idx) => {
@@ -348,7 +373,9 @@ export class ExpeditionInventorySelectionScene extends Phaser.Scene {
 
     // Atualiza cores das quantidades
     this.quantityTexts.forEach((t, idx) => {
+      const entry = this.entries[idx];
       t.setColor(idx === this.entryIndex ? "#22c55e" : "#6b7280");
+      t.setText(`Selecionado: ${entry.selectedQuantity}`);
     });
 
     // Atualiza destaque do fundo

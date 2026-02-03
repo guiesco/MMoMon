@@ -115,7 +115,21 @@ export class TeamManagementScene extends Phaser.Scene {
               color: idx === this.cursorIndex ? "#22c55e" : inTeam ? "#e5e7eb" : "#9ca3af"
             }
           )
-          .setOrigin(0, 0.5);
+          .setOrigin(0, 0.5)
+          .setInteractive({ useHandCursor: true })
+          .on("pointerover", () => {
+            if (this.cursorIndex !== idx) {
+              this.cursorIndex = idx;
+              this.refreshListVisuals();
+              this.updateInfoText();
+            }
+          })
+          .on("pointerdown", () => {
+            this.cursorIndex = idx;
+            this.refreshListVisuals();
+            this.updateInfoText();
+            this.toggleSelection();
+          });
 
         text.setData("instanceId", owned.instanceId);
         this.listTexts.push(text);

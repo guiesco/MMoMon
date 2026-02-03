@@ -136,7 +136,20 @@ export class CreatureUpgradeScene extends Phaser.Scene {
             color: isSelected ? "#22c55e" : rankColor
           }
         )
-        .setOrigin(0, 0.5);
+        .setOrigin(0, 0.5)
+        .setInteractive({ useHandCursor: true })
+        .on("pointerover", () => {
+          if (this.selectedIndex !== i) {
+            this.selectedIndex = i;
+            this.renderCreatureList();
+            this.renderCreatureDetails();
+          }
+        })
+        .on("pointerdown", () => {
+          this.selectedIndex = i;
+          this.renderCreatureList();
+          this.renderCreatureDetails();
+        });
 
       this.listTexts.push(text);
     }

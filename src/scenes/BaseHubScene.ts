@@ -14,7 +14,7 @@ import {
 import type { CreatureRank, ItemKind } from "../game/types";
 import { getItemVisuals, TIER_VISUALS, hexToCSS } from "../game/itemVisuals";
 import { fetchPlayerDataFromServer } from "../services/firebaseSync";
-import { isFirebaseClientAvailable, getUserId } from "../services/firebaseClient";
+import { isFirebaseClientAvailable, getUserId, signOut } from "../services/firebaseClient";
 import { LoadingOverlay } from "./expedition/ui/LoadingOverlay";
 
 export class BaseHubScene extends Phaser.Scene {
@@ -25,7 +25,7 @@ export class BaseHubScene extends Phaser.Scene {
     "Evoluir Criaturas",
     "Abrir Inventário",
     "Abrir Crafting",
-    "Sair (placeholder)"
+    "Sair"
   ];
   private optionTexts: Phaser.GameObjects.Text[] = [];
   private mapLabelText!: Phaser.GameObjects.Text;
@@ -293,7 +293,23 @@ export class BaseHubScene extends Phaser.Scene {
           fontSize: "16px",
           color: idx === this.menuIndex ? "#22c55e" : "#9ca3af"
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true })
+        .on("pointerover", () => {
+          if (this.menuIndex !== idx) {
+            this.menuIndex = idx;
+            this.optionTexts.forEach((text, i) => {
+              text.setColor(i === this.menuIndex ? "#22c55e" : "#9ca3af");
+            });
+          }
+        })
+        .on("pointerdown", () => {
+          this.menuIndex = idx;
+          this.optionTexts.forEach((text, i) => {
+            text.setColor(i === this.menuIndex ? "#22c55e" : "#9ca3af");
+          });
+          this.confirmSelection();
+        });
       this.optionTexts.push(t);
     });
 
@@ -314,7 +330,7 @@ export class BaseHubScene extends Phaser.Scene {
     });
   }
 
-  private confirmSelection() {
+  private async confirmSelection() {
     const selected = this.options[this.menuIndex];
     if (selected === "Iniciar Expedição Solo") {
       // Abre a cena de seleção de inventário antes de iniciar a expedição
@@ -327,6 +343,33 @@ export class BaseHubScene extends Phaser.Scene {
       this.scene.start("InventoryScene");
     } else if (selected === "Abrir Crafting") {
       this.scene.start("CraftingScene");
+    } else if (selected === "Sair") {
+      await this.handleLogout();
+    }
+  }
+
+  private async handleLogout() {
+    try {
+      // Mostrar loading
+      this.loadingOverlay.show("Saindo...");
+
+      // Limpar estado do PlayerState
+      PlayerState.cleanup();
+
+      // Fazer logout do Firebase se disponível
+      if (isFirebaseClientAvailable()) {
+        await signOut();
+        console.log('[BaseHubScene] ✅ Logout realizado');
+      }
+
+      // Redirecionar para AuthScene
+      this.loadingOverlay.hide();
+      this.scene.start("AuthScene");
+    } catch (error) {
+      console.error('[BaseHubScene] ❌ Erro ao fazer logout:', error);
+      this.loadingOverlay.hide();
+      // Mesmo com erro, redirecionar para AuthScene
+      this.scene.start("AuthScene");
     }
   }
 

@@ -394,11 +394,22 @@ export class InventoryScene extends Phaser.Scene {
             color: textColor
           }
         )
-        .setOrigin(0, 0.5);
+        .setOrigin(0, 0.5)
+        .setInteractive({ useHandCursor: true })
+        .on("pointerover", () => {
+          if (this.entryIndex !== idx) {
+            this.entryIndex = idx;
+            this.renderEntries();
+          }
+        })
+        .on("pointerdown", () => {
+          this.entryIndex = idx;
+          this.renderEntries();
+        });
 
       this.entryTexts.push(text);
 
-      // Indicador de direção de transferência
+      // Indicador de direção de transferência (também clicável)
       if (isSelected) {
         const entryQuantity = entry.quantity ?? 0;
         const arrowColor = entryQuantity > 0 ? "#3b82f6" : "#ef4444";
@@ -408,7 +419,12 @@ export class InventoryScene extends Phaser.Scene {
             fontSize: "18px",
             color: arrowColor
           })
-          .setOrigin(0.5, 0.5);
+          .setOrigin(0.5, 0.5)
+          .setInteractive({ useHandCursor: true })
+          .on("pointerdown", () => {
+            const direction = entryQuantity > 0 ? 1 : -1;
+            this.transferItem(direction);
+          });
         this.arrowIndicators.push(arrow);
       }
 
