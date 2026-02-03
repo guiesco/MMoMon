@@ -10,6 +10,7 @@ import {
   type ItemCategory
 } from "../game/itemVisuals";
 import { getUserId, fetchUserDataFromFirebase, isFirebaseClientAvailable } from "../services/firebaseClient";
+import { saveBackpackToServer } from "../services/firebaseSync";
 import { LoadingOverlay } from "./expedition/ui/LoadingOverlay";
 
 interface DisplayInventoryEntry {
@@ -21,7 +22,7 @@ interface DisplayInventoryEntry {
   preparedQuantity: number; // Quantidade no inventário preparado
   description: string;
   category: ItemCategory;
-  source: "permanent" | "prepared" | "both"; // De qual inventário vem
+  source: "permanent" | "prepared" | "both"; // De qual inventário vem (armazem/mochila)
 }
 
 type InventoryViewMode = "permanent" | "prepared" | "both";
@@ -115,7 +116,7 @@ export class InventoryScene extends Phaser.Scene {
         width / 2,
         72,
         `[TAB] Modo: ${this.getViewModeLabel()}  |  ` +
-        `Permanente: ${totalItens} itens  |  Preparado: ${totalPrepared} itens  |  ` +
+        `Armazem: ${totalItens} itens  |  Mochila: ${totalPrepared} itens  |  ` +
         "↑/↓: navegar  |  ←/→: transferir  |  ENTER: detalhes  |  ESC: voltar",
         {
           fontSize: "13px",
@@ -199,7 +200,7 @@ export class InventoryScene extends Phaser.Scene {
   ): DisplayInventoryEntry[] {
     const itemMap = new Map<string, DisplayInventoryEntry>();
 
-    // Adiciona itens do inventário permanente
+    // Adiciona itens do armazem
     for (const entry of permanent) {
       const def = getItemById(entry.itemId);
       if (!def) continue;
@@ -220,7 +221,7 @@ export class InventoryScene extends Phaser.Scene {
       });
     }
 
-    // Adiciona itens do inventário preparado que não estão no permanente
+    // Adiciona itens da mochila que não estão no armazem
     for (const entry of prepared) {
       if (!itemMap.has(entry.itemId)) {
         const def = getItemById(entry.itemId);
@@ -367,11 +368,11 @@ export class InventoryScene extends Phaser.Scene {
       // Monta texto mostrando quantidades em ambos os inventários
       let quantityText = "";
       if (quantity > 0 && preparedQuantity > 0) {
-        quantityText = `x${quantity} (Perm.) + x${preparedQuantity} (Prep.)`;
+        quantityText = `x${quantity} (Armazem) + x${preparedQuantity} (Mochila)`;
       } else if (quantity > 0) {
-        quantityText = `x${quantity} (Perm.)`;
+        quantityText = `x${quantity} (Armazem)`;
       } else if (preparedQuantity > 0) {
-        quantityText = `x${preparedQuantity} (Prep.)`;
+        quantityText = `x${preparedQuantity} (Mochila)`;
       }
 
       const text = this.add
@@ -418,8 +419,8 @@ export class InventoryScene extends Phaser.Scene {
 
   private getViewModeLabel(): string {
     switch (this.viewMode) {
-      case "permanent": return "Apenas Permanente";
-      case "prepared": return "Apenas Preparado";
+      case "permanent": return "Apenas Armazem";
+      case "prepared": return "Apenas Mochila";
       case "both": return "Ambos";
       default: return "Ambos";
     }
@@ -439,8 +440,8 @@ export class InventoryScene extends Phaser.Scene {
     // Atualiza UI
     this.viewModeText.setText(
       `[TAB] Modo: ${this.getViewModeLabel()}  |  ` +
-      `Permanente: ${progress.inventory.reduce((acc, e) => acc + e.quantity, 0)} itens  |  ` +
-      `Preparado: ${preparedInventory.reduce((acc, e) => acc + e.quantity, 0)} itens  |  ` +
+      `Armazem: ${progress.inventory.reduce((acc, e) => acc + e.quantity, 0)} itens  |  ` +
+      `Mochila: ${preparedInventory.reduce((acc, e) => acc + e.quantity, 0)} itens  |  ` +
       "↑/↓: navegar  |  ←/→: transferir  |  ENTER: detalhes  |  ESC: voltar"
     );
     
@@ -533,13 +534,13 @@ export class InventoryScene extends Phaser.Scene {
     
     // Verifica se pode transferir
     if (toPrepared && quantity === 0) {
-      this.statusText.setText("Não há itens no inventário permanente para transferir.");
+      this.statusText.setText("Não há itens no armazem para transferir.");
       this.statusText.setColor("#ef4444");
       return;
     }
     
     if (!toPrepared && preparedQuantity === 0) {
-      this.statusText.setText("Não há itens no inventário preparado para retornar.");
+      this.statusText.setText("Não há itens na mochila para retornar.");
       this.statusText.setColor("#ef4444");
       return;
     }
@@ -551,7 +552,7 @@ export class InventoryScene extends Phaser.Scene {
     const success = PlayerState.transferItem(entry.itemId, 1, toPrepared);
     
     if (success) {
-      const action = toPrepared ? "transferido para preparado" : "retornado ao permanente";
+      const action = toPrepared ? "transferido para mochila" : "retornado ao armazem";
       this.statusText.setText(`1x ${entry.name} ${action}.`);
       this.statusText.setColor("#22c55e");
       
@@ -574,9 +575,16 @@ export class InventoryScene extends Phaser.Scene {
       const totalPrepared = preparedInventory.reduce((acc, e) => acc + e.quantity, 0);
       this.viewModeText.setText(
         `[TAB] Modo: ${this.getViewModeLabel()}  |  ` +
-        `Permanente: ${totalItens} itens  |  Preparado: ${totalPrepared} itens  |  ` +
+        `Armazem: ${totalItens} itens  |  Mochila: ${totalPrepared} itens  |  ` +
         "↑/↓: navegar  |  ←/→: transferir  |  ENTER: detalhes  |  ESC: voltar"
       );
+      
+      // Salva mochila na Firebase
+      if (isFirebaseClientAvailable()) {
+        saveBackpackToServer(preparedInventory).catch(error => {
+          console.error('[InventoryScene] Erro ao salvar mochila:', error);
+        });
+      }
       
       this.renderEntries();
     } else {
@@ -605,7 +613,7 @@ export class InventoryScene extends Phaser.Scene {
     const preparedQuantity = entry.preparedQuantity ?? 0;
     
     let details = `${categoryConfig.symbol} ${entry.name} (${tierConfig.label}) – ${entry.description}\n`;
-    details += `Permanente: x${quantity}  |  Preparado: x${preparedQuantity}`;
+    details += `Armazem: x${quantity}  |  Mochila: x${preparedQuantity}`;
     
     this.statusText.setText(details);
     this.statusText.setColor("#e5e7eb");

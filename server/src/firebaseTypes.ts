@@ -58,6 +58,8 @@ export interface UserDocument {
   creatures: Record<string, UserCreature>; // instanceId -> creature
   activeTeam: UserActiveTeam;
   stats: UserStats;
+  /** Inventário preparado para expedição (mochila) - itemId -> quantity */
+  preparedExpeditionInventory?: Record<string, number>;
 }
 
 // ============================================================================

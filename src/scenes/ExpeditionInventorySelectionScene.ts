@@ -9,6 +9,8 @@ import {
   hexToCSS,
   type ItemCategory
 } from "../game/itemVisuals";
+import { saveBackpackToServer } from "../services/firebaseSync";
+import { isFirebaseClientAvailable } from "../services/firebaseClient";
 
 interface DisplayInventoryEntry {
   itemId: string;
@@ -22,7 +24,7 @@ interface DisplayInventoryEntry {
 }
 
 /**
- * Cena para selecionar itens do inventário permanente para levar na expedição.
+ * Cena para selecionar itens do armazem para levar na expedição (mochila).
  * Permite ao jogador escolher quantos de cada item levar antes de iniciar a expedição.
  */
 export class ExpeditionInventorySelectionScene extends Phaser.Scene {
@@ -109,7 +111,7 @@ export class ExpeditionInventorySelectionScene extends Phaser.Scene {
         
         const visuals = getItemVisuals(def.kind, def.tier, entry.itemId);
         
-        // Verifica se já está no inventário preparado
+        // Verifica se já está na mochila
         const preparedQty = preparedInventory.find(e => e.itemId === entry.itemId)?.quantity ?? 0;
         
         return {
@@ -403,15 +405,27 @@ export class ExpeditionInventorySelectionScene extends Phaser.Scene {
     }
   }
 
-  private confirmAndStart() {
-    // Atualiza o inventário preparado no PlayerState
-    // Primeiro, limpa o inventário preparado atual
+  private async confirmAndStart() {
+    // Atualiza a mochila no PlayerState
+    // Primeiro, limpa a mochila atual
     PlayerState.clearPreparedExpeditionInventory();
     
-    // Adiciona os itens selecionados ao inventário preparado
+    // Adiciona os itens selecionados à mochila
     for (const [itemId, quantity] of this.selectedItems.entries()) {
       if (quantity > 0) {
         PlayerState.addToPreparedExpeditionInventory(itemId, quantity);
+      }
+    }
+    
+    // Salva mochila na Firebase
+    const preparedInventory = PlayerState.getPreparedExpeditionInventory();
+    if (isFirebaseClientAvailable()) {
+      try {
+        await saveBackpackToServer(preparedInventory);
+        console.log('[ExpeditionInventorySelectionScene] ✅ Mochila salva na Firebase');
+      } catch (error) {
+        console.error('[ExpeditionInventorySelectionScene] Erro ao salvar mochila:', error);
+        // Continua mesmo se falhar - o servidor pode usar os itens selecionados diretamente
       }
     }
     

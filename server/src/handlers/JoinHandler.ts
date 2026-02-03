@@ -88,9 +88,9 @@ export class JoinHandler {
       expeditionInventory.pokeballs.forEach((qty, ballType) => {
         console.log(`[JoinHandler] - ${ballType}: ${qty}`);
       });
-    } else if (userData?.inventory?.items) {
-      // Se não enviou itens selecionados, tentar buscar do inventário permanente do Firebase (reutiliza userData já buscado)
-      console.log(`[JoinHandler] Buscando pokébolas do inventário permanente do Firebase...`);
+    } else if (userData?.preparedExpeditionInventory && Object.keys(userData.preparedExpeditionInventory).length > 0) {
+      // Se não enviou itens selecionados, tentar buscar da mochila salva no Firebase
+      console.log(`[JoinHandler] Buscando itens da mochila salva no Firebase...`);
       
       const pokeballTypes: Array<"poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra"> = [
         "poke-ball-basic",
@@ -101,17 +101,22 @@ export class JoinHandler {
       const initialPokeballs: Partial<Record<"poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra", number>> = {};
       
       for (const ballType of pokeballTypes) {
-        const quantity = userData.inventory.items[ballType] as number | undefined;
+        const quantity = userData.preparedExpeditionInventory[ballType] as number | undefined;
         if (quantity && quantity > 0) {
           initialPokeballs[ballType] = quantity;
-          console.log(`[JoinHandler] Copiando ${quantity}x ${ballType} do inventário permanente`);
+          console.log(`[JoinHandler] Usando ${quantity}x ${ballType} da mochila salva`);
         }
       }
       
       if (Object.keys(initialPokeballs).length > 0) {
         expeditionInventory = createExpeditionInventory(initialPokeballs);
-        console.log(`[JoinHandler] Inventário de expedição inicializado com pokébolas do Firebase`);
+        console.log(`[JoinHandler] Inventário de expedição inicializado com itens da mochila`);
+      } else {
+        console.log(`[JoinHandler] Mochila vazia - jogador entrará sem itens`);
       }
+    } else {
+      // Mochila vazia ou não existe - jogador entra sem itens
+      console.log(`[JoinHandler] Mochila vazia ou não configurada - jogador entrará sem itens`);
     }
     
     // Criar jogador

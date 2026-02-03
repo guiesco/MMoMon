@@ -782,28 +782,28 @@ class PlayerStateManager {
   }
 
   // ============================================================================
-  // GERENCIAMENTO DE INVENTÁRIO PREPARADO PARA EXPEDIÇÃO
+  // GERENCIAMENTO DE MOCHILA (INVENTÁRIO PREPARADO PARA EXPEDIÇÃO)
   // ============================================================================
 
   /**
-   * Retorna o inventário preparado para expedição.
+   * Retorna a mochila (inventário preparado para expedição).
    */
   getPreparedExpeditionInventory(): PlayerInventoryEntry[] {
     return this.progress.preparedExpeditionInventory || [];
   }
 
   /**
-   * Adiciona um item ao inventário preparado para expedição.
+   * Adiciona um item à mochila.
    * @param itemId - ID do item
    * @param quantity - Quantidade a adicionar
-   * @param skipQuantityCheck - Se true, pula a verificação de quantidade no inventário permanente (útil quando já foi consumido)
+   * @param skipQuantityCheck - Se true, pula a verificação de quantidade no armazem (útil quando já foi consumido)
    */
   addToPreparedExpeditionInventory(itemId: string, quantity: number, skipQuantityCheck: boolean = false): boolean {
     if (!this.progress.preparedExpeditionInventory) {
       this.progress.preparedExpeditionInventory = [];
     }
 
-    // Verifica se o jogador tem o item no inventário permanente (apenas se não foi solicitado para pular)
+    // Verifica se o jogador tem o item no armazem (apenas se não foi solicitado para pular)
     if (!skipQuantityCheck) {
       const availableQuantity = this.getItemQuantity(itemId);
       if (availableQuantity < quantity) {
@@ -823,7 +823,7 @@ class PlayerStateManager {
   }
 
   /**
-   * Remove um item do inventário preparado para expedição.
+   * Remove um item da mochila.
    */
   removeFromPreparedExpeditionInventory(itemId: string, quantity: number): boolean {
     if (!this.progress.preparedExpeditionInventory) {
@@ -847,23 +847,23 @@ class PlayerStateManager {
   }
 
   /**
-   * Transfere um item do inventário permanente para o preparado (ou vice-versa).
+   * Transfere um item do armazem para a mochila (ou vice-versa).
    * @param itemId - ID do item
    * @param quantity - Quantidade a transferir
-   * @param toPrepared - true para transferir para preparado, false para retornar ao permanente
+   * @param toPrepared - true para transferir para mochila, false para retornar ao armazem
    */
   transferItem(itemId: string, quantity: number, toPrepared: boolean): boolean {
     if (toPrepared) {
-      // Transferir do permanente para preparado
+      // Transferir do armazem para mochila
       if (!this.consumeItem(itemId, quantity)) {
-        return false; // Não tem quantidade suficiente no permanente
+        return false; // Não tem quantidade suficiente no armazem
       }
-      // Pula a verificação de quantidade pois já foi consumido do permanente
+      // Pula a verificação de quantidade pois já foi consumido do armazem
       return this.addToPreparedExpeditionInventory(itemId, quantity, true);
     } else {
-      // Retornar do preparado para permanente
+      // Retornar da mochila para armazem
       if (!this.removeFromPreparedExpeditionInventory(itemId, quantity)) {
-        return false; // Não tem quantidade suficiente no preparado
+        return false; // Não tem quantidade suficiente na mochila
       }
       this.addItem(itemId, quantity);
       return true;
@@ -871,14 +871,14 @@ class PlayerStateManager {
   }
 
   /**
-   * Limpa o inventário preparado (retorna todos os itens ao permanente).
+   * Limpa a mochila (retorna todos os itens ao armazem).
    */
   clearPreparedExpeditionInventory(): void {
     if (!this.progress.preparedExpeditionInventory) {
       return;
     }
 
-    // Retorna todos os itens ao inventário permanente
+    // Retorna todos os itens ao armazem
     for (const entry of this.progress.preparedExpeditionInventory) {
       this.addItem(entry.itemId, entry.quantity);
     }
@@ -888,7 +888,7 @@ class PlayerStateManager {
   }
 
   /**
-   * Obtém a quantidade de um item no inventário preparado.
+   * Obtém a quantidade de um item na mochila.
    */
   getPreparedItemQuantity(itemId: string): number {
     if (!this.progress.preparedExpeditionInventory) {

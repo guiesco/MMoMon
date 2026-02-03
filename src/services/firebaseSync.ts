@@ -323,6 +323,61 @@ export async function syncPlayerStateToServer(): Promise<boolean> {
 }
 
 /**
+ * Salva a mochila (preparedExpeditionInventory) no servidor
+ */
+export async function saveBackpackToServer(
+  backpack: Array<{ itemId: string; quantity: number }>
+): Promise<{ success: boolean; error?: string; userData?: UserData }> {
+  const userId = getUserId();
+  if (!userId) {
+    return { success: false, error: 'Usuário não autenticado' };
+  }
+
+  try {
+    console.log('[FirebaseSync] 📦 Salvando mochila no servidor...');
+    console.log('[FirebaseSync] Itens:', backpack.length);
+    
+    const response = await fetch(`${SERVER_URL}/api/save-backpack`, {
+      method: 'POST',
+      mode: 'cors',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId,
+        backpack
+      })
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Erro ao salvar mochila';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      return { success: false, error: errorMessage };
+    }
+
+    const result = await response.json();
+    
+    if (result.success && result.userData) {
+      // Atualizar PlayerState com dados retornados
+      PlayerState.syncFromRemoteData(result.userData as UserData);
+      console.log('[FirebaseSync] ✅ Mochila salva com sucesso');
+      return { success: true, userData: result.userData as UserData };
+    } else {
+      return { success: false, error: result.error || 'Erro desconhecido' };
+    }
+  } catch (error) {
+    console.error('[FirebaseSync] ❌ Erro ao salvar mochila:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+}
+
+/**
  * NOTA: Syncs de expedição (recompensas, início, fim) foram removidos.
  * Todas as operações de expedição são agora gerenciadas pelo servidor.
  * O servidor salva automaticamente recompensas quando extração completa.

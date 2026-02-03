@@ -8,7 +8,7 @@
  */
 
 import express, { Request, Response } from 'express';
-import { isFirebaseAvailable } from './firebase';
+import { isFirebaseAvailable, getDb } from './firebase';
 import { saveUserData, saveExpeditionRewards, createUser, craftItem, craftItemsBatch, promoteCreature, setActiveTeam } from './firestoreOperations';
 import type { SaveExpeditionData } from './firebaseTypes';
 
@@ -248,7 +248,7 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
     const existingUserData = await getUser(userId);
 
     // Converter formato do cliente para formato do Firestore
-    const userData = {
+    const userData: any = {
       profile: {
         displayName: progress.displayName || 'Convidado',
         // Preservar createdAt se já existir, senão usar data atual
@@ -279,11 +279,24 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
       }
     };
 
-    // Converter inventário
+    // Converter inventário (armazem)
     if (progress.inventory && Array.isArray(progress.inventory)) {
       for (const item of progress.inventory) {
         userData.inventory.items[item.itemId] = item.quantity;
       }
+    }
+
+    // Converter mochila (preparedExpeditionInventory)
+    if (progress.preparedExpeditionInventory && Array.isArray(progress.preparedExpeditionInventory)) {
+      userData.preparedExpeditionInventory = {};
+      for (const item of progress.preparedExpeditionInventory) {
+        if (item.quantity > 0) {
+          userData.preparedExpeditionInventory[item.itemId] = item.quantity;
+        }
+      }
+    } else {
+      // Se não foi enviado, manter o existente ou inicializar vazio
+      userData.preparedExpeditionInventory = existingUserData?.preparedExpeditionInventory || {};
     }
 
     // IMPORTANTE: Preservar criaturas existentes no Firebase que não estão no progress do cliente
@@ -593,6 +606,74 @@ app.post('/api/promote-creature', async (req: Request, res: Response) => {
     console.error('[HTTP] ❌ Erro ao executar evolução:', error);
     res.status(500).json({
       error: 'Erro ao executar evolução'
+    });
+  }
+});
+
+/**
+ * Salva apenas a mochila (preparedExpeditionInventory) do jogador
+ */
+app.post('/api/save-backpack', async (req: Request, res: Response) => {
+  try {
+    const { userId, backpack } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        error: 'userId é obrigatório'
+      });
+    }
+
+    if (!isFirebaseAvailable()) {
+      return res.status(503).json({
+        error: 'Firebase não disponível'
+      });
+    }
+
+    console.log(`[HTTP] 📦 Salvando mochila para jogador ${userId}`);
+
+    const { getUser } = await import('./firestoreOperations');
+    const existingUserData = await getUser(userId);
+
+    if (!existingUserData) {
+      return res.status(404).json({
+        error: 'Usuário não encontrado'
+      });
+    }
+
+    // Converter array para Record se necessário
+    let backpackData: Record<string, number> = {};
+    if (Array.isArray(backpack)) {
+      for (const item of backpack) {
+        if (item.quantity > 0) {
+          backpackData[item.itemId] = item.quantity;
+        }
+      }
+    } else if (backpack && typeof backpack === 'object') {
+      backpackData = backpack;
+    }
+
+    // Atualizar apenas a mochila no Firebase
+    const db = getDb();
+    const userRef = db.collection('users').doc(userId);
+    
+    await userRef.update({
+      preparedExpeditionInventory: backpackData
+    });
+
+    console.log(`[HTTP] ✅ Mochila salva: ${Object.keys(backpackData).length} tipos de itens`);
+
+    // Buscar dados atualizados
+    const updatedUserData = await getUser(userId);
+
+    res.json({
+      success: true,
+      message: 'Mochila salva com sucesso',
+      userData: updatedUserData
+    });
+  } catch (error) {
+    console.error('[HTTP] ❌ Erro ao salvar mochila:', error);
+    res.status(500).json({
+      error: 'Erro ao salvar mochila'
     });
   }
 });
