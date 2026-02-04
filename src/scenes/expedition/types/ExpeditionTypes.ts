@@ -156,6 +156,7 @@ export interface RemoteCreatureSprite {
   hpBar: Phaser.GameObjects.Rectangle;
   hpBarBg: Phaser.GameObjects.Rectangle;
   hpBarText: Phaser.GameObjects.Text;
+  nameText: Phaser.GameObjects.Text;
   
   // Posições para interpolação
   currentX: number;

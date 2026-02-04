@@ -82,7 +82,8 @@ export class HUDManager {
     dangerLowHpThreshold: number,
     activeCreatureHp: number,
     activeCreatureMaxHp: number,
-    damageTakenRecently: number
+    damageTakenRecently: number,
+    expeditionInventory?: Map<string, number> // Inventário de expedição atual (opcional)
   ): void {
     const timeLeft = Math.max(0, Math.floor(expeditionDuration - expeditionTime));
 
@@ -120,13 +121,57 @@ export class HUDManager {
         ? Math.min(100, Math.floor((extractionProgress / extractionRequired) * 100))
         : 0;
 
-    const progress = LocalPlayerState.getProgress();
-    const basicBalls =
-      progress.inventory.find((e) => e.itemId === "poke-ball-basic")?.quantity ?? 0;
-    const preciseBalls =
-      progress.inventory.find((e) => e.itemId === "poke-ball-precisa")?.quantity ?? 0;
-    const ultraBalls =
-      progress.inventory.find((e) => e.itemId === "poke-ball-ultra")?.quantity ?? 0;
+    // Usar inventário de expedição se fornecido, senão usar preparedExpeditionInventory
+    let basicBalls = 0;
+    let preciseBalls = 0;
+    let ultraBalls = 0;
+    let otherItems: string[] = [];
+    
+    if (expeditionInventory) {
+      // Usar inventário de expedição atual (atualizado durante a expedição)
+      basicBalls = expeditionInventory.get("poke-ball-basic") ?? 0;
+      preciseBalls = expeditionInventory.get("poke-ball-precisa") ?? 0;
+      ultraBalls = expeditionInventory.get("poke-ball-ultra") ?? 0;
+      
+      // Coletar outros itens do inventário de expedição (poções, consumíveis, etc.)
+      for (const [itemId, quantity] of expeditionInventory.entries()) {
+        // Pular pokébolas (já mostradas separadamente)
+        if (itemId.startsWith("poke-ball-")) continue;
+        if (quantity <= 0) continue;
+        
+        const itemDef = getItemById(itemId);
+        if (itemDef) {
+          otherItems.push(`${itemDef.name}: x${quantity}`);
+        } else {
+          // Fallback: usar itemId se não encontrar definição
+          otherItems.push(`${itemId}: x${quantity}`);
+        }
+      }
+    } else {
+      // Fallback: usar preparedExpeditionInventory (estático)
+      const progress = LocalPlayerState.getProgress();
+      const preparedInventory = progress.preparedExpeditionInventory || [];
+      basicBalls = preparedInventory.find((e) => e.itemId === "poke-ball-basic")?.quantity ?? 0;
+      preciseBalls = preparedInventory.find((e) => e.itemId === "poke-ball-precisa")?.quantity ?? 0;
+      ultraBalls = preparedInventory.find((e) => e.itemId === "poke-ball-ultra")?.quantity ?? 0;
+      
+      // Coletar outros itens do preparedExpeditionInventory
+      for (const entry of preparedInventory) {
+        if (entry.itemId.startsWith("poke-ball-")) continue;
+        if (entry.quantity <= 0) continue;
+        
+        const itemDef = getItemById(entry.itemId);
+        if (itemDef) {
+          otherItems.push(`${itemDef.name}: x${entry.quantity}`);
+        } else {
+          otherItems.push(`${entry.itemId}: x${entry.quantity}`);
+        }
+      }
+    }
+    
+    const otherItemsLine = otherItems.length > 0 
+      ? otherItems.join(" | ")
+      : "";
 
     const hpRatio =
       activeCreatureMaxHp > 0 ? activeCreatureHp / activeCreatureMaxHp : 1;
@@ -164,6 +209,7 @@ export class HUDManager {
     const hudLines = [
       `${status} | ⏱ ${timeLeft}s | 🎯 ${creaturesCaptured} capturas`,
       `Pokébolas: ${basicBalls}/${preciseBalls}/${ultraBalls}`,
+      ...(otherItemsLine ? [`Itens: ${otherItemsLine.length > 50 ? otherItemsLine.slice(0, 47) + "..." : otherItemsLine}`] : []),
       `Recursos: ${resourcesLine.length > 40 ? resourcesLine.slice(0, 37) + "..." : resourcesLine}`,
       extractionStatus,
       ...dangerMessages.slice(0, 2) // Limita mensagens de perigo

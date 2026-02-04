@@ -150,6 +150,26 @@ export async function saveUserData(
   const db = getDb();
   const userRef = db.collection('users').doc(userId);
 
+  // Remover itens com quantidade 0 do inventário antes de salvar
+  const cleanedItems: Record<string, number> = {};
+  for (const [itemId, quantity] of Object.entries(data.inventory.items)) {
+    if (quantity > 0) {
+      cleanedItems[itemId] = quantity;
+    }
+  }
+  data.inventory.items = cleanedItems;
+
+  // Remover itens com quantidade 0 da mochila (preparedExpeditionInventory) se existir
+  if (data.preparedExpeditionInventory) {
+    const cleanedBackpack: Record<string, number> = {};
+    for (const [itemId, quantity] of Object.entries(data.preparedExpeditionInventory)) {
+      if (quantity > 0) {
+        cleanedBackpack[itemId] = quantity;
+      }
+    }
+    data.preparedExpeditionInventory = cleanedBackpack;
+  }
+
   // Verificar se usuário existe
   const userDoc = await userRef.get();
   
@@ -223,10 +243,37 @@ export async function saveExpeditionRewards(
       batch.update(userRef, inventoryUpdates);
     }
 
+    // Buscar dados do usuário (necessário para várias operações)
+    const userData = userDoc.data() as UserDocument;
+
+    // ========================================================================
+    // 1.5. RETORNAR ITENS NÃO USADOS À MOCHILA (preparedExpeditionInventory)
+    // ========================================================================
+    if (data.unusedItems && data.unusedItems.size > 0) {
+      console.log(`[Firestore] 📦 Retornando ${data.unusedItems.size} tipos de itens não usados à mochila`);
+      
+      // Buscar mochila atual
+      const currentBackpack = userData.preparedExpeditionInventory || {};
+      const backpackUpdates: Record<string, number> = { ...currentBackpack };
+      
+      // Adicionar itens não usados de volta à mochila
+      for (const [itemId, quantity] of data.unusedItems.entries()) {
+        const currentQuantity = backpackUpdates[itemId] || 0;
+        backpackUpdates[itemId] = currentQuantity + quantity;
+        console.log(`[Firestore] 📦 Retornando ${quantity}x ${itemId} à mochila (total: ${backpackUpdates[itemId]})`);
+      }
+      
+      // Atualizar mochila no Firebase
+      batch.update(userRef, {
+        preparedExpeditionInventory: backpackUpdates
+      });
+      
+      console.log(`[Firestore] ✅ Itens não usados retornados à mochila`);
+    }
+
     // ========================================================================
     // 2. ADICIONAR CRIATURAS CAPTURADAS
     // ========================================================================
-    const userData = userDoc.data() as UserDocument;
     const newCreatures: Record<string, UserCreature> = {};
 
     // Gerar IDs únicos para cada criatura capturada

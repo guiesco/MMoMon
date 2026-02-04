@@ -170,27 +170,53 @@
 
 ## ✨ Novas Features
 
-### 6. Exibir Nome e Nível das Criaturas Selvagens
+### 6. Exibir Nome e Nível das Criaturas Selvagens ✅ CONCLUÍDO
 **Prioridade**: Média  
 **Categoria**: UI/UX - Informação Visual
+**Status**: ✅ Resolvido
 
 **Descrição**:
 - Adicionar exibição de nome e nível das criaturas selvagens no cliente
 - Informação deve aparecer acima ou próximo à criatura
 
-**Arquivos Afetados** (estimado):
-- `src/scenes/ExpeditionScene.ts` - Renderização de criaturas
-- `src/scenes/expedition/managers/SpriteManager.ts` - Gerenciamento de sprites
-- `src/game/creatures.ts` - Definições de criaturas
-- `server/src/types.ts` - Tipos de criaturas (garantir que nome e nível são enviados)
+**Arquivos Afetados**:
+- `server/src/types.ts` - Adicionado campo `level` ao `ServerCreature` e geração de nível baseado no tier
+- `server/src/managers/GameLoopManager.ts` - Envio de `level` nas atualizações de criaturas
+- `src/scenes/expedition/types/ExpeditionTypes.ts` - Adicionado campo `nameText` ao `RemoteCreatureSprite`
+- `src/scenes/expedition/managers/SpriteManager.ts` - Criação e gerenciamento do texto de nome e nível
+- `src/scenes/expedition/handlers/MultiplayerHandlers.ts` - Passagem de `level` ao criar/atualizar criaturas
+- `src/game/creatures.ts` - Usado para obter nome da criatura via `getCreatureById()`
 
 **Tarefas**:
-- [ ] Criar componente visual de texto para nome e nível
-- [ ] Posicionar texto acima da criatura (ou em posição apropriada)
-- [ ] Garantir que servidor envia nome e nível nas atualizações
-- [ ] Estilizar texto (cor, tamanho, contorno para legibilidade)
-- [ ] Considerar mostrar apenas quando criatura está visível/em range
-- [ ] Testar com diferentes criaturas e níveis
+- [x] Criar componente visual de texto para nome e nível
+- [x] Posicionar texto acima da criatura (ou em posição apropriada)
+- [x] Garantir que servidor envia nome e nível nas atualizações
+- [x] Estilizar texto (cor, tamanho, contorno para legibilidade)
+- [x] Considerar mostrar apenas quando criatura está visível/em range
+- [x] Testar com diferentes criaturas e níveis
+
+**Implementação**:
+- Adicionado campo `level?: number` ao `ServerCreature` no servidor
+- Implementada geração de nível baseado no tier ao criar criaturas:
+  - comum: nível 1-3
+  - perigosa: nível 4-6
+  - elite: nível 7-10
+- Servidor agora envia `level` nas atualizações de criaturas via `GameLoopManager.broadcastGameStateUpdates()`
+- Adicionado campo `nameText: Phaser.GameObjects.Text` ao `RemoteCreatureSprite`
+- Criado texto de nome e nível no `SpriteManager.createCreatureSprite()`:
+  - Posicionado acima da criatura (y - 35)
+  - Estilizado com fonte branca, contorno preto (stroke) para legibilidade
+  - Formato: "Nome Lv.X" (ex: "Pyrognat Lv.5")
+  - Usa `getCreatureById()` para obter nome da criatura
+- Texto é atualizado quando nível ou espécie mudam em `updateCreatureSprite()`
+- Posição do texto é atualizada quando criatura se move em `updateCreatureSpritePosition()`
+- Texto é destruído corretamente em `destroyCreatureSprite()`
+
+**Resultado**:
+- Nome e nível das criaturas selvagens são exibidos acima de cada criatura
+- Texto é legível com contorno preto sobre fundo claro
+- Nível é gerado automaticamente baseado no tier da criatura
+- Informação é sincronizada corretamente entre servidor e cliente
 
 ---
 
@@ -309,7 +335,7 @@
 3. ~~**Bug #3**: Movimento Durante Loading~~ ✅ CONCLUÍDO
 
 ### Próximas Sprints (Média Prioridade)
-4. **Feature #6**: Nome e Nível das Criaturas
+4. ~~**Feature #6**: Nome e Nível das Criaturas~~ ✅ CONCLUÍDO
 5. **Feature #7**: Efeitos de Ataques Corpo a Corpo
 6. **Feature #8**: Efeito de Hit Tomado
 7. **Balanceamento #10**: Balancear Skills
@@ -337,3 +363,4 @@
 - **2026-01-XX**: Bug #3 (Movimento Durante Loading) concluído - Implementado bloqueio de movimento, ataques e interações durante loading usando `loadingOverlay.visible`
 - **2026-01-XX**: Bug #1 (Marcador de Capturas Não Atualiza) concluído - Adicionada verificação de `playerId` no handler de captura para garantir que apenas capturas do jogador local atualizem o contador. Corrigido bug no `MultiplayerHandlers` que usava propriedade inexistente. Feedback visual já estava funcionando corretamente.
 - **2026-01-XX**: Bug #2 (Sincronização de HP das Criaturas) concluído - Corrigido método `updateCreatureSprite()` para atualizar barras de HP usando `setSize()` ao invés de apenas `setScale()`. Corrigido posicionamento da barra de HP quando criatura se move. Adicionados logs de debug para rastrear mudanças de HP. Barras de HP agora refletem corretamente o `currentHp` do servidor em todos os cenários.
+- **2026-01-XX**: Feature #6 (Exibir Nome e Nível das Criaturas Selvagens) concluído - Implementada exibição de nome e nível acima de cada criatura selvagem. Servidor agora gera nível baseado no tier (comum: 1-3, perigosa: 4-6, elite: 7-10) e envia nas atualizações. Cliente exibe texto estilizado com contorno preto para legibilidade. Texto é atualizado e posicionado corretamente quando criatura se move.

@@ -268,6 +268,7 @@ function broadcastGameStateUpdates(room: Room): void {
         patrolOriginX: c.patrolOrigin.x,
         patrolOriginY: c.patrolOrigin.y,
         patrolTimer: c.patrolTimer,
+        level: c.level,
         buffs: c.buffs?.map(b => ({
           type: b.type,
           duration: b.duration,

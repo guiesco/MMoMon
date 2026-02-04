@@ -63,7 +63,8 @@ export class MultiplayerHandlers {
           currentHp: remoteCreature.currentHp,
           maxHp: remoteCreature.maxHp,
           aiState: (remoteCreature.aiState as any) ?? existingCreature.aiState,
-          behaviorType: (remoteCreature.behaviorType as any) ?? existingCreature.behaviorType
+          behaviorType: (remoteCreature.behaviorType as any) ?? existingCreature.behaviorType,
+          level: remoteCreature.level
         });
         this.spriteManager.updateCreatureSprite(remoteCreature.id);
       } else {
@@ -90,6 +91,7 @@ export class MultiplayerHandlers {
             y: remoteCreature.patrolOriginY ?? remoteCreature.y 
           },
           patrolTimer: remoteCreature.patrolTimer ?? 0,
+          level: remoteCreature.level,
           state: "alive" as const
         };
         

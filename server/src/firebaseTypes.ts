@@ -119,6 +119,8 @@ export interface SaveExpeditionData {
   };
   /** XP ganho por cada criatura da equipe (instanceId -> xp) */
   xpByCreature?: Map<string, number>;
+  /** Itens não usados durante a expedição que devem ser retornados à mochila (preparedExpeditionInventory) */
+  unusedItems?: Map<string, number>;
 }
 
 /**

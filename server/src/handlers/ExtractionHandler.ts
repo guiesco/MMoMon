@@ -207,7 +207,8 @@ async function handleExtractionCompleted(
           resourcesCollected,
           creaturesCaptured: reward.creaturesCaptured // ✅ Contador individual
         },
-        xpByCreature // ✅ XP calculado para cada criatura da equipe
+        xpByCreature, // ✅ XP calculado para cada criatura da equipe
+        unusedItems: reward.unusedItems // ✅ Itens não usados que serão retornados à mochila
       };
 
       saved = await saveExpeditionRewards(expeditionData);

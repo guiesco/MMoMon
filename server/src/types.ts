@@ -99,6 +99,9 @@ export interface ServerCreature {
   /** ID do jogador que a criatura está mirando (null se idle) */
   targetPlayerId: string | null;
   
+  /** Nível da criatura selvagem (baseado no tier) */
+  level?: number;
+  
   /** ✅ FASE 9: Buffs e debuffs ativos na criatura */
   buffs?: Array<{
     type: 'speed' | 'slow' | 'freeze' | 'stun' | 'poison' | 'shield' | 'invulnerable' | 'regen';
@@ -348,6 +351,16 @@ export function createCreature(
 
   const hp = maxHp ?? hpByTier[tier];
 
+  // Nível baseado no tier (para exibição)
+  // comum: 1-3, perigosa: 4-6, elite: 7-10
+  const levelByTier: Record<ThreatTier, { min: number; max: number }> = {
+    comum: { min: 1, max: 3 },
+    perigosa: { min: 4, max: 6 },
+    elite: { min: 7, max: 10 }
+  };
+  const tierLevelRange = levelByTier[tier];
+  const level = Math.floor(Math.random() * (tierLevelRange.max - tierLevelRange.min + 1)) + tierLevelRange.min;
+
   return {
     id: generateId("wild"),
     creatureType,
@@ -363,7 +376,8 @@ export function createCreature(
     windupTimer: 0,
     stunTimer: 0,
     patrolTimer: 0,
-    targetPlayerId: null
+    targetPlayerId: null,
+    level
   };
 }
 

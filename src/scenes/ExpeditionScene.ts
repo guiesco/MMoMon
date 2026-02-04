@@ -129,6 +129,12 @@ export class ExpeditionScene extends Phaser.Scene {
   private resourcesCollected = 0;
   private creaturesCaptured = 0;
 
+  /**
+   * Inventário de expedição atual (rastreado localmente durante a expedição).
+   * Inicializado com preparedExpeditionInventory e atualizado quando pokébolas são consumidas.
+   */
+  private expeditionInventory: Map<string, number> = new Map();
+
   private state: ExpeditionState = "exploring";
   private endSceneTimer = 0;
   private endSceneDelay = 3; // segundos antes de voltar à base após término
@@ -393,6 +399,15 @@ export class ExpeditionScene extends Phaser.Scene {
     
     // Itens selecionados para expedição (vindos da cena de seleção)
     const selectedItems = data?.selectedItems || {};
+    
+    // Inicializar inventário de expedição com preparedExpeditionInventory
+    this.expeditionInventory.clear();
+    const playerProgress = LocalPlayerState.getProgress();
+    const preparedInventory = playerProgress.preparedExpeditionInventory || [];
+    for (const entry of preparedInventory) {
+      this.expeditionInventory.set(entry.itemId, entry.quantity);
+    }
+    console.log(`[ExpeditionScene] 📦 Inventário de expedição inicializado:`, Array.from(this.expeditionInventory.entries()));
     
     // Arquitetura multiplayer-first: sempre usa RemoteWorldState
     // O servidor é sempre a fonte de verdade para o estado do mundo
@@ -2086,7 +2101,8 @@ export class ExpeditionScene extends Phaser.Scene {
       this.dangerLowHpThreshold,
       this.activeCreatureHp,
       this.activeCreatureMaxHp,
-      this.damageTakenRecently
+      this.damageTakenRecently,
+      this.expeditionInventory // Passar inventário de expedição atualizado
     );
     
     this.debugPanel.update(
@@ -4216,8 +4232,7 @@ export class ExpeditionScene extends Phaser.Scene {
    * A pokébola viaja como projétil e tenta capturar ao colidir.
    */
   private throwPokeball() {
-    // Seleciona automaticamente a melhor pokébola disponível
-    const progress = LocalPlayerState.getProgress();
+    // Seleciona automaticamente a melhor pokébola disponível do inventário de expedição
     const captureToolsPriority: ("poke-ball-ultra" | "poke-ball-precisa" | "poke-ball-basic")[] = [
       "poke-ball-ultra",
       "poke-ball-precisa",
@@ -4225,7 +4240,7 @@ export class ExpeditionScene extends Phaser.Scene {
     ];
 
     const chosenBall = captureToolsPriority.find(
-      (id) => (progress.inventory.find((e) => e.itemId === id)?.quantity ?? 0) > 0
+      (id) => (this.expeditionInventory.get(id) ?? 0) > 0
     );
 
     if (!chosenBall) {
@@ -4239,11 +4254,13 @@ export class ExpeditionScene extends Phaser.Scene {
       return;
     }
 
-    // Consome a pokébola imediatamente (otimista)
+    // Consome a pokébola do inventário de expedição (otimista)
     // Em caso de falha crítica no servidor, podemos reverter no futuro
-    if (!LocalPlayerState.consumeItem(chosenBall, 1)) {
+    const currentQuantity = this.expeditionInventory.get(chosenBall) ?? 0;
+    if (currentQuantity <= 0) {
       return;
     }
+    this.expeditionInventory.set(chosenBall, currentQuantity - 1);
 
     // Calcula direção para o mouse
     const pointer = this.input.activePointer;
@@ -4835,16 +4852,29 @@ export class ExpeditionScene extends Phaser.Scene {
           )
         : 0;
 
-    const progress = LocalPlayerState.getProgress();
-    const basicBalls =
-      progress.inventory.find((e) => e.itemId === "poke-ball-basic")
-        ?.quantity ?? 0;
-    const preciseBalls =
-      progress.inventory.find((e) => e.itemId === "poke-ball-precisa")
-        ?.quantity ?? 0;
-    const ultraBalls =
-      progress.inventory.find((e) => e.itemId === "poke-ball-ultra")
-        ?.quantity ?? 0;
+    // Usar inventário de expedição ao invés de inventário permanente
+    const basicBalls = this.expeditionInventory.get("poke-ball-basic") ?? 0;
+    const preciseBalls = this.expeditionInventory.get("poke-ball-precisa") ?? 0;
+    const ultraBalls = this.expeditionInventory.get("poke-ball-ultra") ?? 0;
+
+    // Coletar outros itens do inventário de expedição (poções, consumíveis, etc.)
+    const otherItems: string[] = [];
+    for (const [itemId, quantity] of this.expeditionInventory.entries()) {
+      // Pular pokébolas (já mostradas separadamente)
+      if (itemId.startsWith("poke-ball-")) continue;
+      if (quantity <= 0) continue;
+      
+      const itemDef = getItemById(itemId);
+      if (itemDef) {
+        otherItems.push(`${itemDef.name}: x${quantity}`);
+      } else {
+        // Fallback: usar itemId se não encontrar definição
+        otherItems.push(`${itemId}: x${quantity}`);
+      }
+    }
+    const otherItemsLine = otherItems.length > 0 
+      ? otherItems.join(" | ")
+      : "";
 
     const skillCooldownSeconds = Math.ceil(this.specialSkillCooldown);
     const skillStatus =
@@ -4892,6 +4922,7 @@ export class ExpeditionScene extends Phaser.Scene {
     const hudLines = [
       `${status} | ⏱ ${timeLeft}s | 🎯 ${this.creaturesCaptured} capturas`,
       `Pokébolas: ${basicBalls}/${preciseBalls}/${ultraBalls}`,
+      ...(otherItemsLine ? [`Itens: ${otherItemsLine.length > 50 ? otherItemsLine.slice(0, 47) + "..." : otherItemsLine}`] : []),
       `Recursos: ${resourcesLine.length > 40 ? resourcesLine.slice(0, 37) + "..." : resourcesLine}`,
       extractionStatus,
       ...dangerMessages.slice(0, 2) // Limita mensagens de perigo

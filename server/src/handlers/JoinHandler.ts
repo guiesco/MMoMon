@@ -60,7 +60,7 @@ export class JoinHandler {
     // Preparar inventário de expedição - SEMPRE usar apenas a mochila (preparedExpeditionInventory)
     // Nunca buscar do armazém (inventory.items), mesmo que a mochila esteja vazia
     // Nunca usar selectedItems da mensagem - sempre usar apenas preparedExpeditionInventory do Firebase
-    let expeditionInventory = createExpeditionInventory();
+    let expeditionInventory: ReturnType<typeof createExpeditionInventory>;
     
     // Sempre usar a mochila salva no Firebase, mesmo que esteja vazia
     if (userData?.preparedExpeditionInventory !== undefined) {
@@ -91,8 +91,11 @@ export class JoinHandler {
         console.log(`[JoinHandler] ℹ️  Mochila contém ${otherItems.length} outros tipos de itens (não usados na expedição): ${otherItems.join(', ')}`);
       }
       
+      // IMPORTANTE: Sempre criar inventário com os valores da mochila (mesmo que vazio)
+      // Se não houver pokébolas na mochila, criar inventário vazio (não usar valores padrão)
+      expeditionInventory = createExpeditionInventory(initialPokeballs);
+      
       if (Object.keys(initialPokeballs).length > 0) {
-        expeditionInventory = createExpeditionInventory(initialPokeballs);
         console.log(`[JoinHandler] ✅ Inventário de expedição inicializado com ${Object.keys(initialPokeballs).length} tipos de pokébolas da mochila`);
         expeditionInventory.pokeballs.forEach((qty, ballType) => {
           if (qty > 0) {
@@ -103,8 +106,9 @@ export class JoinHandler {
         console.log(`[JoinHandler] ⚠️  Mochila vazia ou sem pokébolas - jogador entrará sem itens na expedição`);
       }
     } else {
-      // Mochila não existe no Firebase - jogador entra sem itens
+      // Mochila não existe no Firebase - jogador entra sem itens (inventário vazio)
       console.log(`[JoinHandler] ⚠️  Mochila não encontrada no Firebase - jogador entrará sem itens`);
+      expeditionInventory = createExpeditionInventory({}); // Criar inventário vazio, não usar valores padrão
     }
     
     // IMPORTANTE: Ignorar selectedItems da mensagem - sempre usar apenas preparedExpeditionInventory do Firebase

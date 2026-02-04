@@ -10,6 +10,7 @@ import type {
   ResourceState, 
   PlayerState 
 } from "../../../game/worldState";
+import { getCreatureById } from "../../../game/creatures";
 
 /**
  * Gerencia sprites de criaturas, recursos e jogadores.
@@ -80,6 +81,19 @@ export class SpriteManager {
     hpBarText.setDepth(3);
     hpBarText.setVisible(false); // Oculto - HPBarManager gerencia a barra real
 
+    // Cria texto de nome e nível acima da criatura
+    const creatureName = getCreatureById(creature.speciesId ?? creature.creatureType ?? "")?.name ?? "Desconhecido";
+    const levelText = creature.level ? ` Lv.${creature.level}` : "";
+    const nameText = this.scene.add.text(creature.x, creature.y - 35, `${creatureName}${levelText}`, {
+      fontSize: "11px",
+      color: "#ffffff",
+      stroke: "#000000",
+      strokeThickness: 3,
+      fontStyle: "bold"
+    });
+    nameText.setOrigin(0.5, 1);
+    nameText.setDepth(4);
+
     // Cria indicador de aggro (inicialmente invisível)
     const aggroIndicator = this.scene.add.circle(creature.x, creature.y, 20, 0xff0000, 0);
     aggroIndicator.setDepth(1);
@@ -91,6 +105,7 @@ export class SpriteManager {
       hpBar,
       hpBarBg,
       hpBarText,
+      nameText,
       currentX: creature.x,
       currentY: creature.y,
       targetX: creature.x,
@@ -247,6 +262,20 @@ export class SpriteManager {
     sprite.windupTimer = state.windupTimer;
     sprite.stunTimer = state.stunTimer;
     sprite.aiState = state.aiState;
+    
+    // Atualiza nome e nível se mudaram
+    const levelChanged = sprite.level !== state.level;
+    const speciesChanged = sprite.speciesId !== state.speciesId || sprite.creatureType !== state.creatureType;
+    
+    if (levelChanged || speciesChanged) {
+      sprite.level = state.level;
+      sprite.speciesId = state.speciesId;
+      sprite.creatureType = state.creatureType;
+      
+      const creatureName = getCreatureById(state.speciesId ?? state.creatureType ?? "")?.name ?? "Desconhecido";
+      const levelText = state.level ? ` Lv.${state.level}` : "";
+      sprite.nameText.setText(`${creatureName}${levelText}`);
+    }
     
     // ✅ BUG FIX: HPBarManager gerencia barras de HP de inimigos
     // Não atualizamos as barras aqui - elas são invisíveis
@@ -497,6 +526,9 @@ export class SpriteManager {
     // Não precisamos atualizar posição das barras aqui (elas estão invisíveis)
     // O HPBarManager atualiza as barras reais via updateEnemyBars()
     
+    // Atualiza posição do texto de nome e nível
+    sprite.nameText.setPosition(sprite.currentX, sprite.currentY - 35);
+    
     sprite.aggroIndicator?.setPosition(sprite.currentX, sprite.currentY);
     sprite.attackTellIndicator?.setPosition(sprite.currentX, sprite.currentY);
   }
@@ -527,6 +559,7 @@ export class SpriteManager {
     sprite.hpBar.destroy();
     sprite.hpBarBg.destroy();
     sprite.hpBarText.destroy();
+    sprite.nameText.destroy();
     sprite.aggroIndicator?.destroy();
     sprite.attackTellIndicator?.destroy();
 

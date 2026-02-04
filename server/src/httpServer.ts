@@ -280,10 +280,12 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
       }
     };
 
-    // Converter inventário (armazem)
+    // Converter inventário (armazem) - remover itens com quantidade 0
     if (progress.inventory && Array.isArray(progress.inventory)) {
       for (const item of progress.inventory) {
-        userData.inventory.items[item.itemId] = item.quantity;
+        if (item.quantity > 0) {
+          userData.inventory.items[item.itemId] = item.quantity;
+        }
       }
     }
 
@@ -708,9 +710,20 @@ app.post('/api/save-backpack', async (req: Request, res: Response) => {
     
     // Remover itens do armazém (quando adicionados à mochila)
     for (const [itemId, quantity] of Object.entries(itemsToRemoveFromInventory)) {
-      batch.update(userRef, {
-        [`inventory.items.${itemId}`]: FieldValue.increment(-quantity)
-      });
+      const currentQuantity = inventoryItems[itemId] || 0;
+      const newQuantity = currentQuantity - quantity;
+      
+      if (newQuantity <= 0) {
+        // Se a quantidade resultante for 0 ou negativa, remover o item completamente
+        batch.update(userRef, {
+          [`inventory.items.${itemId}`]: FieldValue.delete()
+        });
+      } else {
+        // Caso contrário, usar increment
+        batch.update(userRef, {
+          [`inventory.items.${itemId}`]: FieldValue.increment(-quantity)
+        });
+      }
     }
     
     // Adicionar itens ao armazém (quando removidos da mochila)
