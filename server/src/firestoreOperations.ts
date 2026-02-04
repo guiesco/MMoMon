@@ -239,10 +239,21 @@ export async function saveExpeditionRewards(
     const currentBackpack = userData.preparedExpeditionInventory || {};
     const backpackWithResources: Record<string, number> = { ...currentBackpack };
     
+    // Log da mochila atual antes de adicionar recursos (para debug de duplicação)
+    if (data.rewards.resources.size > 0) {
+      const resourcesInBackpack = Object.keys(currentBackpack).filter(itemId => 
+        data.rewards.resources.has(itemId) && currentBackpack[itemId] > 0
+      );
+      if (resourcesInBackpack.length > 0) {
+        console.warn(`[Firestore] ⚠️  ATENÇÃO: Recursos já presentes na mochila antes de adicionar: ${resourcesInBackpack.join(', ')}`);
+        console.warn(`[Firestore] ⚠️  Isso pode causar duplicação se os recursos não foram removidos corretamente da expedição anterior`);
+      }
+    }
+    
     for (const [itemId, quantity] of data.rewards.resources.entries()) {
       const currentQuantity = backpackWithResources[itemId] || 0;
       backpackWithResources[itemId] = currentQuantity + quantity;
-      console.log(`[Firestore] 📦 Adicionando ${quantity}x ${itemId} à mochila (total: ${backpackWithResources[itemId]})`);
+      console.log(`[Firestore] 📦 Adicionando ${quantity}x ${itemId} à mochila (de ${currentQuantity} para ${backpackWithResources[itemId]})`);
     }
     
     // Atualizar mochila com recursos coletados
@@ -287,9 +298,10 @@ export async function saveExpeditionRewards(
     if (data.unusedItems && data.unusedItems.size > 0) {
       console.log(`[Firestore] 📦 Retornando ${data.unusedItems.size} tipos de itens não usados à mochila`);
       
-      // Buscar mochila atual
-      const currentBackpack = userData.preparedExpeditionInventory || {};
-      const backpackUpdates: Record<string, number> = { ...currentBackpack };
+      // IMPORTANTE: Usar backpackWithResources (mochila atualizada após mover recursos para o armazém)
+      // em vez de userData.preparedExpeditionInventory (mochila antiga do início da função)
+      // Isso evita duplicação de itens
+      const backpackUpdates: Record<string, number> = { ...backpackWithResources };
       
       // Adicionar itens não usados de volta à mochila
       for (const [itemId, quantity] of data.unusedItems.entries()) {
@@ -1045,6 +1057,41 @@ export async function setActiveTeam(
   });
 
   console.log(`[Firestore] ✅ Equipe ativa atualizada: ${uniqueCreatureIds.length} criaturas`);
+  return { success: true };
+}
+
+/**
+ * Atualiza o mapa selecionado do jogador
+ */
+export async function setSelectedMapId(
+  userId: string,
+  mapId: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!isFirebaseAvailable()) {
+    return { success: false, error: 'Firebase não disponível' };
+  }
+
+  const db = getDb();
+  const userRef = db.collection('users').doc(userId);
+
+  // Buscar dados atuais do usuário
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) {
+    return { success: false, error: 'Usuário não encontrado' };
+  }
+
+  // Validar mapId (deve ser um dos mapas válidos)
+  const validMapIds = ['floresta-celestial', 'cavernas-cristalinas', 'ruinas-antigas'];
+  if (!validMapIds.includes(mapId)) {
+    return { success: false, error: `Mapa inválido: ${mapId}` };
+  }
+
+  // Atualizar selectedMapId
+  await userRef.update({
+    'activeTeam.selectedMapId': mapId
+  });
+
+  console.log(`[Firestore] ✅ Mapa selecionado atualizado para ${userId}: ${mapId}`);
   return { success: true };
 }
 

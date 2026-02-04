@@ -373,7 +373,7 @@ export class BaseHubScene extends Phaser.Scene {
     }
   }
 
-  private cycleMap() {
+  private async cycleMap() {
     const current = PlayerState.getSelectedMapId();
     const next = getNextMapId(current);
     PlayerState.setSelectedMapId(next);
@@ -382,5 +382,14 @@ export class BaseHubScene extends Phaser.Scene {
     this.mapLabelText.setText(
       `Mapa atual: ${cfg.name}\n(${cfg.riskLevel} risco, recompensas ${cfg.rewardProfile.toLowerCase()})\n[M] Alterar mapa`
     );
+
+    // Sincronizar mudança de mapa com Firebase
+    const { setSelectedMapIdOnServer } = await import('../services/firebaseSync');
+    const result = await setSelectedMapIdOnServer(next);
+    if (result.success) {
+      console.log('[BaseHubScene] ✅ Mapa selecionado sincronizado com Firebase');
+    } else {
+      console.warn('[BaseHubScene] ⚠️  Erro ao sincronizar mapa selecionado:', result.error);
+    }
   }
 }

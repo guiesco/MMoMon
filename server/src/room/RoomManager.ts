@@ -17,17 +17,23 @@ export class RoomManager {
 
   /**
    * Obtém ou cria uma sala.
+   * @param roomId - ID da sala
+   * @param mapId - ID do mapa (opcional, usa roomId se não fornecido)
    */
-  getOrCreateRoom(roomId: string): Room {
+  getOrCreateRoom(roomId: string, mapId?: string): Room {
     let room = this.rooms.get(roomId);
 
     if (!room) {
       // Criar nova sala
-      const mapConfig = getMapSpawnConfig(roomId);
+      // Usar mapId se fornecido, caso contrário usar roomId
+      const effectiveMapId = mapId ?? roomId;
+      const mapConfig = getMapSpawnConfig(effectiveMapId);
       const worldState = createEmptyWorldState();
       
       // Inicializar spawns do mundo
       initializeWorldSpawns(worldState, mapConfig);
+      
+      console.log(`[RoomManager] 🗺️  Criando nova sala ${roomId} com mapa: ${effectiveMapId} (${mapConfig.id})`);
 
       room = {
         id: roomId,

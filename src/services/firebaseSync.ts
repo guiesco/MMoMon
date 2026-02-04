@@ -378,6 +378,61 @@ export async function saveBackpackToServer(
 }
 
 /**
+ * Atualiza o mapa selecionado no servidor
+ */
+export async function setSelectedMapIdOnServer(
+  mapId: string
+): Promise<{ success: boolean; error?: string; userData?: UserData }> {
+  const userId = getUserId();
+  if (!userId) {
+    return { success: false, error: 'Usuário não autenticado' };
+  }
+
+  try {
+    console.log('[FirebaseSync] 🗺️  Atualizando mapa selecionado no servidor...');
+    console.log('[FirebaseSync] Mapa:', mapId);
+    
+    const response = await fetch(`${SERVER_URL}/api/set-selected-map`, {
+      method: 'POST',
+      mode: 'cors',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        userId,
+        mapId
+      })
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Erro ao atualizar mapa selecionado';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch {
+        const errorText = await response.text();
+        errorMessage = errorText || errorMessage;
+      }
+      return { success: false, error: errorMessage };
+    }
+
+    const result = await response.json();
+    
+    if (result.success && result.userData) {
+      // Atualizar PlayerState com dados retornados
+      PlayerState.syncFromRemoteData(result.userData as UserData);
+      console.log('[FirebaseSync] ✅ Mapa selecionado atualizado com sucesso');
+      return { success: true, userData: result.userData as UserData };
+    } else {
+      return { success: false, error: result.error || 'Erro desconhecido' };
+    }
+  } catch (error) {
+    console.error('[FirebaseSync] ❌ Erro ao atualizar mapa selecionado:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erro desconhecido' };
+  }
+}
+
+/**
  * NOTA: Syncs de expedição (recompensas, início, fim) foram removidos.
  * Todas as operações de expedição são agora gerenciadas pelo servidor.
  * O servidor salva automaticamente recompensas quando extração completa.

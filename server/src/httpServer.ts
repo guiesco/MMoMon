@@ -9,7 +9,7 @@
 
 import express, { Request, Response } from 'express';
 import { isFirebaseAvailable, getDb, FieldValue } from './firebase';
-import { saveUserData, saveExpeditionRewards, createUser, craftItem, craftItemsBatch, promoteCreature, setActiveTeam } from './firestoreOperations';
+import { saveUserData, saveExpeditionRewards, createUser, craftItem, craftItemsBatch, promoteCreature, setActiveTeam, setSelectedMapId } from './firestoreOperations';
 import type { SaveExpeditionData, UserCreature } from './firebaseTypes';
 import { calculateMaxHp } from './creatureProgression';
 
@@ -558,6 +558,61 @@ app.post('/api/set-active-team', async (req: Request, res: Response) => {
     console.error('[HTTP] ❌ Erro ao atualizar equipe:', error);
     res.status(500).json({
       error: 'Erro ao atualizar equipe'
+    });
+  }
+});
+
+/**
+ * Atualiza o mapa selecionado do jogador
+ */
+app.post('/api/set-selected-map', async (req: Request, res: Response) => {
+  try {
+    const { userId, mapId } = req.body;
+
+    if (!userId || !mapId) {
+      return res.status(400).json({
+        error: 'userId e mapId são obrigatórios'
+      });
+    }
+
+    if (!isFirebaseAvailable()) {
+      return res.status(503).json({
+        error: 'Firebase não disponível'
+      });
+    }
+
+    console.log(`[HTTP] 🗺️  Atualizando mapa selecionado para usuário ${userId}: ${mapId}`);
+
+    const result = await setSelectedMapId(userId, mapId);
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error
+      });
+    }
+
+    // Buscar dados atualizados do Firebase para retornar ao cliente
+    const { getUser } = await import('./firestoreOperations');
+    const updatedUserData = await getUser(userId);
+
+    if (!updatedUserData) {
+      return res.status(500).json({
+        error: 'Erro ao recuperar dados atualizados'
+      });
+    }
+
+    console.log(`[HTTP] ✅ Mapa selecionado atualizado com sucesso para ${userId}`);
+
+    res.json({
+      success: true,
+      message: 'Mapa selecionado atualizado com sucesso',
+      userData: updatedUserData
+    });
+  } catch (error) {
+    console.error('[HTTP] ❌ Erro ao atualizar mapa selecionado:', error);
+    res.status(500).json({
+      error: 'Erro ao atualizar mapa selecionado'
     });
   }
 });
