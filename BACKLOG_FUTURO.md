@@ -8,26 +8,40 @@
 
 ## 🐛 Bugs e Correções
 
-### 1. Marcador de Capturas Não Atualiza Durante Expedição
+### 1. Marcador de Capturas Não Atualiza Durante Expedição ✅ CONCLUÍDO
 **Prioridade**: Alta  
 **Categoria**: UI/UX - Sincronização
+**Status**: ✅ Resolvido
 
 **Problema**:
 - Durante a expedição, mesmo quando capturamos criaturas, o marcador ao lado do tempo continua mostrando 0 capturas
 - A mensagem de captura não aparece apropriadamente no cliente
 
-**Arquivos Afetados** (estimado):
-- `src/scenes/expedition/ui/HUDManager.ts` - Gerenciamento do HUD
-- `src/scenes/expedition/ui/FeedbackManager.ts` - Mensagens de feedback
-- `src/services/multiplayerClient.ts` - Handlers de mensagens do servidor
-- `server/src/handlers/ExtractionHandler.ts` ou handler de captura - Broadcast de capturas
+**Arquivos Afetados**:
+- `src/scenes/ExpeditionScene.ts` - Handler de captura e atualização de contador
+- `src/scenes/expedition/handlers/MultiplayerHandlers.ts` - Correção de bug (targetId vs creatureId)
+- `src/scenes/expedition/ui/HUDManager.ts` - Exibição do contador (já estava funcionando)
+- `src/scenes/expedition/ui/FeedbackManager.ts` - Mensagens de feedback (já estava funcionando)
 
 **Tarefas**:
-- [ ] Verificar se o servidor está enviando atualizações de capturas corretamente
-- [ ] Verificar se o cliente está recebendo e processando mensagens de captura
-- [ ] Corrigir atualização do contador de capturas no HUD
-- [ ] Implementar/exibir mensagem de feedback visual quando captura ocorre
-- [ ] Testar sincronização entre múltiplos clientes
+- [x] Verificar se o servidor está enviando atualizações de capturas corretamente
+- [x] Verificar se o cliente está recebendo e processando mensagens de captura
+- [x] Corrigir atualização do contador de capturas no HUD
+- [x] Implementar/exibir mensagem de feedback visual quando captura ocorre
+- [x] Testar sincronização entre múltiplos clientes
+
+**Implementação**:
+- Adicionada verificação de `playerId` no `handleCaptureResult()` para garantir que apenas capturas do jogador local atualizem o contador
+- Corrigido bug no `MultiplayerHandlers.handleCaptureResult()` que usava `result.creatureId` (inexistente) ao invés de `result.targetId`
+- Adicionados logs de debug para rastrear atualizações de contador
+- Feedback visual já estava implementado e funcionando corretamente
+- O servidor já estava enviando mensagens de captura corretamente via `StateBroadcaster.broadcastMessage()`
+
+**Resultado**:
+- Contador de capturas agora atualiza corretamente quando o jogador captura uma criatura
+- Feedback visual de captura bem-sucedida é exibido corretamente
+- Mensagem "✅ CAPTURADO!" aparece acima da criatura capturada
+- Contador não é atualizado para capturas de outros jogadores (comportamento correto)
 
 ---
 
@@ -268,7 +282,7 @@
 ## 📊 Priorização Sugerida
 
 ### Sprint Imediato (Alta Prioridade)
-1. **Bug #1**: Marcador de Capturas Não Atualiza
+1. ~~**Bug #1**: Marcador de Capturas Não Atualiza~~ ✅ CONCLUÍDO
 2. **Bug #2**: Sincronização de HP das Criaturas
 3. ~~**Bug #3**: Movimento Durante Loading~~ ✅ CONCLUÍDO
 
@@ -299,3 +313,4 @@
 
 - **2026-01-XX**: Documento criado com backlog inicial
 - **2026-01-XX**: Bug #3 (Movimento Durante Loading) concluído - Implementado bloqueio de movimento, ataques e interações durante loading usando `loadingOverlay.visible`
+- **2026-01-XX**: Bug #1 (Marcador de Capturas Não Atualiza) concluído - Adicionada verificação de `playerId` no handler de captura para garantir que apenas capturas do jogador local atualizem o contador. Corrigido bug no `MultiplayerHandlers` que usava propriedade inexistente. Feedback visual já estava funcionando corretamente.

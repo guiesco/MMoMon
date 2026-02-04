@@ -189,14 +189,17 @@ export class MultiplayerHandlers {
 
   /**
    * Handler para resultado de captura.
+   * NOTA: Este método não é mais usado diretamente - o ExpeditionScene.handleCaptureResult()
+   * processa o resultado completo. Mantido apenas para compatibilidade.
    */
   handleCaptureResult(result: CaptureResult): void {
     if (result.success) {
       this.telemetry.creaturesCaptured += 1;
       this.telemetry.captureSuccesses += 1;
-      if (result.creatureId) {
-        this.worldState.removeCreature(result.creatureId);
-        this.spriteManager.destroyCreatureSprite(result.creatureId);
+      // ✅ BUG FIX: Usar targetId ao invés de creatureId (que não existe)
+      if (result.targetId) {
+        this.worldState.removeCreature(result.targetId);
+        this.spriteManager.destroyCreatureSprite(result.targetId);
       }
     } else {
       this.telemetry.captureFailures += 1;

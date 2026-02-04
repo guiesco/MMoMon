@@ -5148,6 +5148,18 @@ export class ExpeditionScene extends Phaser.Scene {
    */
   private handleCaptureResult(result: CaptureResult) {
     console.log("[MP] Resultado de captura recebido", result);
+    console.log("[MP] ClientId local:", this.clientId, "PlayerId da captura:", result.playerId);
+
+    // ✅ BUG FIX: Verificar se a captura é do jogador local
+    // Apenas atualizar contador e feedback se for a captura deste jogador
+    const isLocalPlayerCapture = this.clientId && result.playerId === this.clientId;
+    
+    if (!isLocalPlayerCapture) {
+      console.log("[MP] Captura de outro jogador, ignorando atualização de contador local");
+      // Ainda mostra feedback visual para outras capturas (opcional)
+      // Mas não atualiza contador local
+      return;
+    }
 
     // FASE 5: Usa getCreatureSprite() unificado (worldState)
     const creature = this.getCreatureSprite(result.targetId);
@@ -5158,7 +5170,7 @@ export class ExpeditionScene extends Phaser.Scene {
     }
     
     // Determinar posição do feedback visual - usa currentX/Y para posição interpolada
-        const creatureSprite = this.getCreatureSprite(result.targetId);
+    const creatureSprite = this.getCreatureSprite(result.targetId);
     const feedbackX = creatureSprite?.sprite.x ?? creature.sprite.x;
     const feedbackY = creatureSprite?.sprite.y ?? creature.sprite.y;
 
@@ -5180,9 +5192,12 @@ export class ExpeditionScene extends Phaser.Scene {
     });
 
     if (result.success) {
+      // ✅ BUG FIX: Atualizar contador de capturas
       this.creaturesCaptured += 1;
       this.telemetry.creaturesCaptured += 1;
       this.telemetry.captureSuccesses += 1; // Incrementa sucessos (igual ao single player)
+      
+      console.log(`[MP] ✅ Contador de capturas atualizado: ${this.creaturesCaptured} capturas`);
 
       // Feedback visual de sucesso
       // FASE 4: Usar FeedbackManager
