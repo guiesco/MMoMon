@@ -490,12 +490,22 @@ export function completeExtraction(
   // ✅ Calcular itens não usados do inventário de expedição (pokébolas que não foram consumidas)
   const unusedItems = new Map<string, number>();
   if (player.expeditionInventory?.pokeballs) {
+    console.log(`[Extraction] 🔍 DEBUG - Calculando itens não usados do inventário de expedição:`);
+    console.log(`[Extraction] 🔍 DEBUG - expeditionInventory.pokeballs size: ${player.expeditionInventory.pokeballs.size}`);
+    console.log(`[Extraction] 🔍 DEBUG - expeditionInventory.pokeballs entries:`, Array.from(player.expeditionInventory.pokeballs.entries()));
+    
     player.expeditionInventory.pokeballs.forEach((quantity: number, ballType: string) => {
       if (quantity > 0) {
         unusedItems.set(ballType, quantity);
-        console.log(`[Extraction] Retornando ${quantity}x ${ballType} não usada(s) ao inventário permanente`);
+        console.log(`[Extraction] ✅ Retornando ${quantity}x ${ballType} não usada(s) ao inventário permanente`);
+      } else {
+        console.log(`[Extraction] ⚠️  Ignorando ${ballType} com quantidade ${quantity} (não será retornada)`);
       }
     });
+    
+    console.log(`[Extraction] 🔍 DEBUG - unusedItems final:`, Array.from(unusedItems.entries()));
+  } else {
+    console.warn(`[Extraction] ⚠️  player.expeditionInventory?.pokeballs não existe ou está vazio`);
   }
 
   // ✅ Preparar recompensas usando APENAS dados do jogador específico

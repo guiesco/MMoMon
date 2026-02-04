@@ -356,11 +356,27 @@ export function createExpeditionInventory(
   // Se não foi fornecido, usa valores padrão (para compatibilidade com código antigo)
   const useDefaults = initialPokeballs === undefined;
   
+  const basicQty = useDefaults ? 5 : (initialPokeballs?.["poke-ball-basic"] ?? 0);
+  const precisaQty = useDefaults ? 2 : (initialPokeballs?.["poke-ball-precisa"] ?? 0);
+  const ultraQty = useDefaults ? 1 : (initialPokeballs?.["poke-ball-ultra"] ?? 0);
+  
+  // Log detalhado para debug
+  if (useDefaults) {
+    console.log(`[createExpeditionInventory] Usando valores padrão: 5 básicas, 2 precisas, 1 ultra`);
+  } else {
+    console.log(`[createExpeditionInventory] Criado inventário com valores fornecidos:`, {
+      basic: basicQty,
+      precisa: precisaQty,
+      ultra: ultraQty,
+      initialPokeballs: initialPokeballs
+    });
+  }
+  
   return {
     pokeballs: new Map([
-      ["poke-ball-basic", useDefaults ? 5 : (initialPokeballs?.["poke-ball-basic"] ?? 0)],
-      ["poke-ball-precisa", useDefaults ? 2 : (initialPokeballs?.["poke-ball-precisa"] ?? 0)],
-      ["poke-ball-ultra", useDefaults ? 1 : (initialPokeballs?.["poke-ball-ultra"] ?? 0)]
+      ["poke-ball-basic", basicQty],
+      ["poke-ball-precisa", precisaQty],
+      ["poke-ball-ultra", ultraQty]
     ]),
     capturedCreatures: []
   };

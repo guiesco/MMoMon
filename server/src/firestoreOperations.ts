@@ -297,18 +297,42 @@ export async function saveExpeditionRewards(
     // ========================================================================
     if (data.unusedItems && data.unusedItems.size > 0) {
       console.log(`[Firestore] 📦 Retornando ${data.unusedItems.size} tipos de itens não usados à mochila`);
+      console.log(`[Firestore] 🔍 DEBUG - unusedItems recebidos:`, Array.from(data.unusedItems.entries()));
+      console.log(`[Firestore] 🔍 DEBUG - backpackWithResources antes:`, backpackWithResources);
       
-      // IMPORTANTE: Usar backpackWithResources (mochila atualizada após mover recursos para o armazém)
-      // em vez de userData.preparedExpeditionInventory (mochila antiga do início da função)
-      // Isso evita duplicação de itens
+      // IMPORTANTE: Para pokébolas, precisamos REMOVER as pokébolas originais da mochila primeiro
+      // porque elas não são removidas quando a expedição começa, apenas copiadas para expeditionInventory
+      // Então vamos começar com a mochila atual, mas REMOVER todas as pokébolas antes de adicionar as não usadas
       const backpackUpdates: Record<string, number> = { ...backpackWithResources };
       
-      // Adicionar itens não usados de volta à mochila
-      for (const [itemId, quantity] of data.unusedItems.entries()) {
-        const currentQuantity = backpackUpdates[itemId] || 0;
-        backpackUpdates[itemId] = currentQuantity + quantity;
-        console.log(`[Firestore] 📦 Retornando ${quantity}x ${itemId} à mochila (total: ${backpackUpdates[itemId]})`);
+      // Primeiro, remover TODAS as pokébolas da mochila (elas foram copiadas para expeditionInventory)
+      const pokeballTypes = ['poke-ball-basic', 'poke-ball-precisa', 'poke-ball-ultra'];
+      for (const ballType of pokeballTypes) {
+        if (backpackUpdates[ballType] !== undefined) {
+          const removedQuantity = backpackUpdates[ballType];
+          delete backpackUpdates[ballType];
+          console.log(`[Firestore] 🗑️  Removendo ${removedQuantity}x ${ballType} da mochila (foram copiadas para expeditionInventory)`);
+        }
       }
+      
+      // Agora adicionar apenas as pokébolas não usadas (que representam o estado final correto)
+      for (const [itemId, quantity] of data.unusedItems.entries()) {
+        const isPokeball = itemId.startsWith('poke-ball-');
+        
+        if (isPokeball) {
+          // Para pokébolas: adicionar as não usadas (já removemos as originais acima)
+          // IMPORTANTE: Usar exatamente a quantidade recebida, não somar
+          backpackUpdates[itemId] = quantity;
+          console.log(`[Firestore] 📦 Adicionando ${quantity}x ${itemId} não usada(s) à mochila (valor exato do unusedItems)`);
+        } else {
+          // Para outros itens: adicionar (caso sejam itens adicionados durante a expedição)
+          const currentQuantity = backpackUpdates[itemId] || 0;
+          backpackUpdates[itemId] = currentQuantity + quantity;
+          console.log(`[Firestore] 📦 Retornando ${quantity}x ${itemId} à mochila (total: ${backpackUpdates[itemId]})`);
+        }
+      }
+      
+      console.log(`[Firestore] 🔍 DEBUG - backpackUpdates final:`, backpackUpdates);
       
       // Atualizar mochila no Firebase
       batch.update(userRef, {
@@ -316,6 +340,8 @@ export async function saveExpeditionRewards(
       });
       
       console.log(`[Firestore] ✅ Itens não usados retornados à mochila`);
+    } else {
+      console.log(`[Firestore] ℹ️  Nenhum item não usado para retornar (unusedItems está vazio ou não existe)`);
     }
 
     // ========================================================================
