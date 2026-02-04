@@ -186,14 +186,39 @@ export class HUDManager {
       dangerMessages.push("Você está sob fogo inimigo – recalcule sua rota.");
     }
 
-    // Resumo compacto de recursos desta expedição, por tipo
+    // Resumo compacto de recursos coletados durante a expedição (da mochila)
+    // Usar expeditionInventory se fornecido, senão usar expeditionResources como fallback
     const expeditionResourceSummary: string[] = [];
-    for (const [itemId, qty] of expeditionResources.entries()) {
+    const resourcesToShow = expeditionInventory || new Map<string, number>();
+    
+    for (const [itemId, qty] of resourcesToShow.entries()) {
+      // Pular pokébolas e outros itens que não são recursos
+      if (itemId.startsWith("poke-ball-")) continue;
+      if (itemId.startsWith("potion-")) continue;
       if (qty <= 0) continue;
-      const itemDef = getItemById(itemId);
-      if (!itemDef) continue;
-      expeditionResourceSummary.push(`${itemDef.name}: x${qty}`);
+      
+      // Verificar se é um recurso (começa com "resource-")
+      if (itemId.startsWith("resource-")) {
+        const itemDef = getItemById(itemId);
+        if (itemDef) {
+          expeditionResourceSummary.push(`${itemDef.name}: x${qty}`);
+        } else {
+          expeditionResourceSummary.push(`${itemId}: x${qty}`);
+        }
+      }
     }
+    
+    // Se não houver recursos na mochila, usar expeditionResources como fallback
+    if (expeditionResourceSummary.length === 0) {
+      for (const [itemId, qty] of expeditionResources.entries()) {
+        if (qty <= 0) continue;
+        const itemDef = getItemById(itemId);
+        if (itemDef) {
+          expeditionResourceSummary.push(`${itemDef.name}: x${qty}`);
+        }
+      }
+    }
+    
     const resourcesLine =
       expeditionResourceSummary.length > 0
         ? expeditionResourceSummary.join(" | ")

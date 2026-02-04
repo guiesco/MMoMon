@@ -249,8 +249,10 @@ export function processCaptureIntent(
   if (success) {
     // Gera instância da criatura capturada
     const instanceId = generateCreatureInstanceId();
-    const speciesId = selectRandomCreatureSpecies();
-    const level = Math.floor(Math.random() * 5) + 1; // Nível 1-5 para MVP
+    // ✅ BUG FIX: Usa a espécie da criatura que foi realmente capturada, não uma aleatória
+    const speciesId = creature.creatureType;
+    // ✅ BUG FIX: Usa o nível da criatura selvagem se disponível, senão gera aleatório
+    const level = creature.level ?? Math.floor(Math.random() * 5) + 1;
 
     const capturedCreature = {
       instanceId,

@@ -4899,13 +4899,24 @@ export class ExpeditionScene extends Phaser.Scene {
       dangerMessages.push("Você está sob fogo inimigo – recalcule sua rota.");
     }
 
-    // Resumo compacto de recursos desta expedição, por tipo
+    // Resumo compacto de recursos coletados durante a expedição (da mochila)
+    // Usar expeditionInventory que contém recursos coletados durante a expedição
     const expeditionResourceSummary: string[] = [];
-    for (const [itemId, qty] of this.expeditionResources.entries()) {
+    for (const [itemId, qty] of this.expeditionInventory.entries()) {
+      // Pular pokébolas e outros itens que não são recursos
+      if (itemId.startsWith("poke-ball-")) continue;
+      if (itemId.startsWith("potion-")) continue;
       if (qty <= 0) continue;
-      const itemDef = getItemById(itemId);
-      if (!itemDef) continue;
-      expeditionResourceSummary.push(`${itemDef.name}: x${qty}`);
+      
+      // Verificar se é um recurso (começa com "resource-")
+      if (itemId.startsWith("resource-")) {
+        const itemDef = getItemById(itemId);
+        if (itemDef) {
+          expeditionResourceSummary.push(`${itemDef.name}: x${qty}`);
+        } else {
+          expeditionResourceSummary.push(`${itemId}: x${qty}`);
+        }
+      }
     }
     const resourcesLine =
       expeditionResourceSummary.length > 0
@@ -5390,19 +5401,27 @@ export class ExpeditionScene extends Phaser.Scene {
     // Atualiza telemetria quando recursos são realmente coletados (confirmados pelo servidor)
     for (const resourceId of this.worldState.resources.keys()) {
       if (!seen.has(resourceId)) {
-        // Recurso foi coletado - atualizar telemetria
+        // Recurso foi coletado - atualizar telemetria e mochila
         const resource = this.worldState.getResource(resourceId);
         if (resource && resource.resourceType) {
           this.resourcesCollected += 1;
           this.telemetry.resourcesCollected += 1;
+          const quantity = resource.quantity ?? 1;
+          
+          // Adicionar ao contador de recursos coletados
           const current = this.expeditionResources.get(resource.resourceType) ?? 0;
-          this.expeditionResources.set(resource.resourceType, current + (resource.quantity ?? 1));
+          this.expeditionResources.set(resource.resourceType, current + quantity);
+          
+          // Adicionar à mochila (expeditionInventory) para aparecer na UI
+          const currentInBackpack = this.expeditionInventory.get(resource.resourceType) ?? 0;
+          this.expeditionInventory.set(resource.resourceType, currentInBackpack + quantity);
           
           console.log("[TELEMETRIA] Recurso coletado confirmado pelo servidor", {
             resourceId: resourceId.slice(0, 8),
             resourceType: resource.resourceType,
-            quantity: resource.quantity ?? 1,
+            quantity: quantity,
             total: this.telemetry.resourcesCollected,
+            inBackpack: currentInBackpack + quantity,
             time: Math.floor(this.expeditionTime)
           });
         }

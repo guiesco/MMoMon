@@ -229,25 +229,60 @@ export async function saveExpeditionRewards(
     }
     console.log(`[Firestore] ✅ Usuário ${data.userId} encontrado no Firestore`);
 
-    // ========================================================================
-    // 1. ATUALIZAR INVENTÁRIO (Recursos)
-    // ========================================================================
-    const inventoryUpdates: Record<string, any> = {};
-    
-    for (const [itemId, quantity] of data.rewards.resources.entries()) {
-      inventoryUpdates[`inventory.items.${itemId}`] = FieldValue.increment(quantity);
-    }
-
-    if (Object.keys(inventoryUpdates).length > 0) {
-      console.log(`[Firestore] 📦 Atualizando inventário: ${Object.keys(inventoryUpdates).length} tipos de recursos`);
-      batch.update(userRef, inventoryUpdates);
-    }
-
     // Buscar dados do usuário (necessário para várias operações)
     const userData = userDoc.data() as UserDocument;
 
     // ========================================================================
-    // 1.5. RETORNAR ITENS NÃO USADOS À MOCHILA (preparedExpeditionInventory)
+    // 1. ADICIONAR RECURSOS COLETADOS À MOCHILA (preparedExpeditionInventory)
+    // ========================================================================
+    // Primeiro, adicionar recursos coletados à mochila durante a expedição
+    const currentBackpack = userData.preparedExpeditionInventory || {};
+    const backpackWithResources: Record<string, number> = { ...currentBackpack };
+    
+    for (const [itemId, quantity] of data.rewards.resources.entries()) {
+      const currentQuantity = backpackWithResources[itemId] || 0;
+      backpackWithResources[itemId] = currentQuantity + quantity;
+      console.log(`[Firestore] 📦 Adicionando ${quantity}x ${itemId} à mochila (total: ${backpackWithResources[itemId]})`);
+    }
+    
+    // Atualizar mochila com recursos coletados
+    if (data.rewards.resources.size > 0) {
+      batch.update(userRef, {
+        preparedExpeditionInventory: backpackWithResources
+      });
+      console.log(`[Firestore] ✅ ${data.rewards.resources.size} tipos de recursos adicionados à mochila`);
+    }
+
+    // ========================================================================
+    // 1.5. MOVER RECURSOS DA MOCHILA PARA O ARMAZÉM (inventory.items)
+    // ========================================================================
+    // Agora mover os recursos da mochila para o armazém permanente
+    const inventoryUpdates: Record<string, any> = {};
+    
+    for (const [itemId, quantity] of data.rewards.resources.entries()) {
+      inventoryUpdates[`inventory.items.${itemId}`] = FieldValue.increment(quantity);
+      // Remover recursos da mochila (já foram movidos para o armazém)
+      backpackWithResources[itemId] = (backpackWithResources[itemId] || 0) - quantity;
+      if (backpackWithResources[itemId] <= 0) {
+        delete backpackWithResources[itemId];
+      }
+    }
+
+    if (Object.keys(inventoryUpdates).length > 0) {
+      console.log(`[Firestore] 📦 Movendo ${Object.keys(inventoryUpdates).length} tipos de recursos da mochila para o armazém`);
+      batch.update(userRef, inventoryUpdates);
+    }
+    
+    // Atualizar mochila removendo recursos que foram movidos para o armazém
+    if (data.rewards.resources.size > 0) {
+      batch.update(userRef, {
+        preparedExpeditionInventory: backpackWithResources
+      });
+      console.log(`[Firestore] ✅ Recursos movidos da mochila para o armazém`);
+    }
+
+    // ========================================================================
+    // 1.6. RETORNAR ITENS NÃO USADOS À MOCHILA (preparedExpeditionInventory)
     // ========================================================================
     if (data.unusedItems && data.unusedItems.size > 0) {
       console.log(`[Firestore] 📦 Retornando ${data.unusedItems.size} tipos de itens não usados à mochila`);
