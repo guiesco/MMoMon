@@ -45,29 +45,51 @@
 
 ---
 
-### 2. Sincronização de HP das Criaturas
+### 2. Sincronização de HP das Criaturas ✅ CONCLUÍDO
 **Prioridade**: Alta  
-**Categoria**: Sincronização Server-Client
+**Categoria**: Sincronização Server-Client  
+**Status**: ✅ Resolvido
 
 **Problema**:
 - Criaturas não estão refletindo no cliente o `currentHp` que tem no Firebase
 - O HP exibido no cliente difere do HP no servidor, causando inconsistências
 
-**Arquivos Afetados** (estimado):
-- `src/scenes/ExpeditionScene.ts` - Renderização de criaturas
-- `src/scenes/expedition/managers/SpriteManager.ts` - Gerenciamento de sprites
-- `src/game/hpBars.ts` - Barras de HP
-- `server/src/systems/combat.ts` - Sistema de combate e atualização de HP
-- `server/src/broadcast/StateBroadcaster.ts` - Broadcast de estado das criaturas
-- `src/services/multiplayerClient.ts` - Processamento de updates do servidor
+**Arquivos Afetados**:
+- `src/scenes/ExpeditionScene.ts` - Handler de atualização de criaturas e sincronização de HP
+- `src/scenes/expedition/managers/SpriteManager.ts` - Atualização de barras de HP e posicionamento
+- `src/game/hpBars.ts` - Barras de HP (já estava funcionando)
+- `server/src/systems/combat.ts` - Sistema de combate e atualização de HP (já estava funcionando)
+- `server/src/broadcast/StateBroadcaster.ts` - Broadcast de estado das criaturas (já estava funcionando)
+- `src/services/multiplayerClient.ts` - Processamento de updates do servidor (já estava funcionando)
 
 **Tarefas**:
-- [ ] Verificar se o servidor está enviando `currentHp` nas atualizações de estado
-- [ ] Verificar se o cliente está aplicando `currentHp` recebido do servidor
-- [ ] Garantir que barras de HP refletem o valor correto do servidor
-- [ ] Implementar sincronização periódica de HP (se necessário)
-- [ ] Adicionar logs de debug para rastrear discrepâncias
-- [ ] Testar em diferentes cenários (combate, regeneração, etc)
+- [x] Verificar se o servidor está enviando `currentHp` nas atualizações de estado
+- [x] Verificar se o cliente está aplicando `currentHp` recebido do servidor
+- [x] Garantir que barras de HP refletem o valor correto do servidor
+- [x] Implementar sincronização periódica de HP (já estava implementado via creaturesUpdate)
+- [x] Adicionar logs de debug para rastrear discrepâncias
+- [x] Testar em diferentes cenários (combate, regeneração, etc)
+
+**Implementação**:
+- Corrigido método `updateCreatureSprite()` no `SpriteManager.ts`:
+  - Agora atualiza a barra de HP usando `setSize()` ao invés de apenas `setScale()` para maior precisão
+  - Atualiza posição da barra de HP corretamente quando a criatura se move
+  - Adiciona logs de debug quando HP muda (10% dos updates para não poluir console)
+- Corrigido método `updateCreatureSpritePosition()`:
+  - Garante que a barra de HP é posicionada corretamente quando a criatura se move
+  - Mantém o tamanho correto da barra baseado no HP atual
+- Corrigido método `createCreatureSprite()`:
+  - Cria barra de HP com tamanho correto desde o início baseado no HP inicial
+  - Usa `setOrigin()` correto para alinhamento adequado
+- Adicionado logs de debug no `handleCreaturesUpdate()`:
+  - Log quando HP muda do servidor (10% dos updates)
+  - Compara HP anterior com novo HP para rastrear mudanças
+
+**Resultado**:
+- Barras de HP agora refletem corretamente o `currentHp` do servidor
+- Sincronização de HP funciona corretamente em todos os cenários (combate, regeneração, etc)
+- Logs de debug ajudam a rastrear discrepâncias quando necessário
+- Posicionamento da barra de HP é atualizado corretamente quando criatura se move
 
 ---
 
@@ -283,7 +305,7 @@
 
 ### Sprint Imediato (Alta Prioridade)
 1. ~~**Bug #1**: Marcador de Capturas Não Atualiza~~ ✅ CONCLUÍDO
-2. **Bug #2**: Sincronização de HP das Criaturas
+2. ~~**Bug #2**: Sincronização de HP das Criaturas~~ ✅ CONCLUÍDO
 3. ~~**Bug #3**: Movimento Durante Loading~~ ✅ CONCLUÍDO
 
 ### Próximas Sprints (Média Prioridade)
@@ -314,3 +336,4 @@
 - **2026-01-XX**: Documento criado com backlog inicial
 - **2026-01-XX**: Bug #3 (Movimento Durante Loading) concluído - Implementado bloqueio de movimento, ataques e interações durante loading usando `loadingOverlay.visible`
 - **2026-01-XX**: Bug #1 (Marcador de Capturas Não Atualiza) concluído - Adicionada verificação de `playerId` no handler de captura para garantir que apenas capturas do jogador local atualizem o contador. Corrigido bug no `MultiplayerHandlers` que usava propriedade inexistente. Feedback visual já estava funcionando corretamente.
+- **2026-01-XX**: Bug #2 (Sincronização de HP das Criaturas) concluído - Corrigido método `updateCreatureSprite()` para atualizar barras de HP usando `setSize()` ao invés de apenas `setScale()`. Corrigido posicionamento da barra de HP quando criatura se move. Adicionados logs de debug para rastrear mudanças de HP. Barras de HP agora refletem corretamente o `currentHp` do servidor em todos os cenários.

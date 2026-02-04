@@ -5390,6 +5390,10 @@ export class ExpeditionScene extends Phaser.Scene {
       
       // Se criatura já existe no worldState, apenas atualiza
       if (existingCreature) {
+        // ✅ BUG #2 FIX: Verifica se HP mudou antes de atualizar (para logs de debug)
+        const hpChanged = existingCreature.currentHp !== remoteCreature.currentHp || 
+                         existingCreature.maxHp !== remoteCreature.maxHp;
+        
         this.worldState.updateCreature(remoteCreature.id, {
           x: remoteCreature.x,
           y: remoteCreature.y,
@@ -5399,7 +5403,16 @@ export class ExpeditionScene extends Phaser.Scene {
           behaviorType: (remoteCreature.behaviorType as any) ?? existingCreature.behaviorType
         });
         
-        // Atualiza sprite (define targetX/targetY para interpolação)
+        // ✅ BUG #2 FIX: Log de debug quando HP muda (apenas a cada 10 updates)
+        if (hpChanged && Math.random() < 0.1) {
+          console.log(
+            `[ExpeditionScene] HP sincronizado do servidor: ${remoteCreature.id.slice(0, 8)}... ` +
+            `HP: ${remoteCreature.currentHp}/${remoteCreature.maxHp} ` +
+            `(antes: ${existingCreature.currentHp}/${existingCreature.maxHp})`
+          );
+        }
+        
+        // Atualiza sprite (define targetX/targetY para interpolação e HP)
         this.updateCreatureSprite(remoteCreature.id);
       } else {
         // Cria nova criatura no worldState
