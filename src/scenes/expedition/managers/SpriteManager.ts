@@ -59,14 +59,30 @@ export class SpriteManager {
     const sprite = this.scene.add.circle(creature.x, creature.y, 12, creatureColor, 1);
     sprite.setDepth(2);
 
-    // Cria barra de HP
-    const hpBarBg = this.scene.add.rectangle(creature.x, creature.y - 20, 40, 4, 0x000000, 0.6);
+    // ✅ BUG #2 FIX: Cria barra de HP com tamanho correto baseado no HP inicial
+    const hpPercent = creature.maxHp > 0 ? Math.max(0, creature.currentHp / creature.maxHp) : 0;
+    const barWidth = 40;
+    const fillWidth = barWidth * hpPercent;
+    
+    // Barra de fundo (sempre largura total)
+    const hpBarBg = this.scene.add.rectangle(creature.x, creature.y - 20, barWidth, 4, 0x000000, 0.6);
+    hpBarBg.setOrigin(0.5, 0.5);
     hpBarBg.setDepth(3);
     
-    const hpBar = this.scene.add.rectangle(creature.x, creature.y - 20, 40, 4, 0x00ff00, 1);
+    // Barra de HP (largura baseada no HP atual)
+    const hpBar = this.scene.add.rectangle(
+      creature.x - barWidth / 2 + fillWidth / 2, 
+      creature.y - 20, 
+      fillWidth, 
+      4, 
+      0x00ff00, 
+      1
+    );
+    hpBar.setOrigin(0, 0.5);
     hpBar.setDepth(3);
     
-    const hpBarText = this.scene.add.text(creature.x, creature.y - 24, `${creature.currentHp}/${creature.maxHp}`, {
+    // Texto do HP
+    const hpBarText = this.scene.add.text(creature.x, creature.y - 24, `${Math.floor(creature.currentHp)}/${creature.maxHp}`, {
       fontSize: "10px",
       color: "#ffffff"
     });
@@ -228,6 +244,9 @@ export class SpriteManager {
     sprite.targetX = state.x;
     sprite.targetY = state.y;
     
+    // ✅ BUG #2 FIX: Verifica se HP mudou antes de atualizar
+    const hpChanged = sprite.currentHp !== state.currentHp || sprite.maxHp !== state.maxHp;
+    
     // Atualiza HP
     sprite.currentHp = state.currentHp;
     sprite.maxHp = state.maxHp;
@@ -238,10 +257,15 @@ export class SpriteManager {
     sprite.stunTimer = state.stunTimer;
     sprite.aiState = state.aiState;
     
-    // Atualiza barra de HP visual
-    const hpPercent = state.currentHp / state.maxHp;
-    sprite.hpBar.setScale(hpPercent, 1);
-    sprite.hpBarText.setText(`${state.currentHp}/${state.maxHp}`);
+    // ✅ BUG #2 FIX: Sempre atualiza barra de HP visual (garante sincronização)
+    const hpPercent = state.maxHp > 0 ? Math.max(0, state.currentHp / state.maxHp) : 0;
+    const barWidth = 40;
+    const fillWidth = barWidth * hpPercent;
+    
+    // Atualiza largura da barra (não apenas scale, para garantir precisão)
+    sprite.hpBar.setSize(fillWidth, 4);
+    sprite.hpBar.setPosition(sprite.currentX - barWidth / 2 + fillWidth / 2, sprite.currentY - 20);
+    sprite.hpBarText.setText(`${Math.floor(state.currentHp)}/${state.maxHp}`);
     
     // Atualiza cor da barra baseada no HP
     if (hpPercent > 0.6) {
@@ -250,6 +274,14 @@ export class SpriteManager {
       sprite.hpBar.setFillStyle(0xffff00, 1);
     } else {
       sprite.hpBar.setFillStyle(0xff0000, 1);
+    }
+    
+    // ✅ BUG #2 FIX: Log de debug quando HP muda (apenas a cada 10 updates para não poluir)
+    if (hpChanged && Math.random() < 0.1) {
+      console.log(
+        `[SpriteManager] HP atualizado: ${creatureId.slice(0, 8)}... ` +
+        `HP: ${sprite.currentHp}/${sprite.maxHp} (${(hpPercent * 100).toFixed(1)}%)`
+      );
     }
   }
 
@@ -483,9 +515,19 @@ export class SpriteManager {
 
   private updateCreatureSpritePosition(sprite: RemoteCreatureSprite): void {
     sprite.sprite.setPosition(sprite.currentX, sprite.currentY);
-    sprite.hpBar.setPosition(sprite.currentX, sprite.currentY - 20);
+    
+    // ✅ BUG #2 FIX: Atualiza posição da barra de HP mantendo o tamanho correto
+    const hpPercent = sprite.maxHp > 0 ? Math.max(0, sprite.currentHp / sprite.maxHp) : 0;
+    const barWidth = 40;
+    const fillWidth = barWidth * hpPercent;
+    
+    // Atualiza posição da barra de fundo e texto (centro)
     sprite.hpBarBg.setPosition(sprite.currentX, sprite.currentY - 20);
     sprite.hpBarText.setPosition(sprite.currentX, sprite.currentY - 24);
+    
+    // Atualiza posição da barra de HP (alinhada à esquerda do fundo)
+    sprite.hpBar.setPosition(sprite.currentX - barWidth / 2 + fillWidth / 2, sprite.currentY - 20);
+    
     sprite.aggroIndicator?.setPosition(sprite.currentX, sprite.currentY);
     sprite.attackTellIndicator?.setPosition(sprite.currentX, sprite.currentY);
   }
