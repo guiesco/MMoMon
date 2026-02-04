@@ -33,10 +33,35 @@ export class CreatureUpgradeScene extends Phaser.Scene {
     super("CreatureUpgradeScene");
   }
 
+  /**
+   * Ordena a lista de criaturas: primeiro por ordem alfabética, depois por rank (maior para menor)
+   */
+  private sortCreatureList() {
+    this.creatureList.sort((a, b) => {
+      const defA = getCreatureById(a.definitionId);
+      const defB = getCreatureById(b.definitionId);
+      if (!defA || !defB) return 0;
+
+      const nameA = (a.nickname ?? defA.name).toLowerCase();
+      const nameB = (b.nickname ?? defB.name).toLowerCase();
+
+      // Primeiro critério: ordem alfabética
+      if (nameA !== nameB) {
+        return nameA.localeCompare(nameB);
+      }
+
+      // Segundo critério: rank do maior para o menor
+      const rankA = a.rank ?? 1;
+      const rankB = b.rank ?? 1;
+      return rankB - rankA;
+    });
+  }
+
   create() {
     const { width, height } = this.scale;
     const progress = PlayerState.getProgress();
     this.creatureList = [...progress.creatures];
+    this.sortCreatureList();
     this.selectedIndex = 0;
     this.listTexts = [];
 
@@ -110,6 +135,7 @@ export class CreatureUpgradeScene extends Phaser.Scene {
 
     const progress = PlayerState.getProgress();
     this.creatureList = [...progress.creatures];
+    this.sortCreatureList();
 
     const startY = 130;
     const lineHeight = 26;
@@ -472,6 +498,8 @@ export class CreatureUpgradeScene extends Phaser.Scene {
     // Atualiza a UI com dados do servidor
     const progress = PlayerState.getProgress();
     this.creatureList = [...progress.creatures];
+    this.sortCreatureList();
+    
     if (this.selectedIndex >= this.creatureList.length) {
       this.selectedIndex = Math.max(0, this.creatureList.length - 1);
     }

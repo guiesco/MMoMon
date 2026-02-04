@@ -17,8 +17,9 @@ import {
 import { createExtractionStateMessage } from "../messages";
 import { StateBroadcaster } from "../broadcast/StateBroadcaster";
 import { isFirebaseAvailable } from "../firebase";
-import { saveExpeditionRewards } from "../firestoreOperations";
+import { saveExpeditionRewards, getUser } from "../firestoreOperations";
 import type { SaveExpeditionData } from "../firebaseTypes";
+import { calculateExpeditionXp, type ExpeditionXpParams } from "../creatureProgression";
 
 /**
  * Processa o sistema de extração para uma sala.
@@ -154,6 +155,33 @@ async function handleExtractionCompleted(
         return;
       }
 
+      // Buscar dados do usuário para obter equipe ativa e calcular XP
+      const userData = await getUser(userId);
+      if (!userData) {
+        console.error(`[ExtractionHandler] ❌ Não foi possível buscar dados do usuário ${userId} para calcular XP`);
+        return;
+      }
+
+      const activeTeamIds = userData.activeTeam?.creatureIds || [];
+      const activeCreatureId = player.activeCreatureId || null;
+      const durationSeconds = (Date.now() - room.startedAt) / 1000;
+      const resourcesCollected = Array.from(reward.resources.values()).reduce((a, b) => a + b, 0);
+
+      // Calcular XP para cada criatura da equipe
+      const xpParams: ExpeditionXpParams = {
+        durationSeconds,
+        extractionSuccess: true, // Extração bem-sucedida
+        creaturesDefeated: 0, // TODO: Rastrear criaturas derrotadas
+        resourcesCollected,
+        teamCreatureIds: activeTeamIds,
+        activeCreatureId,
+        // Se não houver tempo ativo por criatura, será dividido igualmente na função
+        activeTimeByCreature: undefined
+      };
+
+      const xpByCreature = calculateExpeditionXp(xpParams);
+      console.log(`[ExtractionHandler] ⭐ XP calculado para ${xpByCreature.size} criaturas da equipe`);
+
       // Converter criaturas capturadas para formato do Firestore
       // Curar todas as criaturas ao máximo de vida após extração
       const capturedCreaturesForFirestore = reward.capturedCreatures.map(creature => ({
@@ -176,9 +204,10 @@ async function handleExtractionCompleted(
         stats: {
           damageDealt: 0, // TODO: Rastrear dano causado
           damageTaken: 0, // TODO: Rastrear dano recebido
-          resourcesCollected: Array.from(reward.resources.values()).reduce((a, b) => a + b, 0),
+          resourcesCollected,
           creaturesCaptured: reward.creaturesCaptured // ✅ Contador individual
-        }
+        },
+        xpByCreature // ✅ XP calculado para cada criatura da equipe
       };
 
       saved = await saveExpeditionRewards(expeditionData);

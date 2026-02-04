@@ -59,35 +59,26 @@ export class SpriteManager {
     const sprite = this.scene.add.circle(creature.x, creature.y, 12, creatureColor, 1);
     sprite.setDepth(2);
 
-    // ✅ BUG #2 FIX: Cria barra de HP com tamanho correto baseado no HP inicial
-    const hpPercent = creature.maxHp > 0 ? Math.max(0, creature.currentHp / creature.maxHp) : 0;
-    const barWidth = 40;
-    const fillWidth = barWidth * hpPercent;
-    
-    // Barra de fundo (sempre largura total)
-    const hpBarBg = this.scene.add.rectangle(creature.x, creature.y - 20, barWidth, 4, 0x000000, 0.6);
+    // ✅ BUG FIX: HPBarManager gerencia barras de HP de inimigos
+    // Criamos barras de HP vazias/invisíveis aqui apenas para manter a interface
+    // O HPBarManager criará e gerenciará as barras de HP reais
+    const hpBarBg = this.scene.add.rectangle(creature.x, creature.y - 20, 40, 4, 0x000000, 0);
     hpBarBg.setOrigin(0.5, 0.5);
     hpBarBg.setDepth(3);
+    hpBarBg.setVisible(false); // Oculto - HPBarManager gerencia a barra real
     
-    // Barra de HP (largura baseada no HP atual)
-    const hpBar = this.scene.add.rectangle(
-      creature.x - barWidth / 2 + fillWidth / 2, 
-      creature.y - 20, 
-      fillWidth, 
-      4, 
-      0x00ff00, 
-      1
-    );
+    const hpBar = this.scene.add.rectangle(creature.x, creature.y - 20, 40, 4, 0x00ff00, 0);
     hpBar.setOrigin(0, 0.5);
     hpBar.setDepth(3);
+    hpBar.setVisible(false); // Oculto - HPBarManager gerencia a barra real
     
-    // Texto do HP
-    const hpBarText = this.scene.add.text(creature.x, creature.y - 24, `${Math.floor(creature.currentHp)}/${creature.maxHp}`, {
+    const hpBarText = this.scene.add.text(creature.x, creature.y - 24, "", {
       fontSize: "10px",
       color: "#ffffff"
     });
     hpBarText.setOrigin(0.5, 1);
     hpBarText.setDepth(3);
+    hpBarText.setVisible(false); // Oculto - HPBarManager gerencia a barra real
 
     // Cria indicador de aggro (inicialmente invisível)
     const aggroIndicator = this.scene.add.circle(creature.x, creature.y, 20, 0xff0000, 0);
@@ -257,27 +248,13 @@ export class SpriteManager {
     sprite.stunTimer = state.stunTimer;
     sprite.aiState = state.aiState;
     
-    // ✅ BUG #2 FIX: Sempre atualiza barra de HP visual (garante sincronização)
-    const hpPercent = state.maxHp > 0 ? Math.max(0, state.currentHp / state.maxHp) : 0;
-    const barWidth = 40;
-    const fillWidth = barWidth * hpPercent;
-    
-    // Atualiza largura da barra (não apenas scale, para garantir precisão)
-    sprite.hpBar.setSize(fillWidth, 4);
-    sprite.hpBar.setPosition(sprite.currentX - barWidth / 2 + fillWidth / 2, sprite.currentY - 20);
-    sprite.hpBarText.setText(`${Math.floor(state.currentHp)}/${state.maxHp}`);
-    
-    // Atualiza cor da barra baseada no HP
-    if (hpPercent > 0.6) {
-      sprite.hpBar.setFillStyle(0x00ff00, 1);
-    } else if (hpPercent > 0.3) {
-      sprite.hpBar.setFillStyle(0xffff00, 1);
-    } else {
-      sprite.hpBar.setFillStyle(0xff0000, 1);
-    }
+    // ✅ BUG FIX: HPBarManager gerencia barras de HP de inimigos
+    // Não atualizamos as barras aqui - elas são invisíveis
+    // O HPBarManager atualiza as barras reais via updateEnemyBars()
     
     // ✅ BUG #2 FIX: Log de debug quando HP muda (apenas a cada 10 updates para não poluir)
     if (hpChanged && Math.random() < 0.1) {
+      const hpPercent = state.maxHp > 0 ? Math.max(0, state.currentHp / state.maxHp) : 0;
       console.log(
         `[SpriteManager] HP atualizado: ${creatureId.slice(0, 8)}... ` +
         `HP: ${sprite.currentHp}/${sprite.maxHp} (${(hpPercent * 100).toFixed(1)}%)`
@@ -516,17 +493,9 @@ export class SpriteManager {
   private updateCreatureSpritePosition(sprite: RemoteCreatureSprite): void {
     sprite.sprite.setPosition(sprite.currentX, sprite.currentY);
     
-    // ✅ BUG #2 FIX: Atualiza posição da barra de HP mantendo o tamanho correto
-    const hpPercent = sprite.maxHp > 0 ? Math.max(0, sprite.currentHp / sprite.maxHp) : 0;
-    const barWidth = 40;
-    const fillWidth = barWidth * hpPercent;
-    
-    // Atualiza posição da barra de fundo e texto (centro)
-    sprite.hpBarBg.setPosition(sprite.currentX, sprite.currentY - 20);
-    sprite.hpBarText.setPosition(sprite.currentX, sprite.currentY - 24);
-    
-    // Atualiza posição da barra de HP (alinhada à esquerda do fundo)
-    sprite.hpBar.setPosition(sprite.currentX - barWidth / 2 + fillWidth / 2, sprite.currentY - 20);
+    // ✅ BUG FIX: Barras de HP de inimigos são gerenciadas pelo HPBarManager
+    // Não precisamos atualizar posição das barras aqui (elas estão invisíveis)
+    // O HPBarManager atualiza as barras reais via updateEnemyBars()
     
     sprite.aggroIndicator?.setPosition(sprite.currentX, sprite.currentY);
     sprite.attackTellIndicator?.setPosition(sprite.currentX, sprite.currentY);

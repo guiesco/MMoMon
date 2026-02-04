@@ -30,6 +30,7 @@ import { StateBroadcaster } from "../broadcast/StateBroadcaster";
 import { DEBUG_GAME_LOOP } from "../constants";
 import { isFirebaseAvailable, getDb, FieldValue } from "../firebase";
 import type { ExpeditionDocument } from "../firebaseTypes";
+import { saveExpeditionTimeout } from "../firestoreOperations";
 
 /**
  * Cria e configura o game loop para uma sala.
@@ -68,7 +69,10 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
 
       // Se partida finalizou, marcar para cleanup
       if (newState === "finished") {
-        handleMatchFinished(room);
+        // Não bloquear o callback, processar em background
+        handleMatchFinished(room).catch(error => {
+          console.error(`[Room:${room.id}] Erro ao processar fim de partida:`, error);
+        });
       }
     },
 
@@ -192,15 +196,45 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
 /**
  * Handler para quando uma partida termina.
  */
-function handleMatchFinished(room: Room): void {
+async function handleMatchFinished(room: Room): Promise<void> {
   if (DEBUG_GAME_LOOP) {
     console.log(`[Room:${room.id}] Partida finalizada. Jogadores: ${room.players.size}`);
   }
 
-  // Nota: A persistência de recompensas é feita individualmente quando cada jogador completa a extração
-  // (ver handleExtractionCompleted em ExtractionHandler.ts). Quando a partida termina por tempo esgotado,
-  // apenas os jogadores que extraíram antes do fim têm recompensas para persistir.
-  // Os jogadores que não extraíram perdem tudo (mecânica do jogo).
+  // Processar todos os jogadores que não extraíram quando o tempo esgota
+  // Isso garante que recursos coletados sejam salvos e criaturas sejam curadas
+  const duration = Date.now() - room.startedAt;
+  const startedAt = new Date(room.startedAt);
+  
+  for (const [playerId, player] of room.players.entries()) {
+    // Se o jogador já extraiu, os dados já foram salvos em handleExtractionCompleted
+    if (player.extractedAt !== null) {
+      continue;
+    }
+    
+    // Se o jogador tem userId, salvar dados mesmo em falha (recursos e cura de HP)
+    if (player.userId && isFirebaseAvailable()) {
+      try {
+        const resourcesCollected = player.resourcesCollected || new Map<string, number>();
+        const creaturesCaptured = player.creaturesCaptured || 0;
+        
+        console.log(`[Room:${room.id}] Salvando dados de expedição por tempo esgotado para jogador ${playerId} (userId: ${player.userId})`);
+        console.log(`[Room:${room.id}] Recursos coletados: ${Array.from(resourcesCollected.entries()).map(([id, qty]) => `${id}:${qty}`).join(', ') || 'nenhum'}`);
+        console.log(`[Room:${room.id}] Criaturas capturadas: ${creaturesCaptured}`);
+        
+        await saveExpeditionTimeout(
+          player.userId,
+          room.id,
+          startedAt,
+          duration,
+          resourcesCollected,
+          creaturesCaptured
+        );
+      } catch (error) {
+        console.error(`[Room:${room.id}] Erro ao salvar dados de expedição por tempo esgotado para jogador ${playerId}:`, error);
+      }
+    }
+  }
   
   // O broadcast do evento "finished" já notifica os clientes sobre o fim da partida
   // (feito em onMatchStateChange acima). Os clientes têm tempo para processar antes
@@ -746,11 +780,28 @@ async function handlePlayerDeath(room: Room, playerId: string): Promise<void> {
     const userRef = db.collection('users').doc(player.userId);
     const batch = db.batch();
 
-    // Decrementar itens do inventário no Firebase
+    // Decrementar itens da MOCHILA (preparedExpeditionInventory) no Firebase
+    // IMPORTANTE: Itens consumidos durante a expedição vêm da mochila, não do armazém
+    // Buscar mochila atual uma única vez antes do loop
+    const userDoc = await userRef.get();
+    const currentBackpack = userDoc.data()?.preparedExpeditionInventory || {};
+    
     for (const [itemId, quantity] of itemsConsumed.entries()) {
-      batch.update(userRef, {
-        [`inventory.items.${itemId}`]: FieldValue.increment(-quantity)
-      });
+      const currentQuantity = currentBackpack[itemId] || 0;
+      const newQuantity = Math.max(0, currentQuantity - quantity);
+      
+      if (newQuantity > 0) {
+        batch.update(userRef, {
+          [`preparedExpeditionInventory.${itemId}`]: newQuantity
+        });
+      } else {
+        // Remover item da mochila se quantidade chegar a zero
+        batch.update(userRef, {
+          [`preparedExpeditionInventory.${itemId}`]: FieldValue.delete()
+        });
+      }
+      
+      console.log(`[GameLoopManager] 📦 Decrementando ${quantity}x ${itemId} da mochila (de ${currentQuantity} para ${newQuantity})`);
     }
 
     // Salvar expedição como falha

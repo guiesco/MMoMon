@@ -17,6 +17,7 @@ import {
   SaveExpeditionData,
   CreateUserData
 } from './firebaseTypes';
+import { calculateMaxHp, getEffectiveStats, getXpRequiredForLevel } from './creatureProgression';
 
 // ============================================================================
 // USER OPERATIONS
@@ -48,17 +49,22 @@ export async function createUser(
 
   // Criar criatura inicial (starter) - Pyrognat nível 5
   const starterInstanceId = `starter-pyrognat-${Date.now()}`;
-  const starterCreature: UserCreature = {
+  const starterCreatureData: Omit<UserCreature, 'maxHp' | 'currentHp'> = {
     instanceId: starterInstanceId,
     definitionId: 'pyrognat',
     level: 5,
-    currentHp: 80, // HP base do Pyrognat
-    maxHp: 80,
     experience: 0,
     rank: 1,
     copiesFused: 0,
     totalExpeditionXp: 0,
     capturedAt: now
+  };
+  // Calcular maxHP usando a função de progressão
+  const starterMaxHp = calculateMaxHp(starterCreatureData as UserCreature);
+  const starterCreature: UserCreature = {
+    ...starterCreatureData,
+    currentHp: starterMaxHp,
+    maxHp: starterMaxHp
   };
 
   const newUser: UserDocument = {
@@ -232,17 +238,22 @@ export async function saveExpeditionRewards(
       const instanceId = `creature-${timestamp}-${creatureIndex}-${random}`;
       creatureIndex++;
       
-      const creature: UserCreature = {
+      // Calcular maxHP correto baseado em nível e rank
+      const creatureData: Omit<UserCreature, 'maxHp' | 'currentHp'> = {
         instanceId,
         definitionId: capturedCreature.definitionId,
         level: capturedCreature.level,
-        currentHp: capturedCreature.currentHp,
-        maxHp: capturedCreature.maxHp,
         experience: 0,
         rank: 1,
         copiesFused: 0,
         totalExpeditionXp: 0,
         capturedAt: new Date()
+      };
+      const calculatedMaxHp = calculateMaxHp(creatureData as UserCreature);
+      const creature: UserCreature = {
+        ...creatureData,
+        currentHp: calculatedMaxHp,
+        maxHp: calculatedMaxHp // Usar maxHP calculado, não o que veio do servidor
       };
 
       newCreatures[instanceId] = creature;
@@ -272,17 +283,25 @@ export async function saveExpeditionRewards(
       
       // Copiar todas as criaturas existentes
       for (const [creatureId, creature] of Object.entries(existingCreatures)) {
+        // Recalcular maxHP para garantir que está correto (pode ter mudado de nível/rank)
+        const recalculatedMaxHp = calculateMaxHp(creature);
+        
         // Se a criatura está na equipe ativa, curar ao máximo
         if (activeTeamIds.includes(creatureId)) {
           healedCreatures[creatureId] = {
             ...creature,
-            currentHp: creature.maxHp // Curar ao máximo
+            maxHp: recalculatedMaxHp, // Usar maxHP recalculado
+            currentHp: recalculatedMaxHp // Curar ao máximo
           };
           healedCount++;
-          console.log(`[Firestore] 💚 Criatura da equipe curada: ${creatureId.slice(0, 8)}... (${creature.currentHp}/${creature.maxHp} → ${creature.maxHp}/${creature.maxHp})`);
+          console.log(`[Firestore] 💚 Criatura da equipe curada: ${creatureId.slice(0, 8)}... (${creature.currentHp}/${creature.maxHp} → ${recalculatedMaxHp}/${recalculatedMaxHp})`);
         } else {
-          // Criatura não está na equipe, manter como está
-          healedCreatures[creatureId] = { ...creature };
+          // Criatura não está na equipe, atualizar maxHP mas manter currentHp
+          healedCreatures[creatureId] = {
+            ...creature,
+            maxHp: recalculatedMaxHp,
+            currentHp: recalculatedMaxHp // Garantir que currentHp não exceda maxHp
+          };
         }
       }
       
@@ -323,7 +342,91 @@ export async function saveExpeditionRewards(
     batch.update(userRef, statsUpdates);
 
     // ========================================================================
-    // 4. SALVAR HISTÓRICO DE EXPEDIÇÃO
+    // 4. APLICAR XP ÀS CRIATURAS DA EQUIPE
+    // ========================================================================
+    if (data.xpByCreature && data.xpByCreature.size > 0) {
+      console.log(`[Firestore] ⭐ Aplicando XP às criaturas da equipe...`);
+      const activeTeamIds = userData.activeTeam?.creatureIds || [];
+      
+      for (const [creatureId, xpGained] of data.xpByCreature.entries()) {
+        // Verificar se a criatura existe e está na equipe
+        const creature = userData.creatures?.[creatureId];
+        if (!creature) {
+          console.warn(`[Firestore] ⚠️  Criatura ${creatureId} não encontrada ao aplicar XP`);
+          continue;
+        }
+        
+        if (!activeTeamIds.includes(creatureId)) {
+          console.warn(`[Firestore] ⚠️  Criatura ${creatureId} não está na equipe ativa, pulando XP`);
+          continue;
+        }
+        
+        // IMPORTANTE: No cliente, experience é o XP no nível atual (não total)
+        // Processar level ups em loop, igual ao cliente
+        const oldLevel = creature.level;
+        let currentXp = creature.experience || 0;
+        let currentLevel = creature.level;
+        let currentMaxHp = creature.maxHp;
+        let currentHp = creature.currentHp;
+        currentXp += xpGained; // Adicionar XP ganho
+        
+        // Processar level ups automáticos (igual ao cliente)
+        const MAX_LEVEL = 50;
+        while (currentLevel < MAX_LEVEL) {
+          const xpNeeded = getXpRequiredForLevel(currentLevel + 1);
+          if (currentXp >= xpNeeded) {
+            // Antes de subir de nível, calcular HP atual proporcionalmente
+            const oldEffectiveStats = getEffectiveStats({
+              ...creature,
+              level: currentLevel,
+              maxHp: currentMaxHp
+            });
+            const oldMaxHp = oldEffectiveStats.hp;
+            const hpRatio = oldMaxHp > 0 ? currentHp / oldMaxHp : 1;
+            
+            // Subir de nível e subtrair XP necessário
+            currentXp -= xpNeeded;
+            currentLevel += 1;
+            
+            // Calcular novo maxHP com o novo nível
+            const newEffectiveStats = getEffectiveStats({
+              ...creature,
+              level: currentLevel
+            });
+            const newMaxHp = newEffectiveStats.hp;
+            const newCurrentHp = Math.floor(newMaxHp * hpRatio);
+            
+            // Atualizar valores
+            currentMaxHp = newMaxHp;
+            currentHp = Math.min(newCurrentHp, newMaxHp);
+            
+            console.log(`[Firestore] 📈 Criatura ${creatureId.slice(0, 8)}... subiu para nível ${currentLevel}, maxHP: ${oldMaxHp} → ${newMaxHp}`);
+          } else {
+            break;
+          }
+        }
+        
+        console.log(`[Firestore] ⭐ Criatura ${creatureId.slice(0, 8)}...: +${xpGained} XP, nível ${oldLevel} → ${currentLevel}, XP restante: ${currentXp}`);
+        
+        // Preparar atualizações
+        const updates: Record<string, any> = {
+          [`creatures.${creatureId}.experience`]: currentXp,
+          [`creatures.${creatureId}.totalExpeditionXp`]: FieldValue.increment(xpGained)
+        };
+        
+        // Se subiu de nível, atualizar nível, maxHP e currentHp
+        if (currentLevel > oldLevel) {
+          updates[`creatures.${creatureId}.level`] = currentLevel;
+          updates[`creatures.${creatureId}.maxHp`] = currentMaxHp;
+          updates[`creatures.${creatureId}.currentHp`] = currentHp;
+        }
+        
+        batch.update(userRef, updates);
+      }
+    }
+
+    // ========================================================================
+    // 5. SALVAR HISTÓRICO DE EXPEDIÇÃO
     // ========================================================================
     console.log(`[Firestore] 📝 Salvando histórico da expedição no mapa ${data.mapId}`);
     const expeditionRef = db.collection('expeditions').doc();
@@ -391,12 +494,155 @@ export async function getUserExpeditions(
   return snapshot.docs.map(doc => doc.data() as ExpeditionDocument);
 }
 
+/**
+ * Salva dados de expedição quando a partida termina por tempo esgotado.
+ * Mesmo em falha, salva recursos coletados e cura criaturas da equipe.
+ */
+export async function saveExpeditionTimeout(
+  userId: string,
+  mapId: string,
+  startedAt: Date,
+  duration: number,
+  resourcesCollected: Map<string, number>,
+  creaturesCaptured: number
+): Promise<boolean> {
+  console.log(`[Firestore] 💾 Salvando dados de expedição por tempo esgotado para usuário ${userId}...`);
+  
+  if (!isFirebaseAvailable()) {
+    console.warn('[Firestore] ⚠️  Firebase não disponível - dados não salvos');
+    return false;
+  }
+
+  const db = getDb();
+  const batch = db.batch();
+
+  try {
+    const userRef = db.collection('users').doc(userId);
+
+    // Verificar se usuário existe
+    console.log(`[Firestore] 🔍 Verificando se usuário ${userId} existe no Firestore...`);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) {
+      console.error(`[Firestore] ❌ Usuário ${userId} não existe no Firestore`);
+      return false;
+    }
+    console.log(`[Firestore] ✅ Usuário ${userId} encontrado no Firestore`);
+
+    const userData = userDoc.data() as UserDocument;
+
+    // ========================================================================
+    // 1. ATUALIZAR INVENTÁRIO (Recursos coletados antes do tempo esgotar)
+    // ========================================================================
+    const inventoryUpdates: Record<string, any> = {};
+    
+    for (const [itemId, quantity] of resourcesCollected.entries()) {
+      if (quantity > 0) {
+        inventoryUpdates[`inventory.items.${itemId}`] = FieldValue.increment(quantity);
+      }
+    }
+
+    if (Object.keys(inventoryUpdates).length > 0) {
+      console.log(`[Firestore] 📦 Atualizando inventário: ${Object.keys(inventoryUpdates).length} tipos de recursos`);
+      batch.update(userRef, inventoryUpdates);
+    }
+
+    // ========================================================================
+    // 2. CURAR CRIATURAS DA EQUIPE ATIVA
+    // ========================================================================
+    const activeTeamIds = userData.activeTeam?.creatureIds || [];
+    const existingCreatures = userData.creatures || {};
+    
+    if (activeTeamIds.length > 0 && Object.keys(existingCreatures).length > 0) {
+      const creatureUpdates: Record<string, any> = {};
+      let healedCount = 0;
+      
+      for (const creatureId of activeTeamIds) {
+        const creature = existingCreatures[creatureId];
+        if (!creature) continue;
+        
+        // Recalcular maxHP para garantir que está correto
+        const recalculatedMaxHp = calculateMaxHp(creature);
+        
+        // Curar ao máximo
+        creatureUpdates[`creatures.${creatureId}.maxHp`] = recalculatedMaxHp;
+        creatureUpdates[`creatures.${creatureId}.currentHp`] = recalculatedMaxHp;
+        healedCount++;
+        
+        console.log(`[Firestore] 💚 Criatura da equipe curada: ${creatureId.slice(0, 8)}... (${creature.currentHp}/${creature.maxHp} → ${recalculatedMaxHp}/${recalculatedMaxHp})`);
+      }
+      
+      if (healedCount > 0) {
+        console.log(`[Firestore] 💚 ${healedCount} criatura(s) da equipe curada(s) ao máximo de vida`);
+        batch.update(userRef, creatureUpdates);
+      }
+    }
+
+    // ========================================================================
+    // 3. ATUALIZAR ESTATÍSTICAS
+    // ========================================================================
+    const totalResourcesCollected = Array.from(resourcesCollected.values())
+      .reduce((sum, qty) => sum + qty, 0);
+
+    console.log(`[Firestore] 📊 Atualizando estatísticas: expedição falhou por tempo esgotado`);
+
+    const statsUpdates: Record<string, any> = {
+      'stats.expeditionsFailed': FieldValue.increment(1),
+      'stats.totalResourcesCollected': FieldValue.increment(totalResourcesCollected),
+      'stats.totalCreaturesCaptured': FieldValue.increment(creaturesCaptured)
+    };
+
+    batch.update(userRef, statsUpdates);
+
+    // ========================================================================
+    // 4. SALVAR HISTÓRICO DE EXPEDIÇÃO
+    // ========================================================================
+    console.log(`[Firestore] 📝 Salvando histórico da expedição no mapa ${mapId}`);
+    const expeditionRef = db.collection('expeditions').doc();
+    
+    const expeditionDoc: ExpeditionDocument = {
+      userId,
+      mapId,
+      startedAt,
+      completedAt: new Date(),
+      success: false,
+      duration,
+      rewards: {
+        resources: Object.fromEntries(resourcesCollected),
+        creatures: [] // Nenhuma criatura capturada (tempo esgotou)
+      },
+      stats: {
+        damageDealt: 0,
+        damageTaken: 0,
+        resourcesCollected: totalResourcesCollected,
+        creaturesCaptured
+      }
+    };
+
+    batch.set(expeditionRef, expeditionDoc);
+
+    // ========================================================================
+    // COMMIT BATCH (Transação Atômica)
+    // ========================================================================
+    console.log(`[Firestore] 🔄 Executando commit do batch (transação atômica)...`);
+    await batch.commit();
+
+    console.log(`[Firestore] ✅ Dados de expedição por tempo esgotado salvos com sucesso para usuário ${userId}`);
+    console.log(`[Firestore] ℹ️  Resumo: ${totalResourcesCollected} recursos, ${creaturesCaptured} criaturas capturadas`);
+
+    return true;
+  } catch (error) {
+    console.error('[Firestore] ❌ Erro ao salvar dados de expedição por tempo esgotado:', error);
+    return false;
+  }
+}
+
 // ============================================================================
 // CREATURE OPERATIONS
 // ============================================================================
 
 /**
  * Atualiza XP e nível de uma criatura
+ * IMPORTANTE: Se o nível mudar, recalcula maxHP automaticamente
  */
 export async function updateCreatureProgress(
   userId: string,
@@ -409,13 +655,40 @@ export async function updateCreatureProgress(
   const db = getDb();
   const userRef = db.collection('users').doc(userId);
 
+  // Buscar criatura atual para recalcular maxHP se nível mudar
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) return;
+  
+  const userData = userDoc.data() as any;
+  const creature = userData.creatures?.[creatureId];
+  
+  if (!creature) {
+    console.warn(`[Firestore] Criatura ${creatureId} não encontrada ao atualizar progresso`);
+    return;
+  }
+
   const updates: Record<string, any> = {
     [`creatures.${creatureId}.experience`]: FieldValue.increment(xpGained),
     [`creatures.${creatureId}.totalExpeditionXp`]: FieldValue.increment(xpGained)
   };
 
-  if (newLevel !== undefined) {
+  if (newLevel !== undefined && newLevel !== creature.level) {
     updates[`creatures.${creatureId}.level`] = newLevel;
+    
+    // Recalcular maxHP quando nível muda
+    const updatedCreature: UserCreature = {
+      ...creature,
+      level: newLevel
+    };
+    const newMaxHp = calculateMaxHp(updatedCreature);
+    updates[`creatures.${creatureId}.maxHp`] = newMaxHp;
+    
+    // Ajustar currentHp proporcionalmente ou garantir que não exceda maxHp
+    const hpRatio = creature.maxHp > 0 ? creature.currentHp / creature.maxHp : 1;
+    const newCurrentHp = Math.floor(newMaxHp * hpRatio);
+    updates[`creatures.${creatureId}.currentHp`] = Math.min(newCurrentHp, newMaxHp);
+    
+    console.log(`[Firestore] 📈 Criatura ${creatureId.slice(0, 8)}... subiu para nível ${newLevel}, maxHP: ${creature.maxHp} → ${newMaxHp}`);
   }
 
   await userRef.update(updates);
@@ -733,10 +1006,29 @@ export async function promoteCreature(
 
   const batch = db.batch();
 
-  // Atualizar criatura alvo
+  // Calcular HP atual proporcionalmente antes de promover
+  const oldEffectiveStats = getEffectiveStats(targetCreature);
+  const oldMaxHp = oldEffectiveStats.hp;
+  const hpRatio = oldMaxHp > 0 ? targetCreature.currentHp / oldMaxHp : 1;
+
+  // Calcular novo maxHP após promoção
+  const updatedCreature: UserCreature = {
+    ...targetCreature,
+    rank: newRank,
+    copiesFused: (targetCreature.copiesFused || 0) + sacrificeCreatureIds.length
+  };
+  const newMaxHp = calculateMaxHp(updatedCreature);
+  
+  // Calcular novo currentHp proporcionalmente ao novo maxHp
+  const newCurrentHp = Math.floor(newMaxHp * hpRatio);
+  
+  // Atualizar criatura alvo (incluindo maxHP e currentHp recalculados)
   batch.update(userRef, {
     [`creatures.${targetCreatureId}.rank`]: newRank,
-    [`creatures.${targetCreatureId}.copiesFused`]: (targetCreature.copiesFused || 0) + sacrificeCreatureIds.length
+    [`creatures.${targetCreatureId}.copiesFused`]: updatedCreature.copiesFused,
+    [`creatures.${targetCreatureId}.maxHp`]: newMaxHp,
+    // Atualizar currentHp proporcionalmente ao novo maxHp
+    [`creatures.${targetCreatureId}.currentHp`]: Math.min(newCurrentHp, newMaxHp)
   });
 
   // Remover criaturas sacrificadas

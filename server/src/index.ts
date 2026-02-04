@@ -315,94 +315,47 @@ wss.on("connection", (ws) => {
       // Obter ou criar sala
       let room = existingRoom ?? getOrCreateRoom(msg.roomId);
 
-      // Verificar se sala está cheia
-      if (room.clients.size >= MAX_PLAYERS_PER_ROOM) {
-        ws.send(JSON.stringify({ type: "error", reason: "room_full" }));
+      // Registrar cliente na sala ANTES de chamar JoinHandler
+      // (JoinHandler precisa do clientId registrado)
+      clientToRoom.set(clientId, room.id);
+      currentRoom = room;
+
+      // Usar JoinHandler para processar join (recupera time E mochila do Firebase)
+      const result = await JoinHandler.handle(
+        ws,
+        clientId,
+        msg,
+        room,
+        (room) => {
+          // Callback para iniciar game loop quando necessário
+          if (room.players.size === 1 || !room.gameLoop?.isRunning()) {
+            startRoomGameLoop(room);
+          }
+        }
+      );
+
+      if (!result.success) {
+        // Se join falhou, remover cliente da sala
+        clientToRoom.delete(clientId);
+        if (result.error === "room_full") {
+          ws.send(JSON.stringify({ type: "error", reason: "room_full" }));
+        } else if (result.error === "user_not_found") {
+          ws.send(JSON.stringify({ type: "error", reason: "user_not_found" }));
+        }
         return;
       }
 
-      currentRoom = room;
-      room.clients.set(clientId, ws);
-      
-      // Registrar cliente na sala
-      clientToRoom.set(clientId, room.id);
-      
-      // ✅ FASE 3: Recuperar time do Firebase se userId fornecido
-      let activeCreatureId: string | undefined;
-      
-      // Log de início da busca de dados do Firebase
-      if (!msg.userId) {
-        console.log(`[Firebase] ⚠️  Jogador ${msg.name} (${clientId}) entrou sem userId - dados do Firebase não serão recuperados`);
-      } else if (!isFirebaseAvailable()) {
-        console.log(`[Firebase] ⚠️  Jogador ${msg.name} (${clientId}) forneceu userId ${msg.userId}, mas Firebase não está disponível`);
-      } else {
-        console.log(`[Firebase] 🔍 Buscando dados do usuário ${msg.userId} no Firebase...`);
-        try {
-          const userData = await getUser(msg.userId);
-          if (userData) {
-            if (userData.activeTeam?.creatureIds && userData.activeTeam.creatureIds.length > 0) {
-              // Usar primeira criatura do time ativo como criatura ativa inicial
-              activeCreatureId = userData.activeTeam.creatureIds[0];
-              console.log(`[Firebase] ✅ Time recuperado do Firebase para ${msg.userId}: ${userData.activeTeam.creatureIds.length} criaturas (ativa: ${activeCreatureId.slice(0, 8)}...)`);
-            } else {
-              console.log(`[Firebase] ⚠️  Usuário ${msg.userId} encontrado, mas não possui time ativo configurado`);
-            }
-          } else {
-            console.log(`[Firebase] ⚠️  Usuário ${msg.userId} não encontrado no Firebase`);
-          }
-        } catch (error) {
-          console.error(`[Firebase] ❌ Erro ao recuperar time do Firebase para ${msg.userId}:`, error);
-        }
-      }
-      
-      // Criar jogador com dados inicializados
-      const newPlayer: PlayerPresence = {
-        id: clientId,
-        name: msg.name,
-        userId: msg.userId, // ✅ FASE 3: Armazenar userId para salvar recompensas
-        x: Math.random() * 800 + 80,
-        y: Math.random() * 400 + 80,
-        activeCreatureId,
-        expeditionInventory: createExpeditionInventory(),
-        extractionProgress: 0,
-        extractedAt: null,
-        resourcesCollected: new Map(),
-        creaturesCaptured: 0,
-        itemsConsumed: new Map()
-      };
-      
-      // Inicializar dados de extração
-      initializePlayerExtractionData(newPlayer);
-      
-      room.players.set(clientId, newPlayer);
-
-      // Iniciar game loop se for o primeiro jogador (ou retomar se já existe)
-      if (room.players.size === 1 || !room.gameLoop?.isRunning()) {
-        startRoomGameLoop(room);
-      }
-
-      // Registrar jogador no sistema de combate do game loop
-      if (room.gameLoop) {
+      // Registrar jogador no sistema de combate do game loop (se já existe)
+      const player = room.players.get(clientId);
+      if (player && room.gameLoop) {
         room.gameLoop.registerPlayer(
           clientId,
-          newPlayer.x,
-          newPlayer.y,
+          player.x,
+          player.y,
           100, // HP inicial
           100  // HP máximo
         );
       }
-
-      // Enviar confirmação de join com ID do cliente e posição inicial
-      ws.send(JSON.stringify({
-        type: "joined",
-        clientId,
-        roomId: room.id,
-        matchState: room.matchState,
-        initialPosition: {
-          x: newPlayer.x,
-          y: newPlayer.y
-        }
-      }));
 
       // Broadcast inicial inclui worldState para sincronizar spawns
       // E notifica TODOS os jogadores (incluindo existentes) sobre o novo jogador

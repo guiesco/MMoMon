@@ -35,6 +35,7 @@ export class FeedbackManager {
 
   /**
    * Versão melhorada de createFloatingText com tamanho e duração customizáveis.
+   * ✅ BUG FIX: Garante que o texto apareça acima de tudo com depth alto.
    */
   createEnhancedFloatingText(
     x: number, 
@@ -50,7 +51,12 @@ export class FeedbackManager {
       stroke: "#000000",
       strokeThickness: 3,
       fontStyle: "bold"
-    }).setOrigin(0.5);
+    })
+    .setOrigin(0.5)
+    .setDepth(1000) // ✅ BUG FIX: Depth alto para aparecer acima de tudo
+    .setScrollFactor(1); // ✅ BUG FIX: Segue a câmera (coordenadas do mundo)
+    
+    console.log(`[FeedbackManager] Criando texto flutuante "${text}" em (${x.toFixed(0)}, ${y.toFixed(0)})`);
     
     // Animação com bounce
     this.scene.tweens.add({
@@ -60,7 +66,10 @@ export class FeedbackManager {
       scale: 1.2,
       duration: duration,
       ease: "Back.easeOut",
-      onComplete: () => textObj.destroy()
+      onComplete: () => {
+        console.log(`[FeedbackManager] Texto flutuante "${text}" destruído`);
+        textObj.destroy();
+      }
     });
   }
 

@@ -57,66 +57,59 @@ export class JoinHandler {
       }
     }
     
-    // Preparar inventário de expedição com itens selecionados
+    // Preparar inventário de expedição - SEMPRE usar apenas a mochila (preparedExpeditionInventory)
+    // Nunca buscar do armazém (inventory.items), mesmo que a mochila esteja vazia
+    // Nunca usar selectedItems da mensagem - sempre usar apenas preparedExpeditionInventory do Firebase
     let expeditionInventory = createExpeditionInventory();
     
-    // Se o jogador enviou itens selecionados, usar eles
-    if (msg.selectedItems && Object.keys(msg.selectedItems).length > 0) {
-      console.log(`[JoinHandler] Jogador ${msg.name} selecionou ${Object.keys(msg.selectedItems).length} tipos de itens para expedição`);
+    // Sempre usar a mochila salva no Firebase, mesmo que esteja vazia
+    if (userData?.preparedExpeditionInventory !== undefined) {
+      console.log(`[JoinHandler] 📦 Recuperando mochila do Firebase para jogador ${msg.name}...`);
       
-      // Inicializa o inventário de expedição com os itens selecionados
-      // Filtra apenas pokébolas (outros itens podem ser adicionados depois)
+      const backpack = userData.preparedExpeditionInventory;
+      const initialPokeballs: Partial<Record<"poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra", number>> = {};
+      
+      // Recuperar TODAS as pokébolas da mochila (não apenas tipos específicos)
+      // O preparedExpeditionInventory pode conter qualquer item, mas apenas pokébolas são usadas na expedição
       const pokeballTypes: Array<"poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra"> = [
         "poke-ball-basic",
         "poke-ball-precisa",
         "poke-ball-ultra"
       ];
       
-      const initialPokeballs: Partial<Record<"poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra", number>> = {};
-      
-      for (const [itemId, quantity] of Object.entries(msg.selectedItems)) {
-        if (pokeballTypes.includes(itemId as any) && quantity > 0) {
-          initialPokeballs[itemId as "poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra"] = quantity;
-          console.log(`[JoinHandler] Adicionando ${quantity}x ${itemId} ao inventário de expedição`);
+      for (const ballType of pokeballTypes) {
+        const quantity = backpack[ballType] as number | undefined;
+        if (quantity !== undefined && quantity > 0) {
+          initialPokeballs[ballType] = quantity;
+          console.log(`[JoinHandler] ✅ Recuperado ${quantity}x ${ballType} da mochila`);
         }
       }
       
-      // Cria inventário com as pokébolas selecionadas
-      expeditionInventory = createExpeditionInventory(initialPokeballs);
-      
-      console.log(`[JoinHandler] Inventário de expedição inicializado com:`);
-      expeditionInventory.pokeballs.forEach((qty, ballType) => {
-        console.log(`[JoinHandler] - ${ballType}: ${qty}`);
-      });
-    } else if (userData?.preparedExpeditionInventory && Object.keys(userData.preparedExpeditionInventory).length > 0) {
-      // Se não enviou itens selecionados, tentar buscar da mochila salva no Firebase
-      console.log(`[JoinHandler] Buscando itens da mochila salva no Firebase...`);
-      
-      const pokeballTypes: Array<"poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra"> = [
-        "poke-ball-basic",
-        "poke-ball-precisa",
-        "poke-ball-ultra"
-      ];
-      
-      const initialPokeballs: Partial<Record<"poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra", number>> = {};
-      
-      for (const ballType of pokeballTypes) {
-        const quantity = userData.preparedExpeditionInventory[ballType] as number | undefined;
-        if (quantity && quantity > 0) {
-          initialPokeballs[ballType] = quantity;
-          console.log(`[JoinHandler] Usando ${quantity}x ${ballType} da mochila salva`);
-        }
+      // Verificar se há outros itens na mochila (para log, mesmo que não sejam usados na expedição)
+      const otherItems = Object.keys(backpack).filter(itemId => !pokeballTypes.includes(itemId as any));
+      if (otherItems.length > 0) {
+        console.log(`[JoinHandler] ℹ️  Mochila contém ${otherItems.length} outros tipos de itens (não usados na expedição): ${otherItems.join(', ')}`);
       }
       
       if (Object.keys(initialPokeballs).length > 0) {
         expeditionInventory = createExpeditionInventory(initialPokeballs);
-        console.log(`[JoinHandler] Inventário de expedição inicializado com itens da mochila`);
+        console.log(`[JoinHandler] ✅ Inventário de expedição inicializado com ${Object.keys(initialPokeballs).length} tipos de pokébolas da mochila`);
+        expeditionInventory.pokeballs.forEach((qty, ballType) => {
+          if (qty > 0) {
+            console.log(`[JoinHandler]   - ${ballType}: ${qty}`);
+          }
+        });
       } else {
-        console.log(`[JoinHandler] Mochila vazia - jogador entrará sem itens`);
+        console.log(`[JoinHandler] ⚠️  Mochila vazia ou sem pokébolas - jogador entrará sem itens na expedição`);
       }
     } else {
-      // Mochila vazia ou não existe - jogador entra sem itens
-      console.log(`[JoinHandler] Mochila vazia ou não configurada - jogador entrará sem itens`);
+      // Mochila não existe no Firebase - jogador entra sem itens
+      console.log(`[JoinHandler] ⚠️  Mochila não encontrada no Firebase - jogador entrará sem itens`);
+    }
+    
+    // IMPORTANTE: Ignorar selectedItems da mensagem - sempre usar apenas preparedExpeditionInventory do Firebase
+    if (msg.selectedItems && Object.keys(msg.selectedItems).length > 0) {
+      console.log(`[JoinHandler] ⚠️  Mensagem contém selectedItems, mas será ignorado - usando apenas mochila do Firebase`);
     }
     
     // Criar jogador

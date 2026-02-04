@@ -144,6 +144,12 @@ export class ExpeditionScene extends Phaser.Scene {
    * Sempre usa RemoteWorldState - o servidor é a fonte de verdade.
    */
   private worldState!: GameWorldState;
+
+  /**
+   * ✅ BUG FIX: Armazena posições de criaturas quando tentamos capturá-las.
+   * Usado como fallback quando recebemos o resultado de captura e a criatura já foi removida.
+   */
+  private captureAttemptPositions = new Map<string, { x: number; y: number }>();
   
   /**
    * Map de sprites visuais para criaturas do worldState.
@@ -733,6 +739,16 @@ export class ExpeditionScene extends Phaser.Scene {
       },
       sendCaptureAttempt: (creatureId: string, ballType: string) => {
         if (this.mpClient) {
+          // ✅ BUG FIX: Armazenar posição da criatura antes de enviar tentativa
+          // Isso permite exibir feedback mesmo se a criatura já foi removida quando recebemos o resultado
+          const creature = this.getCreatureSprite(creatureId);
+          if (creature) {
+            this.captureAttemptPositions.set(creatureId, {
+              x: creature.sprite.x,
+              y: creature.sprite.y
+            });
+            console.log(`[MP] 💾 Armazenando posição de captura para ${creatureId}: (${creature.sprite.x.toFixed(0)}, ${creature.sprite.y.toFixed(0)})`);
+          }
           this.mpClient.sendCaptureAttempt(creatureId, ballType as "poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra");
         }
       }
@@ -869,6 +885,7 @@ export class ExpeditionScene extends Phaser.Scene {
         this.handleAttackResult(result);
       });
       this.mpClient.on("captureResult", (result) => {
+        console.log("[MP] 🎯 Evento captureResult recebido no handler:", result);
         // NOTA: Não atualizar telemetria aqui via MultiplayerHandlers
         // A telemetria será atualizada em handleCaptureResult() para evitar duplicação
         // Processar resultado completo (lógica visual e de estado)
@@ -5161,18 +5178,33 @@ export class ExpeditionScene extends Phaser.Scene {
       return;
     }
 
-    // FASE 5: Usa getCreatureSprite() unificado (worldState)
+    // ✅ BUG FIX: Tentar obter posição da criatura, ou usar posição armazenada
+    let feedbackX: number;
+    let feedbackY: number;
+    
     const creature = this.getCreatureSprite(result.targetId);
     
-    if (!creature) {
-      console.log("[MP] Criatura não encontrada para feedback de captura:", result.targetId);
-      return;
+    if (creature) {
+      // Criatura ainda existe - usar posição atual
+      feedbackX = creature.sprite.x;
+      feedbackY = creature.sprite.y;
+      console.log(`[MP] ✅ Criatura encontrada: ${result.targetId} em (${feedbackX.toFixed(0)}, ${feedbackY.toFixed(0)})`);
+    } else {
+      // Criatura já foi removida - usar posição armazenada
+      const storedPosition = this.captureAttemptPositions.get(result.targetId);
+      if (storedPosition) {
+        feedbackX = storedPosition.x;
+        feedbackY = storedPosition.y;
+        console.log(`[MP] ⚠️ Criatura não encontrada, usando posição armazenada: ${result.targetId} em (${feedbackX.toFixed(0)}, ${feedbackY.toFixed(0)})`);
+        // Limpar posição armazenada após usar
+        this.captureAttemptPositions.delete(result.targetId);
+      } else {
+        // Fallback: usar posição do jogador
+        feedbackX = this.player.x;
+        feedbackY = this.player.y;
+        console.log(`[MP] ⚠️ Criatura não encontrada e sem posição armazenada, usando posição do jogador: (${feedbackX.toFixed(0)}, ${feedbackY.toFixed(0)})`);
+      }
     }
-    
-    // Determinar posição do feedback visual - usa currentX/Y para posição interpolada
-    const creatureSprite = this.getCreatureSprite(result.targetId);
-    const feedbackX = creatureSprite?.sprite.x ?? creature.sprite.x;
-    const feedbackY = creatureSprite?.sprite.y ?? creature.sprite.y;
 
     // Incrementa contador de criaturas encontradas (igual ao single player)
     this.telemetry.creaturesEncountered += 1;
@@ -5198,29 +5230,30 @@ export class ExpeditionScene extends Phaser.Scene {
       this.telemetry.captureSuccesses += 1; // Incrementa sucessos (igual ao single player)
       
       console.log(`[MP] ✅ Contador de capturas atualizado: ${this.creaturesCaptured} capturas`);
+      console.log(`[MP] ✅ Exibindo feedback de captura em (${feedbackX.toFixed(0)}, ${feedbackY.toFixed(0)})`);
 
       // Feedback visual de sucesso
       // FASE 4: Usar FeedbackManager
       this.feedbackManager.createCaptureSuccessFeedback(feedbackX, feedbackY);
       
-      // Mensagem de sucesso com offset maior para aparecer acima de "Capturando..."
-      // Usa tamanho maior e duração maior para garantir visibilidade
-      // Pequeno delay para garantir que apareça após "Capturando..." ter sido visível
-      this.time.delayedCall(300, () => {
-        this.feedbackManager.createEnhancedFloatingText(
-          feedbackX,
-          feedbackY - 50, // Offset maior para aparecer acima de "Capturando..." (que está em y - 20)
-          "✅ CAPTURADO!",
-          0x10b981,
-          28, // Tamanho maior para sucesso (era 24)
-          2000 // Duração maior (2 segundos) para garantir visibilidade
-        );
-      });
+      // ✅ BUG FIX: Exibir mensagem imediatamente (sem delay)
+      // A mensagem deve aparecer antes da criatura ser removida
+      this.feedbackManager.createEnhancedFloatingText(
+        feedbackX,
+        feedbackY - 50, // Offset maior para aparecer acima da criatura
+        "✅ CAPTURADO!",
+        0x10b981,
+        28, // Tamanho maior para sucesso
+        2000 // Duração maior (2 segundos) para garantir visibilidade
+      );
 
       // FASE 5: Remove criatura do worldState (unificado)
-      // Pequeno delay para garantir que a mensagem seja visível antes de remover a criatura
-      this.time.delayedCall(500, () => {
+      // Delay maior para garantir que a mensagem seja visível antes de remover a criatura
+      this.time.delayedCall(1000, () => {
+        console.log(`[MP] Removendo criatura ${result.targetId} após captura`);
         this.removeCreature(result.targetId);
+        // Limpar posição armazenada após remover criatura
+        this.captureAttemptPositions.delete(result.targetId);
       });
 
       // Adiciona criatura capturada (se incluído no resultado)
@@ -5241,8 +5274,10 @@ export class ExpeditionScene extends Phaser.Scene {
       );
       
       // IMPORTANTE: A criatura fica agressiva após falha na captura (igual ao single player)
-      creature.aiState = "chasing";
-      this.worldState.updateCreature(result.targetId, { aiState: "chasing" });
+      if (creature) {
+        creature.aiState = "chasing";
+        this.worldState.updateCreature(result.targetId, { aiState: "chasing" });
+      }
     }
   }
 
@@ -5710,6 +5745,10 @@ export class ExpeditionScene extends Phaser.Scene {
       
       // Feedback visual
       this.createExtractionSuccessFeedback();
+      
+      // NOTA: XP agora é calculado e salvo no servidor
+      // O cliente apenas mostra feedback visual (se necessário)
+      // O XP será sincronizado via Firebase onSnapshot
     }
   }
 

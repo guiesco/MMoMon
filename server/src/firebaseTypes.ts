@@ -117,6 +117,8 @@ export interface SaveExpeditionData {
     resourcesCollected: number;
     creaturesCaptured: number;
   };
+  /** XP ganho por cada criatura da equipe (instanceId -> xp) */
+  xpByCreature?: Map<string, number>;
 }
 
 /**

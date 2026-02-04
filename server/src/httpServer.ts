@@ -8,9 +8,10 @@
  */
 
 import express, { Request, Response } from 'express';
-import { isFirebaseAvailable, getDb } from './firebase';
+import { isFirebaseAvailable, getDb, FieldValue } from './firebase';
 import { saveUserData, saveExpeditionRewards, createUser, craftItem, craftItemsBatch, promoteCreature, setActiveTeam } from './firestoreOperations';
-import type { SaveExpeditionData } from './firebaseTypes';
+import type { SaveExpeditionData, UserCreature } from './firebaseTypes';
+import { calculateMaxHp } from './creatureProgression';
 
 const app = express();
 
@@ -313,12 +314,13 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
         // Buscar dados completos da criatura do Firebase se existir (para preservar capturedAt)
         const existingCreature = existingCreatures[creature.instanceId];
         
-        userData.creatures[creature.instanceId] = {
+        // Criar objeto temporário para calcular maxHP
+        const creatureData: UserCreature = {
           instanceId: creature.instanceId,
           definitionId: creature.definitionId,
           level: creature.level,
           currentHp: creature.currentHp,
-          maxHp: existingCreature?.maxHp || creature.currentHp, // Preservar maxHp se existir
+          maxHp: 0, // Será calculado abaixo
           experience: creature.experience,
           rank: creature.rank || 1,
           copiesFused: creature.copiesFused || 0,
@@ -326,6 +328,14 @@ app.post('/api/sync-player', async (req: Request, res: Response) => {
           // Preservar capturedAt se existir
           capturedAt: existingCreature?.capturedAt || new Date()
         };
+        
+        // Recalcular maxHP baseado em nível e rank (sempre usar cálculo correto)
+        creatureData.maxHp = calculateMaxHp(creatureData);
+        
+        // Garantir que currentHp não exceda maxHp
+        creatureData.currentHp = creatureData.maxHp;
+        
+        userData.creatures[creature.instanceId] = creatureData;
       }
     }
     
@@ -612,6 +622,7 @@ app.post('/api/promote-creature', async (req: Request, res: Response) => {
 
 /**
  * Salva apenas a mochila (preparedExpeditionInventory) do jogador
+ * Também atualiza o armazém, removendo os itens que foram movidos para a mochila
  */
 app.post('/api/save-backpack', async (req: Request, res: Response) => {
   try {
@@ -652,15 +663,73 @@ app.post('/api/save-backpack', async (req: Request, res: Response) => {
       backpackData = backpack;
     }
 
-    // Atualizar apenas a mochila no Firebase
+    // Comparar mochila antiga com a nova para calcular diferença
+    const oldBackpack = existingUserData.preparedExpeditionInventory || {};
+    const inventoryItems = existingUserData.inventory?.items || {};
+    
+    // Calcular itens que foram adicionados ou removidos da mochila
+    const itemsToRemoveFromInventory: Record<string, number> = {}; // Itens adicionados à mochila (remover do armazém)
+    const itemsToAddToInventory: Record<string, number> = {}; // Itens removidos da mochila (adicionar ao armazém)
+    const allItemIds = new Set([...Object.keys(backpackData), ...Object.keys(oldBackpack)]);
+    
+    for (const itemId of allItemIds) {
+      const oldQuantity = oldBackpack[itemId] || 0;
+      const newQuantity = backpackData[itemId] || 0;
+      const difference = newQuantity - oldQuantity;
+      
+      if (difference > 0) {
+        // Itens foram adicionados à mochila - precisamos remover do armazém
+        const availableInInventory = inventoryItems[itemId] || 0;
+        
+        if (availableInInventory < difference) {
+          return res.status(400).json({
+            error: `Itens insuficientes no armazém: ${itemId}. Disponível: ${availableInInventory}, Necessário: ${difference}`
+          });
+        }
+        
+        itemsToRemoveFromInventory[itemId] = difference;
+        console.log(`[HTTP] 📤 Movendo ${difference}x ${itemId} do armazém para a mochila`);
+      } else if (difference < 0) {
+        // Itens foram removidos da mochila - adicionar de volta ao armazém
+        itemsToAddToInventory[itemId] = Math.abs(difference);
+        console.log(`[HTTP] 📥 Movendo ${Math.abs(difference)}x ${itemId} da mochila para o armazém`);
+      }
+    }
+
+    // Atualizar mochila e armazém no Firebase usando batch para atomicidade
     const db = getDb();
     const userRef = db.collection('users').doc(userId);
+    const batch = db.batch();
     
-    await userRef.update({
+    // Atualizar mochila
+    batch.update(userRef, {
       preparedExpeditionInventory: backpackData
     });
+    
+    // Remover itens do armazém (quando adicionados à mochila)
+    for (const [itemId, quantity] of Object.entries(itemsToRemoveFromInventory)) {
+      batch.update(userRef, {
+        [`inventory.items.${itemId}`]: FieldValue.increment(-quantity)
+      });
+    }
+    
+    // Adicionar itens ao armazém (quando removidos da mochila)
+    for (const [itemId, quantity] of Object.entries(itemsToAddToInventory)) {
+      batch.update(userRef, {
+        [`inventory.items.${itemId}`]: FieldValue.increment(quantity)
+      });
+    }
+    
+    // Executar batch (transação atômica)
+    await batch.commit();
 
     console.log(`[HTTP] ✅ Mochila salva: ${Object.keys(backpackData).length} tipos de itens`);
+    if (Object.keys(itemsToRemoveFromInventory).length > 0) {
+      console.log(`[HTTP] ✅ Armazém atualizado: ${Object.keys(itemsToRemoveFromInventory).length} tipos de itens removidos`);
+    }
+    if (Object.keys(itemsToAddToInventory).length > 0) {
+      console.log(`[HTTP] ✅ Armazém atualizado: ${Object.keys(itemsToAddToInventory).length} tipos de itens adicionados`);
+    }
 
     // Buscar dados atualizados
     const updatedUserData = await getUser(userId);
