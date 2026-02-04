@@ -155,10 +155,11 @@ async function handleExtractionCompleted(
       }
 
       // Converter criaturas capturadas para formato do Firestore
+      // Curar todas as criaturas ao máximo de vida após extração
       const capturedCreaturesForFirestore = reward.capturedCreatures.map(creature => ({
         definitionId: creature.speciesId,
         level: creature.level,
-        currentHp: creature.currentHp,
+        currentHp: creature.maxHp, // Curar ao máximo após extração
         maxHp: creature.maxHp
       }));
 

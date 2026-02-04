@@ -264,8 +264,34 @@ export async function saveExpeditionRewards(
       console.log(`[Firestore] 🐾 Criaturas existentes antes: ${existingCount}`);
       console.log(`[Firestore] 🐾 IDs das criaturas existentes:`, Object.keys(existingCreatures));
       
-      // IMPORTANTE: Merge correto - preservar criaturas existentes e adicionar novas
-      const mergedCreatures = { ...existingCreatures, ...newCreatures };
+      // Curar todas as criaturas da equipe ativa ao máximo de vida após extração
+      const activeTeamIds = userData.activeTeam?.creatureIds || [];
+      // Criar cópia profunda das criaturas existentes para poder modificar sem afetar o original
+      const healedCreatures: Record<string, UserCreature> = {};
+      let healedCount = 0;
+      
+      // Copiar todas as criaturas existentes
+      for (const [creatureId, creature] of Object.entries(existingCreatures)) {
+        // Se a criatura está na equipe ativa, curar ao máximo
+        if (activeTeamIds.includes(creatureId)) {
+          healedCreatures[creatureId] = {
+            ...creature,
+            currentHp: creature.maxHp // Curar ao máximo
+          };
+          healedCount++;
+          console.log(`[Firestore] 💚 Criatura da equipe curada: ${creatureId.slice(0, 8)}... (${creature.currentHp}/${creature.maxHp} → ${creature.maxHp}/${creature.maxHp})`);
+        } else {
+          // Criatura não está na equipe, manter como está
+          healedCreatures[creatureId] = { ...creature };
+        }
+      }
+      
+      if (healedCount > 0) {
+        console.log(`[Firestore] 💚 ${healedCount} criatura(s) da equipe curada(s) ao máximo de vida`);
+      }
+      
+      // IMPORTANTE: Merge correto - preservar criaturas existentes (agora curadas) e adicionar novas
+      const mergedCreatures = { ...healedCreatures, ...newCreatures };
       const mergedCount = Object.keys(mergedCreatures).length;
       console.log(`[Firestore] 🐾 Total de criaturas após merge: ${mergedCount} (${existingCount} existentes + ${Object.keys(newCreatures).length} novas)`);
       console.log(`[Firestore] 🐾 IDs de todas as criaturas após merge:`, Object.keys(mergedCreatures));
