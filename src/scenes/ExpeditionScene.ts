@@ -751,7 +751,7 @@ export class ExpeditionScene extends Phaser.Scene {
 
     // Ataque com clique do mouse também
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-      if (pointer.leftButtonDown()) {
+      if (pointer.leftButtonDown() && !this.loadingOverlay.visible) {
         this.tryBasicAttack(pointer.worldX, pointer.worldY);
       }
     });
@@ -2033,10 +2033,17 @@ export class ExpeditionScene extends Phaser.Scene {
 
     this.handleCreatureSwitching();
     
-    this.movementSystem.update(dt, this.state);
-    
-    this.handleCombat(dt);
-    this.handleInteractions(dt);
+    // Bloquear movimento durante loading
+    if (!this.loadingOverlay.visible) {
+      this.movementSystem.update(dt, this.state);
+      this.handleCombat(dt);
+      this.handleInteractions(dt);
+    } else {
+      // Garantir que o jogador não se move durante loading
+      if (this.player) {
+        this.player.setVelocity(0, 0);
+      }
+    }
     
     this.state = this.projectileManager.update(dt, this.state) as ExpeditionState;
     
@@ -2462,6 +2469,8 @@ export class ExpeditionScene extends Phaser.Scene {
   }
 
   private tryBasicAttack(targetX: number, targetY: number) {
+    // Bloquear ataques durante loading
+    if (this.loadingOverlay.visible) return;
     if (this.basicAttackCooldown > 0) return;
     const def = this.activeCreatureDef;
 
