@@ -95,6 +95,9 @@ export interface ServerCreature {
   
   /** Timer de patrulha (para movimento idle) */
   patrolTimer: number;
+  
+  /** ✅ Roaming: Destino atual de patrulha (null se não está patrulhando) */
+  roamingTarget?: { x: number; y: number } | null;
 
   /** ID do jogador que a criatura está mirando (null se idle) */
   targetPlayerId: string | null;
@@ -376,6 +379,7 @@ export function createCreature(
     windupTimer: 0,
     stunTimer: 0,
     patrolTimer: 0,
+    roamingTarget: null,
     targetPlayerId: null,
     level
   };

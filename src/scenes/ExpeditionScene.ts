@@ -5631,12 +5631,30 @@ export class ExpeditionScene extends Phaser.Scene {
         existing.velocityY = proj.velocityY;
         existing.lifetime = proj.lifetime;
       } else {
-        // Cria novo projétil remoto
-        const color = proj.isPlayerProjectile ? 0xf97316 : 0xff4444; // Laranja para jogador, vermelho para IA
-        const radius = proj.isPlayerProjectile ? 4 : 5;
+        // ✅ IA #8: Cria novo projétil remoto com cor baseada na criatura
+        let color = 0xf97316; // Default laranja para jogador
+        let strokeColor = 0xea580c;
+        let radius = 4;
+        
+        if (!proj.isPlayerProjectile) {
+          // Projétil de criatura: usar cor baseada na espécie da criatura
+          const creatureSprite = this.getCreatureSprite(proj.ownerId);
+          if (creatureSprite) {
+            const creatureType = creatureSprite.speciesId ?? creatureSprite.creatureType ?? "";
+            const theme = getCreatureTheme(creatureType);
+            color = theme.attackColor;
+            strokeColor = theme.primaryColor;
+            radius = theme.projectileRadius || 5;
+          } else {
+            // Fallback: vermelho padrão se criatura não encontrada
+            color = 0xff4444;
+            strokeColor = 0xcc0000;
+            radius = 5;
+          }
+        }
         
         const sprite = this.add.circle(proj.x, proj.y, radius, color);
-        sprite.setStrokeStyle(1, proj.isPlayerProjectile ? 0xea580c : 0xcc0000, 0.8);
+        sprite.setStrokeStyle(1, strokeColor, 0.8);
         sprite.setDepth(100); // Acima de outras entidades
         
         // Se é projétil de inimigo, criar efeito de disparo na origem
@@ -5644,15 +5662,15 @@ export class ExpeditionScene extends Phaser.Scene {
           // Tentar encontrar a criatura que disparou para criar efeito visual
           const creatureSprite = this.getCreatureSprite(proj.ownerId);
           if (creatureSprite) {
-            // Efeito de "muzzle flash" na criatura que atacou
-            const angle = Math.atan2(proj.velocityY, proj.velocityX);
+            const creatureType = creatureSprite.speciesId ?? creatureSprite.creatureType ?? "";
+            const theme = getCreatureTheme(creatureType);
             
-            // Criar efeito visual simples de ataque
+            // Efeito de "muzzle flash" na criatura que atacou com cor do tema
             const flash = this.add.circle(
               creatureSprite.sprite.x, 
               creatureSprite.sprite.y, 
               8, 
-              0xff8888, 
+              theme.particleColor, 
               0.6
             );
             this.tweens.add({

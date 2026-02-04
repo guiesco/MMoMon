@@ -8,7 +8,42 @@
 
 ## 🐛 Bugs e Correções
 
-### 1. Marcador de Capturas Não Atualiza Durante Expedição ✅ CONCLUÍDO
+### 1. Criatura Capturada Não Corresponde à Espécie Real ✅ CONCLUÍDO
+**Prioridade**: Crítica  
+**Categoria**: Bug - Sincronização de Dados
+**Status**: ✅ Resolvido
+
+**Problema**:
+- Ao capturar uma criatura na expedição (ex: "voltiger"), o servidor registra a captura corretamente
+- Porém, ao salvar no Firebase, a criatura salva é de uma espécie diferente (ex: "verdant")
+- O cliente mostra a criatura correta durante a expedição, mas ao voltar para a base, aparecem criaturas diferentes das capturadas
+- Os dados do Firebase não correspondem às criaturas realmente capturadas
+
+**Causa Raiz**:
+- No arquivo `server/src/systems/capture.ts`, linha 252, ao processar uma captura bem-sucedida, o código estava usando `selectRandomCreatureSpecies()` que escolhe uma espécie aleatória do pool, ao invés de usar `creature.creatureType` (a espécie real da criatura capturada)
+
+**Arquivos Afetados**:
+- `server/src/systems/capture.ts` - Função `processCaptureIntent()` que processa capturas
+
+**Tarefas**:
+- [x] Identificar causa raiz do problema
+- [x] Corrigir para usar `creature.creatureType` ao invés de `selectRandomCreatureSpecies()`
+- [x] Usar nível da criatura selvagem se disponível, ao invés de sempre gerar aleatório
+- [x] Verificar se há outros lugares com o mesmo problema
+
+**Implementação**:
+- Corrigido `processCaptureIntent()` para usar `creature.creatureType` ao invés de `selectRandomCreatureSpecies()`
+- Agora usa o nível da criatura selvagem (`creature.level`) se disponível, senão gera um nível aleatório (1-5)
+- A espécie capturada agora corresponde exatamente à criatura que foi capturada na expedição
+
+**Resultado**:
+- Criaturas capturadas agora são salvas com a espécie correta no Firebase
+- Ao voltar para a base, as criaturas exibidas correspondem às realmente capturadas
+- Sincronização entre servidor, Firebase e cliente está correta
+
+---
+
+### 2. Marcador de Capturas Não Atualiza Durante Expedição ✅ CONCLUÍDO
 **Prioridade**: Alta  
 **Categoria**: UI/UX - Sincronização
 **Status**: ✅ Resolvido
@@ -45,7 +80,7 @@
 
 ---
 
-### 2. Sincronização de HP das Criaturas ✅ CONCLUÍDO
+### 3. Sincronização de HP das Criaturas ✅ CONCLUÍDO
 **Prioridade**: Alta  
 **Categoria**: Sincronização Server-Client  
 **Status**: ✅ Resolvido
@@ -93,7 +128,7 @@
 
 ---
 
-### 3. Movimento Durante Loading da Expedição ✅ CONCLUÍDO
+### 4. Movimento Durante Loading da Expedição ✅ CONCLUÍDO
 **Prioridade**: Média  
 **Categoria**: UX - Controle de Input  
 **Status**: ✅ Resolvido
@@ -123,7 +158,7 @@
 
 ## 🤖 Melhorias de IA
 
-### 4. IA - Fugir Quando com Pouca Vida
+### 5. IA - Fugir Quando com Pouca Vida
 **Prioridade**: Média  
 **Categoria**: Gameplay - Comportamento de Criaturas
 
@@ -146,7 +181,7 @@
 
 ---
 
-### 5. IA - Criaturas do Mesmo Tipo se Juntarem
+### 6. IA - Criaturas do Mesmo Tipo se Juntarem
 **Prioridade**: Baixa  
 **Categoria**: Gameplay - Comportamento de Criaturas
 
@@ -168,9 +203,101 @@
 
 ---
 
+### 7. IA - Cores Visuais das Criaturas e Players Inimigos
+**Prioridade**: Alta  
+**Categoria**: Visual - Identidade de Criaturas
+
+**Descrição**:
+- Criaturas inimigas devem ser instanciadas com a cor correta baseada na espécie
+- Pyrognat deve aparecer vermelho/laranja, Voltiger amarelo, Aquaryl azul, etc.
+- Players inimigos também devem refletir visualmente as criaturas que estão usando
+- Melhorar identificação visual e imersão do jogo
+
+**Arquivos Afetados** (estimado):
+- `src/scenes/expedition/managers/SpriteManager.ts` - Criação e renderização de sprites
+- `src/game/creatures.ts` - Definições de criaturas e suas cores/temas
+- `src/game/creatureThemes.ts` - Temas visuais das criaturas
+- `server/src/systems/spawns.ts` - Criação de criaturas selvagens
+- `server/src/types.ts` - Tipos de criaturas e dados visuais
+- `src/scenes/ExpeditionScene.ts` - Renderização de players inimigos
+
+**Tarefas**:
+- [ ] Mapear cores/temas visuais para cada espécie de criatura
+- [ ] Implementar sistema de tint/colorização de sprites baseado na espécie
+- [ ] Aplicar cores corretas ao criar sprites de criaturas selvagens
+- [ ] Garantir que players inimigos usam a cor da criatura que estão usando
+- [ ] Verificar sincronização entre servidor (espécie) e cliente (cor visual)
+- [ ] Testar com todas as espécies de criaturas disponíveis
+- [ ] Considerar variações de cor baseadas em evolução/nível (opcional)
+
+---
+
+### 8. IA - Ataques Refletindo Tipo de Criatura
+**Prioridade**: Alta  
+**Categoria**: Gameplay - Sistema de Combate
+
+**Descrição**:
+- Ataques das criaturas inimigas devem refletir os ataques das criaturas que são
+- Aquaryl deve atirar projétil azul com distância específica
+- Cada criatura deve usar seu behavior type correto (ranged, melee, etc)
+- Ataques devem ter características visuais e mecânicas únicas por espécie
+
+**Arquivos Afetados** (estimado):
+- `server/src/systems/combat.ts` - Sistema de combate e tipos de ataque
+- `server/src/systems/spawns.ts` - Definição de behavior types e ataques
+- `server/src/types.ts` - Tipos de ataques e behaviors
+- `src/scenes/expedition/managers/ProjectileManager.ts` - Renderização de projéteis
+- `src/game/creatures.ts` - Definições de behavior types e ataques por criatura
+- `src/scenes/ExpeditionScene.ts` - Renderização de efeitos de ataque
+
+**Tarefas**:
+- [ ] Mapear behavior types e características de ataque para cada espécie
+- [ ] Implementar sistema de ataques baseado na espécie da criatura
+- [ ] Criar projéteis visuais únicos por tipo de criatura (cor, tamanho, efeito)
+- [ ] Implementar alcance e velocidade de ataque baseados na espécie
+- [ ] Garantir que criaturas ranged atiram projéteis, melee fazem ataques corpo a corpo
+- [ ] Sincronizar visual e mecânica de ataques entre servidor e cliente
+- [ ] Testar com diferentes tipos de criaturas (ranged, melee, etc)
+- [ ] Balancear dano e alcance por espécie
+
+---
+
+### 9. IA - Threat Tiers Afetando Estrelas/Nível ao Invés de Stats Diretos
+**Prioridade**: Média  
+**Categoria**: Gameplay - Sistema de Progressão
+
+**Descrição**:
+- Threat tiers não devem impactar diretamente nos stats da criatura (HP base, dano fixo)
+- Ao invés disso, devem afetar quantas estrelas a criatura tem, nível, evolução, etc.
+- Uma criatura de ameaça elite deve ter level/evolução altas
+- Stats devem ser calculados baseados no tipo da criatura + nível/estrelas/evolução
+- Tudo deve ser variável de acordo com o tipo da criatura
+
+**Arquivos Afetados** (estimado):
+- `server/src/systems/spawns.ts` - Criação de criaturas e cálculo de stats
+- `server/src/constants.ts` - Constantes de balanceamento e fórmulas de stats
+- `server/src/types.ts` - Tipos de criaturas e threat tiers
+- `server/src/systems/combat.ts` - Cálculo de dano e HP baseado em stats
+- `src/game/creatureProgression.ts` - Sistema de progressão e cálculo de stats
+- `src/game/creatures.ts` - Definições de criaturas e seus stats base
+
+**Tarefas**:
+- [ ] Remover cálculos diretos de HP/dano baseados em threat tier
+- [ ] Implementar sistema de estrelas baseado em threat tier
+- [ ] Implementar cálculo de nível baseado em threat tier (já parcialmente implementado)
+- [ ] Implementar cálculo de evolução baseado em threat tier
+- [ ] Criar fórmulas de stats que usam: tipo da criatura + nível + estrelas + evolução
+- [ ] Garantir que cada tipo de criatura tem stats base únicos
+- [ ] Balancear multiplicadores de stats por nível/estrelas/evolução
+- [ ] Atualizar sistema de spawns para usar novo sistema de cálculo
+- [ ] Testar com diferentes threat tiers e tipos de criaturas
+- [ ] Verificar que criaturas elite são mais fortes mas não quebram o balanceamento
+
+---
+
 ## ✨ Novas Features
 
-### 6. Exibir Nome e Nível das Criaturas Selvagens ✅ CONCLUÍDO
+### 10. Exibir Nome e Nível das Criaturas Selvagens ✅ CONCLUÍDO
 **Prioridade**: Média  
 **Categoria**: UI/UX - Informação Visual
 **Status**: ✅ Resolvido
@@ -220,7 +347,7 @@
 
 ---
 
-### 7. Efeitos dos Ataques Corpo a Corpo das Criaturas
+### 11. Efeitos dos Ataques Corpo a Corpo das Criaturas
 **Prioridade**: Média  
 **Categoria**: Visual - Efeitos de Combate
 
@@ -244,7 +371,7 @@
 
 ---
 
-### 8. Efeito de Hit Tomado
+### 12. Efeito de Hit Tomado
 **Prioridade**: Média  
 **Categoria**: Visual - Feedback de Combate
 
@@ -268,7 +395,7 @@
 
 ---
 
-### 9. Criaturas Selvagens Usarem Skills
+### 13. Criaturas Selvagens Usarem Skills
 **Prioridade**: Baixa  
 **Categoria**: Gameplay - Sistema de Skills
 
@@ -295,7 +422,7 @@
 
 ## ⚖️ Balanceamento
 
-### 10. Balancear Skills Existentes e Torná-las Mais Únicas
+### 14. Balancear Skills Existentes e Torná-las Mais Únicas
 **Prioridade**: Média  
 **Categoria**: Gameplay - Sistema de Skills
 
@@ -330,20 +457,24 @@
 ## 📊 Priorização Sugerida
 
 ### Sprint Imediato (Alta Prioridade)
-1. ~~**Bug #1**: Marcador de Capturas Não Atualiza~~ ✅ CONCLUÍDO
-2. ~~**Bug #2**: Sincronização de HP das Criaturas~~ ✅ CONCLUÍDO
-3. ~~**Bug #3**: Movimento Durante Loading~~ ✅ CONCLUÍDO
+1. ~~**Bug #1**: Criatura Capturada Não Corresponde à Espécie Real~~ ✅ CONCLUÍDO
+2. ~~**Bug #2**: Marcador de Capturas Não Atualiza~~ ✅ CONCLUÍDO
+3. ~~**Bug #3**: Sincronização de HP das Criaturas~~ ✅ CONCLUÍDO
+4. ~~**Bug #4**: Movimento Durante Loading~~ ✅ CONCLUÍDO
 
 ### Próximas Sprints (Média Prioridade)
-4. ~~**Feature #6**: Nome e Nível das Criaturas~~ ✅ CONCLUÍDO
-5. **Feature #7**: Efeitos de Ataques Corpo a Corpo
-6. **Feature #8**: Efeito de Hit Tomado
-7. **Balanceamento #10**: Balancear Skills
+5. ~~**Feature #10**: Nome e Nível das Criaturas~~ ✅ CONCLUÍDO
+6. ~~**IA #7**: Cores Visuais das Criaturas e Players Inimigos~~ ✅ CONCLUÍDO
+7. ~~**IA #8**: Ataques Refletindo Tipo de Criatura~~ ✅ CONCLUÍDO
+8. ~~**IA #9**: Threat Tiers Afetando Estrelas/Nível~~ ✅ CONCLUÍDO
+9. **Feature #11**: Efeitos de Ataques Corpo a Corpo
+10. **Feature #12**: Efeito de Hit Tomado
+11. **Balanceamento #14**: Balancear Skills
 
 ### Backlog (Baixa Prioridade)
-8. **IA #4**: Fugir Quando com Pouca Vida
-9. **IA #5**: Criaturas se Juntarem
-10. **Feature #9**: Criaturas Usarem Skills
+12. ~~**IA #5**: Fugir Quando com Pouca Vida~~ ✅ CONCLUÍDO
+13. ~~**IA #6**: Criaturas se Juntarem~~ ✅ CONCLUÍDO
+14. **Feature #13**: Criaturas Usarem Skills
 
 ---
 
@@ -362,5 +493,13 @@
 - **2026-01-XX**: Documento criado com backlog inicial
 - **2026-01-XX**: Bug #3 (Movimento Durante Loading) concluído - Implementado bloqueio de movimento, ataques e interações durante loading usando `loadingOverlay.visible`
 - **2026-01-XX**: Bug #1 (Marcador de Capturas Não Atualiza) concluído - Adicionada verificação de `playerId` no handler de captura para garantir que apenas capturas do jogador local atualizem o contador. Corrigido bug no `MultiplayerHandlers` que usava propriedade inexistente. Feedback visual já estava funcionando corretamente.
-- **2026-01-XX**: Bug #2 (Sincronização de HP das Criaturas) concluído - Corrigido método `updateCreatureSprite()` para atualizar barras de HP usando `setSize()` ao invés de apenas `setScale()`. Corrigido posicionamento da barra de HP quando criatura se move. Adicionados logs de debug para rastrear mudanças de HP. Barras de HP agora refletem corretamente o `currentHp` do servidor em todos os cenários.
-- **2026-01-XX**: Feature #6 (Exibir Nome e Nível das Criaturas Selvagens) concluído - Implementada exibição de nome e nível acima de cada criatura selvagem. Servidor agora gera nível baseado no tier (comum: 1-3, perigosa: 4-6, elite: 7-10) e envia nas atualizações. Cliente exibe texto estilizado com contorno preto para legibilidade. Texto é atualizado e posicionado corretamente quando criatura se move.
+- **2026-01-XX**: Bug #1 (Criatura Capturada Não Corresponde à Espécie Real) concluído - Corrigido bug crítico onde criaturas capturadas eram salvas com espécie aleatória ao invés da espécie real. Agora usa `creature.creatureType` ao invés de `selectRandomCreatureSpecies()`. Também usa o nível da criatura selvagem se disponível. Criaturas capturadas agora correspondem exatamente às criaturas realmente capturadas na expedição.
+- **2026-01-XX**: Bug #3 (Sincronização de HP das Criaturas) concluído - Corrigido método `updateCreatureSprite()` para atualizar barras de HP usando `setSize()` ao invés de apenas `setScale()`. Corrigido posicionamento da barra de HP quando criatura se move. Adicionados logs de debug para rastrear mudanças de HP. Barras de HP agora refletem corretamente o `currentHp` do servidor em todos os cenários.
+- **2026-01-XX**: Feature #10 (Exibir Nome e Nível das Criaturas Selvagens) concluído - Implementada exibição de nome e nível acima de cada criatura selvagem. Servidor agora gera nível baseado no tier (comum: 1-3, perigosa: 4-6, elite: 7-10) e envia nas atualizações. Cliente exibe texto estilizado com contorno preto para legibilidade. Texto é atualizado e posicionado corretamente quando criatura se move.
+- **2026-01-XX**: Adicionadas três novas melhorias de IA ao backlog: IA #7 (Cores Visuais das Criaturas e Players Inimigos), IA #8 (Ataques Refletindo Tipo de Criatura), e IA #9 (Threat Tiers Afetando Estrelas/Nível ao Invés de Stats Diretos). Todas priorizadas como Alta/Média prioridade para próximas sprints.
+- **2026-01-XX**: Implementadas todas as melhorias de IA planejadas:
+  - **IA #7 (Cores Visuais)**: Criaturas selvagens agora usam cores baseadas em `creatureThemes` ao invés de cores baseadas em tier. Sprites de criaturas aplicam `primaryColor` e `strokeColor` do tema da espécie.
+  - **IA #8 (Ataques Refletindo Tipo)**: Projéteis de criaturas agora usam cores baseadas no tema da criatura (`attackColor` e `particleColor`). Efeitos de "muzzle flash" também usam cores do tema.
+  - **IA #9 (Threat Tiers → Estrelas/Nível)**: Sistema de spawns agora calcula stats baseados em tipo + nível + estrelas (rank) ao invés de valores fixos por tier. Criado `wildCreatureStats.ts` para calcular stats efetivos. Níveis e ranks são gerados baseados no tier (comum: lv1-3/★1, perigosa: lv4-6/★2-3, elite: lv7-10/★3-5).
+  - **IA #5 (Fugir Quando com Pouca Vida)**: Criaturas agora fogem quando HP < 30%, movendo-se 20% mais rápido na direção oposta ao jogador. Implementado para criaturas melee e ranged.
+  - **IA #6 (Criaturas se Juntarem)**: Criaturas do mesmo tipo agora se agrupam quando próximas (raio de 200px). Movimento de agrupamento aplicado com força de 30% e velocidade reduzida para não interferir com combate.

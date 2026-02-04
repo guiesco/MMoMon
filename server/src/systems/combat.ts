@@ -742,21 +742,50 @@ export function updateCreatureAI(
     }
   }
 
-  // Se não há jogadores vivos, criaturas retornam à origem (não ficam completamente paradas)
+  // Se não há jogadores vivos, criaturas fazem roaming
   if (alivePlayers.length === 0) {
     for (const creature of room.creatures) {
       creature.aiState = "idle";
       creature.targetPlayerId = null;
       
-      // Retornar lentamente à origem de patrulha mesmo sem jogadores
-      const dx = creature.patrolOrigin.x - creature.x;
-      const dy = creature.patrolOrigin.y - creature.y;
-      const distToOrigin = Math.hypot(dx, dy);
+      // ✅ Roaming: Sistema de patrulha aleatória quando não há jogadores
+      const config = ENEMY_AI_CONFIG[creature.tier]?.[creature.behaviorType];
+      if (!config) continue;
       
-      if (distToOrigin > 5) {
-        const returnSpeed = 30 * deltaTime; // Velocidade lenta de retorno
-        creature.x += (dx / distToOrigin) * returnSpeed;
-        creature.y += (dy / distToOrigin) * returnSpeed;
+      const speedMultiplier = getCreatureSpeedMultiplier(creature);
+      const ROAMING_RADIUS = 150;
+      const ROAMING_SPEED = 0.4;
+      const ROAMING_DESTINATION_REACHED_DISTANCE = 15;
+      const ROAMING_NEW_DESTINATION_INTERVAL = 3.0;
+      
+      // Atualizar timer de patrulha
+      creature.patrolTimer -= deltaTime;
+      
+      // Se não tem destino ou chegou ao destino ou timer expirou, escolher novo destino
+      if (!creature.roamingTarget || creature.patrolTimer <= 0) {
+        const angle = Math.random() * Math.PI * 2;
+        const distanceFromOrigin = Math.random() * ROAMING_RADIUS;
+        creature.roamingTarget = {
+          x: creature.patrolOrigin.x + Math.cos(angle) * distanceFromOrigin,
+          y: creature.patrolOrigin.y + Math.sin(angle) * distanceFromOrigin
+        };
+        creature.patrolTimer = ROAMING_NEW_DESTINATION_INTERVAL;
+      }
+      
+      // Mover em direção ao destino de roaming
+      if (creature.roamingTarget && canCreatureMove(creature)) {
+        const dx = creature.roamingTarget.x - creature.x;
+        const dy = creature.roamingTarget.y - creature.y;
+        const distToTarget = Math.hypot(dx, dy);
+        
+        if (distToTarget > ROAMING_DESTINATION_REACHED_DISTANCE) {
+          const roamingSpeed = config.moveSpeed * ROAMING_SPEED * speedMultiplier;
+          creature.x += (dx / distToTarget) * roamingSpeed * deltaTime;
+          creature.y += (dy / distToTarget) * roamingSpeed * deltaTime;
+        } else {
+          creature.roamingTarget = null;
+          creature.patrolTimer = 0;
+        }
       }
     }
     return attackResults;
@@ -780,6 +809,29 @@ export function updateCreatureAI(
       );
     }
 
+    // ✅ IA #6: Encontrar criaturas do mesmo tipo próximas para agrupamento
+    const GROUPING_DETECTION_RANGE = 200; // Raio de detecção para agrupamento
+    const GROUPING_STRENGTH = 0.3; // Força do movimento de agrupamento (0-1)
+    let groupingDx = 0;
+    let groupingDy = 0;
+    let groupingCount = 0;
+    
+    for (const otherCreature of room.creatures) {
+      if (otherCreature.id === creature.id) continue;
+      if (otherCreature.creatureType !== creature.creatureType) continue;
+      
+      const dx = otherCreature.x - creature.x;
+      const dy = otherCreature.y - creature.y;
+      const dist = Math.hypot(dx, dy);
+      
+      if (dist <= GROUPING_DETECTION_RANGE && dist > 0) {
+        // Normalizar e adicionar direção de agrupamento
+        groupingDx += (dx / dist) * GROUPING_STRENGTH;
+        groupingDy += (dy / dist) * GROUPING_STRENGTH;
+        groupingCount++;
+      }
+    }
+
     // Encontrar jogador mais próximo
     let closestPlayer: { id: string; player: CombatPlayer } | null = null;
     let closestDistance = Infinity;
@@ -796,6 +848,15 @@ export function updateCreatureAI(
     }
 
     if (!closestPlayer) continue;
+    
+    // ✅ IA #6: Aplicar movimento de agrupamento se houver criaturas do mesmo tipo próximas
+    if (groupingCount > 0 && canCreatureMove(creature) && creature.aiState !== "attacking") {
+      const speedMultiplier = getCreatureSpeedMultiplier(creature);
+      const groupingSpeed = config.moveSpeed * 0.4 * speedMultiplier; // Movimento mais lento para agrupamento
+      
+      creature.x += groupingDx * groupingSpeed * deltaTime;
+      creature.y += groupingDy * groupingSpeed * deltaTime;
+    }
 
     const prevX = creature.x;
     const prevY = creature.y;
@@ -851,6 +912,7 @@ export function updateCreatureAI(
  * - Persegue jogador quando detectado
  * - Ataca quando em alcance
  * - Retorna à origem quando jogador sai do alcance
+ * - ✅ IA #5: Foge quando com pouca vida (< 30% HP)
  */
 function updateMeleeCreatureAI(
   creature: ServerCreature,
@@ -864,21 +926,75 @@ function updateMeleeCreatureAI(
   // ✅ FASE 9: Aplicar modificador de velocidade dos buffs
   const speedMultiplier = getCreatureSpeedMultiplier(creature);
   
-  // Fora de detecção: idle/patrulha
+  // ✅ Cancelar roaming quando detecta jogador
+  if (distance <= config.detectionRange) {
+    creature.roamingTarget = null;
+  }
+  
+  // ✅ IA #5: Verificar se criatura está com pouca vida (< 30% HP)
+  const hpPercent = creature.maxHp > 0 ? creature.currentHp / creature.maxHp : 1;
+  const FLEE_HP_THRESHOLD = 0.3; // 30% HP
+  const shouldFlee = hpPercent < FLEE_HP_THRESHOLD;
+  
+  // ✅ IA #5: Se com pouca vida, tentar fugir do jogador
+  if (shouldFlee && distance <= config.detectionRange && canCreatureMove(creature)) {
+    creature.aiState = "retreating";
+    creature.targetPlayerId = closestPlayer.id;
+    
+    // Mover para longe do jogador
+    const dx = player.x - creature.x;
+    const dy = player.y - creature.y;
+    const fleeSpeed = config.moveSpeed * 1.2 * speedMultiplier; // 20% mais rápido ao fugir
+    
+    creature.x -= (dx / distance) * fleeSpeed * deltaTime;
+    creature.y -= (dy / distance) * fleeSpeed * deltaTime;
+    return null;
+  }
+  
+  // Fora de detecção: idle/roaming
   if (distance > config.detectionRange) {
     creature.aiState = "idle";
     creature.targetPlayerId = null;
 
-    // Retornar lentamente à origem de patrulha
-    const dx = creature.patrolOrigin.x - creature.x;
-    const dy = creature.patrolOrigin.y - creature.y;
-    const distToOrigin = Math.hypot(dx, dy);
-
-    if (distToOrigin > 5 && canCreatureMove(creature)) {
-      const returnSpeed = config.moveSpeed * 0.5 * speedMultiplier;
-      creature.x += (dx / distToOrigin) * returnSpeed * deltaTime;
-      creature.y += (dy / distToOrigin) * returnSpeed * deltaTime;
+    // ✅ Roaming: Sistema de patrulha aleatória
+    const ROAMING_RADIUS = 150; // Raio máximo de roaming a partir da origem
+    const ROAMING_SPEED = 0.4; // Velocidade de roaming (40% da velocidade normal)
+    const ROAMING_DESTINATION_REACHED_DISTANCE = 15; // Distância para considerar destino alcançado
+    const ROAMING_NEW_DESTINATION_INTERVAL = 3.0; // Tempo em segundos antes de escolher novo destino
+    
+    // Atualizar timer de patrulha
+    creature.patrolTimer -= deltaTime;
+    
+    // Se não tem destino ou chegou ao destino ou timer expirou, escolher novo destino
+    if (!creature.roamingTarget || creature.patrolTimer <= 0) {
+      // Escolher ponto aleatório dentro do raio de roaming
+      const angle = Math.random() * Math.PI * 2;
+      const distanceFromOrigin = Math.random() * ROAMING_RADIUS;
+      creature.roamingTarget = {
+        x: creature.patrolOrigin.x + Math.cos(angle) * distanceFromOrigin,
+        y: creature.patrolOrigin.y + Math.sin(angle) * distanceFromOrigin
+      };
+      creature.patrolTimer = ROAMING_NEW_DESTINATION_INTERVAL;
     }
+    
+    // Mover em direção ao destino de roaming
+    if (creature.roamingTarget && canCreatureMove(creature)) {
+      const dx = creature.roamingTarget.x - creature.x;
+      const dy = creature.roamingTarget.y - creature.y;
+      const distToTarget = Math.hypot(dx, dy);
+      
+      if (distToTarget > ROAMING_DESTINATION_REACHED_DISTANCE) {
+        // Ainda não chegou ao destino, continuar movendo
+        const roamingSpeed = config.moveSpeed * ROAMING_SPEED * speedMultiplier;
+        creature.x += (dx / distToTarget) * roamingSpeed * deltaTime;
+        creature.y += (dy / distToTarget) * roamingSpeed * deltaTime;
+      } else {
+        // Chegou ao destino, escolher novo destino no próximo tick
+        creature.roamingTarget = null;
+        creature.patrolTimer = 0;
+      }
+    }
+    
     return null;
   }
 
@@ -931,6 +1047,7 @@ function updateMeleeCreatureAI(
  * - Mantém distância preferida do jogador
  * - Atira projéteis quando em alcance
  * - Recua se jogador ficar muito perto
+ * - ✅ IA #5: Foge quando com pouca vida (< 30% HP)
  */
 function updateRangedCreatureAI(
   room: CombatRoomState,
@@ -944,22 +1061,76 @@ function updateRangedCreatureAI(
 
   // ✅ FASE 9: Aplicar modificador de velocidade dos buffs
   const speedMultiplier = getCreatureSpeedMultiplier(creature);
+  
+  // ✅ Cancelar roaming quando detecta jogador
+  if (distance <= config.detectionRange) {
+    creature.roamingTarget = null;
+  }
+  
+  // ✅ IA #5: Verificar se criatura está com pouca vida (< 30% HP)
+  const hpPercent = creature.maxHp > 0 ? creature.currentHp / creature.maxHp : 1;
+  const FLEE_HP_THRESHOLD = 0.3; // 30% HP
+  const shouldFlee = hpPercent < FLEE_HP_THRESHOLD;
+  
+  // ✅ IA #5: Se com pouca vida, tentar fugir do jogador
+  if (shouldFlee && distance <= config.detectionRange && canCreatureMove(creature)) {
+    creature.aiState = "retreating";
+    creature.targetPlayerId = closestPlayer.id;
+    
+    // Mover para longe do jogador
+    const dx = player.x - creature.x;
+    const dy = player.y - creature.y;
+    const fleeSpeed = config.moveSpeed * 1.2 * speedMultiplier; // 20% mais rápido ao fugir
+    
+    creature.x -= (dx / distance) * fleeSpeed * deltaTime;
+    creature.y -= (dy / distance) * fleeSpeed * deltaTime;
+    return null;
+  }
 
-  // Fora de detecção: idle
+  // Fora de detecção: idle/roaming
   if (distance > config.detectionRange) {
     creature.aiState = "idle";
     creature.targetPlayerId = null;
 
-    // Retornar à origem
-    const dx = creature.patrolOrigin.x - creature.x;
-    const dy = creature.patrolOrigin.y - creature.y;
-    const distToOrigin = Math.hypot(dx, dy);
-
-    if (distToOrigin > 5 && canCreatureMove(creature)) {
-      const returnSpeed = config.moveSpeed * 0.5 * speedMultiplier;
-      creature.x += (dx / distToOrigin) * returnSpeed * deltaTime;
-      creature.y += (dy / distToOrigin) * returnSpeed * deltaTime;
+    // ✅ Roaming: Sistema de patrulha aleatória (mesmo sistema para ranged)
+    const ROAMING_RADIUS = 150; // Raio máximo de roaming a partir da origem
+    const ROAMING_SPEED = 0.4; // Velocidade de roaming (40% da velocidade normal)
+    const ROAMING_DESTINATION_REACHED_DISTANCE = 15; // Distância para considerar destino alcançado
+    const ROAMING_NEW_DESTINATION_INTERVAL = 3.0; // Tempo em segundos antes de escolher novo destino
+    
+    // Atualizar timer de patrulha
+    creature.patrolTimer -= deltaTime;
+    
+    // Se não tem destino ou chegou ao destino ou timer expirou, escolher novo destino
+    if (!creature.roamingTarget || creature.patrolTimer <= 0) {
+      // Escolher ponto aleatório dentro do raio de roaming
+      const angle = Math.random() * Math.PI * 2;
+      const distanceFromOrigin = Math.random() * ROAMING_RADIUS;
+      creature.roamingTarget = {
+        x: creature.patrolOrigin.x + Math.cos(angle) * distanceFromOrigin,
+        y: creature.patrolOrigin.y + Math.sin(angle) * distanceFromOrigin
+      };
+      creature.patrolTimer = ROAMING_NEW_DESTINATION_INTERVAL;
     }
+    
+    // Mover em direção ao destino de roaming
+    if (creature.roamingTarget && canCreatureMove(creature)) {
+      const dx = creature.roamingTarget.x - creature.x;
+      const dy = creature.roamingTarget.y - creature.y;
+      const distToTarget = Math.hypot(dx, dy);
+      
+      if (distToTarget > ROAMING_DESTINATION_REACHED_DISTANCE) {
+        // Ainda não chegou ao destino, continuar movendo
+        const roamingSpeed = config.moveSpeed * ROAMING_SPEED * speedMultiplier;
+        creature.x += (dx / distToTarget) * roamingSpeed * deltaTime;
+        creature.y += (dy / distToTarget) * roamingSpeed * deltaTime;
+      } else {
+        // Chegou ao destino, escolher novo destino no próximo tick
+        creature.roamingTarget = null;
+        creature.patrolTimer = 0;
+      }
+    }
+    
     return null;
   }
 

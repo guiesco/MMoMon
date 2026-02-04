@@ -11,6 +11,7 @@ import type {
   PlayerState 
 } from "../../../game/worldState";
 import { getCreatureById } from "../../../game/creatures";
+import { getCreatureTheme } from "../../../game/creatureThemes";
 
 /**
  * Gerencia sprites de criaturas, recursos e jogadores.
@@ -42,22 +43,15 @@ export class SpriteManager {
       return;
     }
 
-    // Determina a cor baseada no tier
-    let creatureColor = 0x7f1d1d;
-    switch (creature.tier) {
-      case "comum":
-        creatureColor = 0x7f1d1d; // vermelho escuro
-        break;
-      case "perigosa":
-        creatureColor = 0x9a3412; // laranja escuro
-        break;
-      case "elite":
-        creatureColor = 0x7c2d12; // marrom escuro
-        break;
-    }
+    // ✅ IA #7: Usa cor baseada na espécie da criatura ao invés do tier
+    const creatureType = creature.speciesId ?? creature.creatureType ?? "";
+    const theme = getCreatureTheme(creatureType);
+    const creatureColor = theme.primaryColor;
+    const strokeColor = theme.strokeColor;
 
-    // Cria sprite principal
+    // Cria sprite principal com cor da espécie
     const sprite = this.scene.add.circle(creature.x, creature.y, 12, creatureColor, 1);
+    sprite.setStrokeStyle(2, strokeColor, 1);
     sprite.setDepth(2);
 
     // ✅ BUG FIX: HPBarManager gerencia barras de HP de inimigos

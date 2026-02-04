@@ -18,6 +18,7 @@ import {
   createExtractionPoint,
   resetIdCounter
 } from "../types";
+import { getEffectiveStatsForWildCreature } from "./wildCreatureStats";
 
 /**
  * Configuração de um mapa para spawns.
@@ -49,6 +50,26 @@ export interface ThreatTierWeights {
 }
 
 /**
+ * Configuração de níveis por tier para um mapa.
+ * Define o range de níveis que cada tier pode ter em um mapa específico.
+ */
+export interface MapLevelConfig {
+  comum: { min: number; max: number };
+  perigosa: { min: number; max: number };
+  elite: { min: number; max: number };
+}
+
+/**
+ * Configuração de ranks (estrelas) por tier para um mapa.
+ * Define o range de ranks que cada tier pode ter em um mapa específico.
+ */
+export interface MapRankConfig {
+  comum: { min: number; max: number };
+  perigosa: { min: number; max: number };
+  elite: { min: number; max: number };
+}
+
+/**
  * Configuração de spawns por bioma.
  * Define quais recursos aparecem em cada bioma.
  */
@@ -70,6 +91,111 @@ export const DEFAULT_TIER_WEIGHTS: ThreatTierWeights = {
   perigosa: 0.3,
   elite: 0.15
 };
+
+/**
+ * Configuração de níveis por tier por mapa.
+ * Mapas mais difíceis têm níveis mais altos, podendo chegar até nível 50.
+ */
+export const MAP_LEVEL_CONFIGS: Record<string, MapLevelConfig> = {
+  "floresta-celestial": {
+    comum: { min: 1, max: 5 },
+    perigosa: { min: 4, max: 10 },
+    elite: { min: 8, max: 15 }
+  },
+  "cavernas-cristalinas": {
+    comum: { min: 5, max: 12 },
+    perigosa: { min: 10, max: 20 },
+    elite: { min: 18, max: 30 }
+  },
+  "ruinas-antigas": {
+    comum: { min: 10, max: 20 },
+    perigosa: { min: 18, max: 35 },
+    elite: { min: 30, max: 50 }
+  },
+  "pantano-sombrio": {
+    comum: { min: 8, max: 15 },
+    perigosa: { min: 15, max: 28 },
+    elite: { min: 25, max: 45 }
+  }
+};
+
+/**
+ * Configuração de ranks (estrelas) por tier por mapa.
+ * Mapas mais difíceis têm mais estrelas.
+ */
+export const MAP_RANK_CONFIGS: Record<string, MapRankConfig> = {
+  "floresta-celestial": {
+    comum: { min: 1, max: 1 },
+    perigosa: { min: 2, max: 3 },
+    elite: { min: 3, max: 4 }
+  },
+  "cavernas-cristalinas": {
+    comum: { min: 1, max: 2 },
+    perigosa: { min: 2, max: 4 },
+    elite: { min: 4, max: 5 }
+  },
+  "ruinas-antigas": {
+    comum: { min: 2, max: 3 },
+    perigosa: { min: 3, max: 5 },
+    elite: { min: 4, max: 5 }
+  },
+  "pantano-sombrio": {
+    comum: { min: 1, max: 2 },
+    perigosa: { min: 3, max: 4 },
+    elite: { min: 4, max: 5 }
+  }
+};
+
+/**
+ * Distribuição de tiers de ameaça por mapa.
+ * Mapas mais difíceis têm mais elites e menos comuns.
+ */
+export const MAP_TIER_WEIGHTS: Record<string, ThreatTierWeights> = {
+  "floresta-celestial": {
+    comum: 0.60,  // 60% comuns (mapa fácil)
+    perigosa: 0.30, // 30% perigosas
+    elite: 0.10    // 10% elites
+  },
+  "cavernas-cristalinas": {
+    comum: 0.45,  // 45% comuns
+    perigosa: 0.35, // 35% perigosas
+    elite: 0.20    // 20% elites
+  },
+  "ruinas-antigas": {
+    comum: 0.30,  // 30% comuns (mapa difícil)
+    perigosa: 0.40, // 40% perigosas
+    elite: 0.30    // 30% elites
+  },
+  "pantano-sombrio": {
+    comum: 0.40,  // 40% comuns
+    perigosa: 0.40, // 40% perigosas
+    elite: 0.20    // 20% elites
+  }
+};
+
+/**
+ * Retorna a configuração de níveis para um mapa.
+ * Se o mapa não existir, retorna configuração padrão (floresta-celestial).
+ */
+export function getMapLevelConfig(mapId: string): MapLevelConfig {
+  return MAP_LEVEL_CONFIGS[mapId] ?? MAP_LEVEL_CONFIGS["floresta-celestial"];
+}
+
+/**
+ * Retorna a configuração de ranks para um mapa.
+ * Se o mapa não existir, retorna configuração padrão (floresta-celestial).
+ */
+export function getMapRankConfig(mapId: string): MapRankConfig {
+  return MAP_RANK_CONFIGS[mapId] ?? MAP_RANK_CONFIGS["floresta-celestial"];
+}
+
+/**
+ * Retorna a distribuição de tiers para um mapa.
+ * Se o mapa não existir, retorna distribuição padrão.
+ */
+export function getMapTierWeights(mapId: string): ThreatTierWeights {
+  return MAP_TIER_WEIGHTS[mapId] ?? DEFAULT_TIER_WEIGHTS;
+}
 
 /**
  * Chance de uma criatura ser ranged vs melee.
@@ -265,7 +391,19 @@ export function initializeWorldSpawns(
 
   // Inicializa RNG (usa Date.now() se seed não for fornecido)
   const rng = new SeededRandom(seed ?? Date.now());
-  const weights = tierWeights ?? DEFAULT_TIER_WEIGHTS;
+  // ✅ Usa distribuição de tiers baseada no mapa, ou a fornecida como parâmetro
+  const weights = tierWeights ?? getMapTierWeights(mapConfig.id);
+  
+  // ✅ Obtém configurações de nível e rank baseadas no mapa
+  const levelConfig = getMapLevelConfig(mapConfig.id);
+  const rankConfig = getMapRankConfig(mapConfig.id);
+  
+  // Log das configurações do mapa
+  console.log(`[SPAWNS] Configurações do mapa "${mapConfig.id}":`, {
+    tierWeights: weights,
+    levelRanges: levelConfig,
+    rankRanges: rankConfig
+  });
 
   const { worldWidth, worldHeight } = mapConfig;
 
@@ -285,9 +423,22 @@ export function initializeWorldSpawns(
     const tier = pickTier(rng, weights);
     const behaviorType = pickBehaviorType(rng);
     const creatureType = pickCreatureType(rng);
-    const maxHp = TIER_BASE_HP[tier];
+    
+    // ✅ Calcular nível e estrelas baseado no tier E no mapa
+    const tierLevelRange = levelConfig[tier];
+    const level = rng.between(tierLevelRange.min, tierLevelRange.max);
+    
+    // Estrelas (rank) baseado no tier E no mapa
+    const tierRankRange = rankConfig[tier];
+    const rank = rng.between(tierRankRange.min, tierRankRange.max);
+    
+    // ✅ IA #9: Calcular HP baseado em tipo + nível + estrelas ao invés de tier direto
+    const effectiveStats = getEffectiveStatsForWildCreature(creatureType, level, rank);
+    const maxHp = effectiveStats.hp;
 
     const creature = createCreature(creatureType, x, y, tier, behaviorType, maxHp);
+    // Garantir que o nível está definido (já é definido em createCreature, mas garantimos)
+    creature.level = level;
     worldState.creatures.push(creature);
   }
 
@@ -331,9 +482,9 @@ export function initializeWorldSpawns(
  * Útil para respawn durante a partida (ex: após morte de criatura).
  * 
  * @param worldState - Estado do mundo
- * @param mapConfig - Configuração do mapa (para limites de mundo)
+ * @param mapConfig - Configuração do mapa (deve incluir 'id' para determinar níveis e tiers)
  * @param position - Posição específica (opcional, gera aleatória se não fornecido)
- * @param tier - Tier da criatura (opcional, sorteia se não fornecido)
+ * @param tier - Tier da criatura (opcional, sorteia baseado no mapa se não fornecido)
  * @param rng - Gerador de números aleatórios (opcional, cria um novo se não fornecido)
  * @returns Criatura spawnada
  * 
@@ -345,7 +496,7 @@ export function initializeWorldSpawns(
  */
 export function respawnCreature(
   worldState: WorldState,
-  mapConfig: Pick<MapSpawnConfig, "worldWidth" | "worldHeight">,
+  mapConfig: Pick<MapSpawnConfig, "id" | "worldWidth" | "worldHeight">,
   position?: { x: number; y: number },
   tier?: ThreatTier,
   rng?: SeededRandom
@@ -356,14 +507,32 @@ export function respawnCreature(
   const x = position?.x ?? random.between(60, mapConfig.worldWidth - 60);
   const y = position?.y ?? random.between(150, mapConfig.worldHeight - 60);
   
-  // Tier (usa fornecido ou sorteia)
-  const finalTier = tier ?? pickTier(random, DEFAULT_TIER_WEIGHTS);
+  // ✅ Usa distribuição de tiers baseada no mapa
+  const mapTierWeights = getMapTierWeights(mapConfig.id);
+  const finalTier = tier ?? pickTier(random, mapTierWeights);
+  
+  // ✅ Obtém configurações de nível e rank baseadas no mapa
+  const levelConfig = getMapLevelConfig(mapConfig.id);
+  const rankConfig = getMapRankConfig(mapConfig.id);
   
   const behaviorType = pickBehaviorType(random);
   const creatureType = pickCreatureType(random);
-  const maxHp = TIER_BASE_HP[finalTier];
+  
+  // ✅ Calcular nível e estrelas baseado no tier E no mapa
+  const tierLevelRange = levelConfig[finalTier];
+  const level = random.between(tierLevelRange.min, tierLevelRange.max);
+  
+  // Estrelas (rank) baseado no tier E no mapa
+  const tierRankRange = rankConfig[finalTier];
+  const rank = random.between(tierRankRange.min, tierRankRange.max);
+  
+  // ✅ Calcular HP baseado em tipo + nível + estrelas ao invés de tier direto
+  const effectiveStats = getEffectiveStatsForWildCreature(creatureType, level, rank);
+  const maxHp = effectiveStats.hp;
 
-  return createCreature(creatureType, x, y, finalTier, behaviorType, maxHp);
+  const creature = createCreature(creatureType, x, y, finalTier, behaviorType, maxHp);
+  creature.level = level;
+  return creature;
 }
 
 /**
