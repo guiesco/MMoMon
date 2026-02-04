@@ -1973,6 +1973,8 @@ export class ExpeditionScene extends Phaser.Scene {
       if (this.state !== "extracted" && this.state !== "failed") {
         console.log("[Expedition] ⏱️ TEMPO ESGOTADO! Expedição falhou.");
         this.state = "failed";
+        // Resetar timer de redirecionamento para garantir contagem correta
+        this.endSceneTimer = 0;
         if (!this.telemetry.extractionFailed) {
           this.telemetry.extractionFailed = true;
           // Usar tempo do servidor se disponível, senão usar tempo local
@@ -3514,6 +3516,8 @@ export class ExpeditionScene extends Phaser.Scene {
 
     console.log("[Expedition] 💀 JOGADOR MORREU! Expedição falhou.");
     this.state = "failed";
+    // Resetar timer de redirecionamento para garantir contagem correta
+    this.endSceneTimer = 0;
     if (!this.telemetry.extractionFailed) {
       this.telemetry.extractionFailed = true;
       // Usar tempo do servidor se disponível, senão usar tempo local
@@ -4157,6 +4161,8 @@ export class ExpeditionScene extends Phaser.Scene {
       if (this.activeCreatureHp <= 0) {
         // Morte do jogador = falha imediata da expedição
         this.state = "failed";
+        // Resetar timer de redirecionamento para garantir contagem correta
+        this.endSceneTimer = 0;
         if (!this.telemetry.extractionFailed) {
           this.telemetry.extractionFailed = true;
           // Usar tempo do servidor se disponível, senão usar tempo local
@@ -5104,6 +5110,12 @@ export class ExpeditionScene extends Phaser.Scene {
     const isLocalPlayer = result.targetId === this.mpClient?.getClientId();
     
     if (isLocalPlayer) {
+      // Não processar dano se já está morto/falhou
+      if (this.state === "failed") {
+        console.log("[MP] Ignorando dano - jogador já está morto");
+        return;
+      }
+      
       // Atualizar HP do jogador local
       if (result.targetHp !== undefined) {
         this.activeCreatureHp = Math.max(0, result.targetHp);
@@ -5154,14 +5166,60 @@ export class ExpeditionScene extends Phaser.Scene {
           }
         }
         
-        // Verificar morte
+        // Verificar morte imediatamente - não esperar pelo evento separado
         if (result.targetDestroyed || this.activeCreatureHp <= 0) {
-          // A morte será tratada pelo evento player_death separado
-          console.log("[MP] Jogador local morreu por ataque");
+          // Estado não pode ser "failed" aqui porque já verificamos no início
+          console.log("[MP] Jogador local morreu por ataque - mudando estado imediatamente");
+          this.state = "failed";
+          // Resetar timer de redirecionamento para garantir contagem correta
+          this.endSceneTimer = 0;
+          
+          // Registrar telemetria de falha se ainda não foi registrada
+          if (!this.telemetry.extractionFailed) {
+            this.telemetry.extractionFailed = true;
+            const finalTime = this.lastMatchState?.elapsedSeconds ?? this.expeditionTime;
+            this.telemetry.timeSpent = finalTime;
+            
+            const timeMinutes = finalTime / 60;
+            this.telemetry.resourcesPerMinute =
+              this.telemetry.resourcesCollected / Math.max(0.1, timeMinutes);
+            this.telemetry.creaturesPerMinute =
+              this.telemetry.creaturesCaptured / Math.max(0.1, timeMinutes);
+            this.telemetry.averageCaptureChance =
+              this.telemetry.captureAttempts > 0
+                ? this.telemetry.totalCaptureChanceSum / this.telemetry.captureAttempts
+                : 0;
+            
+            console.log("[TELEMETRIA] Expedição falhou - morte em combate (multiplayer)");
+            console.table({
+              "Tempo Total (s)": Math.floor(this.telemetry.timeSpent),
+              "Recursos Coletados": this.telemetry.resourcesCollected,
+              "Dano Recebido": this.telemetry.damageTaken.toFixed(1),
+              "Morto Por": result.attackerId || "desconhecido",
+              Status: "FALHA (MORTE EM COMBATE)"
+            });
+            
+            // Mesmo em falha, criaturas ganham XP (sem bônus de extração)
+            this.processCreatureXp(false);
+          }
+          
+          // Feedback visual
+          this.feedbackManager.createFloatingText(
+            this.scale.width / 2,
+            this.scale.height / 2,
+            `💀 VOCÊ MORREU`,
+            0xef4444
+          );
+          
+          // Desabilita controles
+          this.input.keyboard?.disableGlobalCapture();
         }
       }
       
-      this.state = "combat";
+      // Só mudar para combat se não estiver morto
+      if (this.state !== "failed") {
+        this.state = "combat";
+      }
       return;
     }
     
@@ -5890,6 +5948,8 @@ export class ExpeditionScene extends Phaser.Scene {
       
       this.state = "failed";
       this.activeCreatureHp = 0;
+      // Resetar timer de redirecionamento para garantir contagem correta
+      this.endSceneTimer = 0;
       
       // Registrar telemetria de falha
       if (!this.telemetry.extractionFailed) {
