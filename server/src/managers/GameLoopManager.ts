@@ -77,26 +77,11 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
     },
 
     onTick: (tickNumber: number, deltaMs: number) => {
-      // IMPORTANTE: Processar sistema de extração ANTES de verificar fim de partida
-      // Isso garante que extraction_state completed seja enviado antes de match_event finished
-      // Usar then() para garantir ordem de execução sem bloquear o tick
+      // IMPORTANTE: Processar sistema de extração
+      // Cada jogador que extrai é desconectado individualmente em handleExtractionCompleted
+      // A partida só termina quando o tempo acabar ou quando todos os jogadores extraírem
+      // (verificação feita no checkMatchEnd do gameLoop)
       processExtractionSystem(room, deltaMs)
-        .then(() => {
-          // Verificar se todos jogadores extraíram ou morreram para encerrar antecipadamente
-          // IMPORTANTE: Isso é feito DEPOIS de processar extrações para garantir ordem correta
-          if (room.matchState === "in_progress") {
-            const roomForExtraction = {
-              id: room.id,
-              players: room.players,
-              extractionPoints: room.worldState.extractionPoints,
-              activeExtractions: room.activeExtractions
-            };
-            
-            if (allPlayersExtractedOrDead(roomForExtraction)) {
-              room.gameLoop?.forceMatchState("finished");
-            }
-          }
-        })
         .catch(error => {
           console.error(`[Room:${room.id}] Erro no sistema de extração:`, error);
         });

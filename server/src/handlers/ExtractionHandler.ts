@@ -248,6 +248,19 @@ async function handleExtractionCompleted(
   }
 
   console.log(`[ExtractionHandler] ✅ Extração INDIVIDUAL completa processada para jogador ${update.playerId}`);
+  
+  // IMPORTANTE: Desconectar apenas o jogador que extraiu, não todos
+  // A sala continua ativa para os outros jogadores até o tempo acabar ou todos extraírem
+  // Aguardar um delay para garantir que a mensagem de extração foi enviada e processada pelo cliente
+  setTimeout(() => {
+    const playerWs = room.clients.get(update.playerId);
+    if (playerWs && playerWs.readyState === WebSocket.OPEN) {
+      console.log(`[ExtractionHandler] Desconectando jogador ${update.playerId} após extração bem-sucedida`);
+      // Fechar conexão do jogador que extraiu
+      // O evento 'close' no index.ts irá remover o jogador da sala automaticamente
+      playerWs.close(1000, "extraction_completed");
+    }
+  }, 500); // Delay de 500ms para garantir que a mensagem foi enviada e processada
 }
 
 /**
