@@ -20,7 +20,9 @@ import {
   type ExtractionState,
   type MatchEvent,
   type MatchState,
-  type PlayerDeath
+  type PlayerDeath,
+  type RemoteLootBag,
+  type LootCollected
 } from "../services/multiplayerClient";
 import {
   EXPEDITION_DURATION_SECONDS,
@@ -162,6 +164,23 @@ export class ExpeditionScene extends Phaser.Scene {
    * Usado para evitar enviar múltiplos intents para o mesmo recurso.
    */
   private resourceIntentsSent: Set<string> = new Set();
+
+  /**
+   * ✅ SPRINT 1: Map de sprites visuais para loot bags.
+   * Chave: ID do loot bag, Valor: container com sprite e indicadores
+   */
+  private lootBagSprites: Map<string, Phaser.GameObjects.Container> = new Map();
+  
+  /**
+   * ✅ SPRINT 1: Set de IDs de loot bags que já tiveram o intent de coleta enviado.
+   * Usado para evitar enviar múltiplos intents para o mesmo loot bag.
+   */
+  private lootBagIntentsSent: Set<string> = new Set();
+  
+  /**
+   * ✅ SPRINT 1: Loot bag próximo ao jogador (para mostrar prompt de interação).
+   */
+  private nearbyLootBagId: string | null = null;
 
   /**
    * Projéteis locais do jogador.
@@ -922,6 +941,20 @@ export class ExpeditionScene extends Phaser.Scene {
         this.handlePlayerDeath(death);
       });
       this.mpClient.on("playerMove", (move) => this.multiplayerHandlers.handlePlayerMove(move));
+      
+      // ✅ SPRINT 1: Handler de atualização de loot bags
+      this.mpClient.on("lootBagsUpdate", (lootBags) => this.handleLootBagsUpdate(lootBags));
+      
+      // ✅ SPRINT 1: Handler de confirmação de coleta de loot
+      this.mpClient.on("lootCollected", (data) => {
+        console.log(`[ExpeditionScene] Loot coletado: ${data.lootBagId}`);
+        this.feedbackManager.createFloatingText(
+          this.player.x,
+          this.player.y - 30,
+          "Loot coletado!",
+          0x10b981
+        );
+      });
       
       // Handlers para erros e conexão
       this.mpClient.on("error", (reason, details) => {
@@ -4064,6 +4097,14 @@ export class ExpeditionScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.captureKey)) {
       this.tryCaptureNearbyCreature();
     }
+
+    // ✅ SPRINT 1: Verificar loot bags próximos e permitir coleta com tecla E
+    this.checkNearbyLootBags();
+    
+    // ✅ SPRINT 1: Coletar loot bag com tecla E (se não estiver extraindo)
+    if (Phaser.Input.Keyboard.JustDown(this.extractKey) && this.nearbyLootBagId && !inExtractionZone) {
+      this.tryCollectLootBag(this.nearbyLootBagId);
+    }
   }
 
   /**
@@ -4304,6 +4345,59 @@ export class ExpeditionScene extends Phaser.Scene {
     const rawChance = (baseRate + hpBonus - penalty) * ballMods.multiplier + ballMods.flatBonus;
     
     return Math.max(0.05, Math.min(CAPTURE_CONFIG.maxChance, rawChance)); // Mínimo 5%, máximo do config
+  }
+
+  /**
+   * ✅ SPRINT 1: Verifica loot bags próximos ao jogador (raio 30px).
+   */
+  private checkNearbyLootBags(): void {
+    const LOOT_COLLECTION_RANGE = 30;
+    let closestLootBagId: string | null = null;
+    let closestDistance = LOOT_COLLECTION_RANGE + 1;
+
+    for (const [lootBagId, container] of this.lootBagSprites) {
+      const dx = container.x - this.player.x;
+      const dy = container.y - this.player.y;
+      const distance = Math.hypot(dx, dy);
+
+      if (distance <= LOOT_COLLECTION_RANGE && distance < closestDistance) {
+        closestDistance = distance;
+        closestLootBagId = lootBagId;
+      }
+    }
+
+    // Atualizar loot bag próximo
+    if (closestLootBagId !== this.nearbyLootBagId) {
+      this.nearbyLootBagId = closestLootBagId;
+      
+      // Feedback visual pode ser adicionado aqui (ex: highlight do loot bag)
+      if (closestLootBagId) {
+        const container = this.lootBagSprites.get(closestLootBagId);
+        if (container) {
+          // Destacar loot bag próximo (opcional)
+          container.setAlpha(1.0);
+        }
+      }
+    }
+  }
+
+  /**
+   * ✅ SPRINT 1: Tenta coletar um loot bag.
+   */
+  private tryCollectLootBag(lootBagId: string): void {
+    if (!this.mpClient || !this.mpClient.isConnected()) {
+      return;
+    }
+
+    // Evitar enviar múltiplos intents para o mesmo loot bag
+    if (this.lootBagIntentsSent.has(lootBagId)) {
+      return;
+    }
+
+    this.lootBagIntentsSent.add(lootBagId);
+    this.mpClient.sendLootInteract(lootBagId);
+    
+    console.log(`[ExpeditionScene] Enviando intent de coleta de loot bag: ${lootBagId}`);
   }
 
 
@@ -5234,6 +5328,110 @@ export class ExpeditionScene extends Phaser.Scene {
    * 
    * FASE 5: Agora usa worldState como fonte única de verdade.
    */
+  /**
+   * ✅ SPRINT 1: Handler de atualização de loot bags do servidor.
+   */
+  private handleLootBagsUpdate(lootBags: RemoteLootBag[]): void {
+    console.log("[MP] Loot bags atualizados:", lootBags.length, "loot bags no servidor");
+
+    const seen = new Set<string>();
+    
+    for (const remoteLootBag of lootBags) {
+      seen.add(remoteLootBag.id);
+      
+      // Se loot bag já existe, apenas atualiza posição
+      if (this.lootBagSprites.has(remoteLootBag.id)) {
+        this.updateLootBagSprite(remoteLootBag);
+      } else {
+        // Cria novo sprite de loot bag
+        this.createLootBagSprite(remoteLootBag);
+      }
+    }
+
+    // Remove loot bags que não estão mais no servidor
+    for (const [lootBagId] of this.lootBagSprites) {
+      if (!seen.has(lootBagId)) {
+        this.destroyLootBagSprite(lootBagId);
+      }
+    }
+  }
+
+  /**
+   * ✅ SPRINT 1: Cria sprite visual de loot bag.
+   */
+  private createLootBagSprite(lootBag: RemoteLootBag): void {
+    if (this.lootBagSprites.has(lootBag.id)) {
+      return; // Já existe
+    }
+
+    // Criar container para agrupar elementos visuais
+    const container = this.add.container(lootBag.x, lootBag.y);
+    
+    // Sprite principal: saco/mochila (retângulo com borda)
+    const bagSprite = this.add.rectangle(0, 0, 24, 24, 0x8b5cf6, 0.9);
+    bagSprite.setStrokeStyle(2, 0x6d28d9, 1);
+    bagSprite.setDepth(2);
+    
+    // Indicador de brilho (pulsação)
+    const glowSprite = this.add.circle(0, 0, 16, 0xffd700, 0.3);
+    glowSprite.setDepth(1);
+    
+    // Texto indicando quantidade de itens
+    const itemCount = Object.keys(lootBag.resources).length + 
+                      Object.keys(lootBag.pokeballs).length + 
+                      lootBag.capturedCreatures + 
+                      (lootBag.hasTeamCreature ? 1 : 0);
+    const countText = this.add.text(0, -18, `${itemCount}`, {
+      fontSize: "10px",
+      color: "#ffffff",
+      stroke: "#000000",
+      strokeThickness: 2
+    });
+    countText.setOrigin(0.5, 0.5);
+    countText.setDepth(3);
+    
+    container.add([glowSprite, bagSprite, countText]);
+    container.setDepth(2);
+    
+    this.lootBagSprites.set(lootBag.id, container);
+    
+    // Animação de pulsação
+    this.tweens.add({
+      targets: glowSprite,
+      alpha: { from: 0.3, to: 0.6 },
+      scale: { from: 1, to: 1.2 },
+      duration: 1000,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut"
+    });
+  }
+
+  /**
+   * ✅ SPRINT 1: Atualiza posição de sprite de loot bag.
+   */
+  private updateLootBagSprite(lootBag: RemoteLootBag): void {
+    const container = this.lootBagSprites.get(lootBag.id);
+    if (container) {
+      container.setPosition(lootBag.x, lootBag.y);
+    }
+  }
+
+  /**
+   * ✅ SPRINT 1: Remove sprite de loot bag.
+   */
+  private destroyLootBagSprite(lootBagId: string): void {
+    const container = this.lootBagSprites.get(lootBagId);
+    if (container) {
+      container.destroy();
+      this.lootBagSprites.delete(lootBagId);
+      this.lootBagIntentsSent.delete(lootBagId);
+      if (this.nearbyLootBagId === lootBagId) {
+        this.nearbyLootBagId = null;
+      }
+    }
+  }
+
   private handleResourcesUpdate(resources: RemoteResource[]) {
     console.log("[MP] Recursos atualizados:", resources.length, "recursos no servidor");
 
@@ -5296,6 +5494,9 @@ export class ExpeditionScene extends Phaser.Scene {
       }
     }
 
+    // ✅ SPRINT 1: Handler de atualização de loot bags do servidor.
+    // (Método adicionado acima, antes de handleResourcesUpdate)
+    
     // Remove recursos que foram coletados (não aparecem mais no servidor)
     // Atualiza telemetria quando recursos são realmente coletados (confirmados pelo servidor)
     for (const resourceId of this.worldState.resources.keys()) {

@@ -94,4 +94,31 @@ export class StateBroadcaster {
       }
     }
   }
+
+  /**
+   * ✅ SPRINT 1: Broadcast de atualização de loot bags.
+   */
+  static broadcastLootBagsUpdate(room: Room): void {
+    const lootBags = Array.from(room.worldState.lootBags.values()).map(bag => ({
+      id: bag.id,
+      x: bag.x,
+      y: bag.y,
+      resources: Object.fromEntries(bag.resources),
+      pokeballs: Object.fromEntries(bag.pokeballs),
+      capturedCreatures: bag.capturedCreatures.length,
+      hasTeamCreature: !!bag.teamCreature,
+      createdAt: bag.createdAt
+    }));
+
+    const message = {
+      type: "lootBagsUpdate",
+      lootBags
+    };
+
+    for (const [clientId, ws] of room.clients.entries()) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(message));
+      }
+    }
+  }
 }

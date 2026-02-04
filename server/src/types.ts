@@ -220,6 +220,51 @@ export interface ServerSkillZone {
 }
 
 /**
+ * Loot bag deixado no chão quando jogador morre.
+ * 
+ * Contém todos os itens que o jogador tinha quando morreu:
+ * - Recursos coletados durante a expedição
+ * - Pokébolas não usadas do inventário de expedição
+ * - Criaturas capturadas durante a expedição
+ * - 1 criatura aleatória do time do jogador morto
+ */
+export interface ServerLootBag {
+  id: string;
+  x: number;
+  y: number;
+  /** Recursos coletados durante a expedição */
+  resources: Map<string, number>;
+  /** Pokébolas não usadas do inventário de expedição */
+  pokeballs: Map<string, number>;
+  /** Criaturas capturadas durante a expedição */
+  capturedCreatures: Array<{
+    instanceId: string;
+    speciesId: string;
+    level: number;
+    tier: string;
+    currentHp: number;
+    maxHp: number;
+  }>;
+  /** 1 criatura aleatória do time do jogador morto */
+  teamCreature?: {
+    instanceId: string;
+    speciesId: string;
+    level: number;
+    rank?: number;
+    currentHp: number;
+    maxHp: number;
+  };
+  /** Timestamp de criação */
+  createdAt: number;
+  /** ID do jogador que morreu */
+  ownerId: string;
+  /** ID do jogador que matou (opcional - pode ser criatura) */
+  killerId?: string;
+  /** ID da sala onde está o loot */
+  roomId: string;
+}
+
+/**
  * Representa um projétil ativo no mundo do servidor.
  * 
  * Projéteis podem ser de jogadores (ataques) ou de criaturas (ataques ranged).
@@ -288,6 +333,9 @@ export interface WorldState {
 
   /** Lista de zonas de skill ativas */
   skillZones: ServerSkillZone[];
+  
+  /** ✅ SPRINT 1: Loot bags deixados no chão quando jogadores morrem */
+  lootBags: Map<string, ServerLootBag>;
 }
 
 // ============================================================================
@@ -548,7 +596,8 @@ export function createEmptyWorldState(): WorldState {
     resources: [],
     extractionPoints: [],
     projectiles: [],
-    skillZones: []
+    skillZones: [],
+    lootBags: new Map() // ✅ SPRINT 1: Inicializar Map de loot bags
   };
 }
 

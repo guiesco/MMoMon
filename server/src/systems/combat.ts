@@ -363,6 +363,59 @@ export function processAttackIntent(
 }
 
 // ============================================================================
+// Validações de PvP
+// ============================================================================
+
+/**
+ * Verifica se jogador está em zona segura (ponto de extração).
+ * 
+ * @param player - Jogador a verificar
+ * @param extractionPoints - Lista de pontos de extração
+ * @returns true se jogador está em zona segura
+ */
+function isPlayerInSafeZone(
+  player: CombatPlayer,
+  extractionPoints: Array<{ x: number; y: number; radius: number; isActive?: boolean }>
+): boolean {
+  const SAFE_ZONE_RADIUS = 50; // pixels
+  
+  for (const point of extractionPoints) {
+    // Verificar se ponto está ativo (se tiver propriedade isActive)
+    if (point.isActive !== undefined && !point.isActive) continue;
+    
+    const dx = player.x - point.x;
+    const dy = player.y - point.y;
+    const distance = Math.hypot(dx, dy);
+    
+    if (distance <= SAFE_ZONE_RADIUS) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Verifica se jogador está protegido por invulnerabilidade de spawn.
+ * 
+ * @param player - Jogador a verificar (precisa ter joinedAt)
+ * @param roomStartTime - Timestamp de início da sala
+ * @returns true se jogador está protegido (5 segundos após join)
+ */
+function isPlayerSpawnProtected(
+  player: CombatPlayer & { joinedAt?: number },
+  roomStartTime: number
+): boolean {
+  const SPAWN_PROTECTION_SECONDS = 5;
+  
+  // Usar player.joinedAt se disponível, senão usar roomStartTime
+  const joinTime = player.joinedAt || roomStartTime;
+  const timeSinceJoin = (Date.now() - joinTime) / 1000;
+  
+  return timeSinceJoin < SPAWN_PROTECTION_SECONDS;
+}
+
+// ============================================================================
 // Atualização de Projéteis
 // ============================================================================
 
@@ -380,6 +433,8 @@ export function processAttackIntent(
  * 
  * @param room - Estado da sala
  * @param deltaTime - Tempo decorrido desde último tick (em segundos)
+ * @param extractionPoints - Pontos de extração (zonas seguras) - opcional
+ * @param roomStartTime - Timestamp de início da sala (para proteção de spawn) - opcional
  * @returns Lista de resultados de dano aplicados
  * 
  * @example
@@ -393,7 +448,9 @@ export function processAttackIntent(
  */
 export function updateProjectiles(
   room: CombatRoomState,
-  deltaTime: number
+  deltaTime: number,
+  extractionPoints?: Array<{ x: number; y: number; radius: number; isActive?: boolean }>,
+  roomStartTime?: number
 ): DamageResult[] {
   const damageResults: DamageResult[] = [];
   const projectilesToKeep: ServerProjectile[] = [];
@@ -474,6 +531,45 @@ export function updateProjectiles(
           
           hit = true;
           break; // Projétil colidiu, não precisa verificar outras criaturas
+        }
+      }
+      
+      // ✅ SPRINT 1: NOVO - Projéteis de jogadores também podem atingir outros jogadores (PvP)
+      if (!hit) {
+        for (const [targetPlayerId, targetPlayer] of room.players) {
+          // Não pode se atacar
+          if (targetPlayerId === proj.ownerId) continue;
+          // Não pode atacar jogador morto
+          if (targetPlayer.isDead) continue;
+          
+          // ✅ Verificar se está em zona segura
+          if (extractionPoints && isPlayerInSafeZone(targetPlayer, extractionPoints)) {
+            continue; // Não pode atacar em zona segura
+          }
+          
+          // ✅ Verificar invulnerabilidade de spawn
+          if (roomStartTime && isPlayerSpawnProtected(targetPlayer, roomStartTime)) {
+            continue; // Protegido por 5 segundos após spawn
+          }
+          
+          if (checkProjectilePlayerCollision(proj, targetPlayer)) {
+            if (DEBUG_PROJECTILES) {
+              console.log(
+                `[Combat] Projétil ${proj.id} (PvP) colidiu com jogador ${targetPlayerId} ` +
+                `em (${proj.x.toFixed(1)}, ${proj.y.toFixed(1)})`
+              );
+            }
+            
+            const damageResult = applyDamageToPlayer(
+              targetPlayerId,
+              targetPlayer,
+              proj.damage,
+              proj.ownerId
+            );
+            damageResults.push(damageResult);
+            hit = true;
+            break; // Projétil colidiu, não precisa verificar outros jogadores
+          }
         }
       }
     } else {

@@ -26,6 +26,10 @@ export interface PlayerPresence {
   creaturesCaptured: number;
   /** Itens consumidos durante a expedição (itemId -> quantidade) */
   itemsConsumed: Map<string, number>;
+  /** Timestamp quando jogador entrou na sala (para proteção de spawn) */
+  joinedAt: number;
+  /** ID da sala onde o jogador está */
+  roomId: string;
   
   // Propriedades visuais e de ação (sincronizadas com cliente)
   /** Cor do sprite do jogador (hex) */
@@ -160,6 +164,11 @@ export interface ActiveCreatureUpdateMessage extends BaseMessage {
   maxHp: number;
 }
 
+export interface LootInteractMessage extends BaseMessage {
+  type: "loot_interact";
+  lootBagId: string;
+}
+
 export type IncomingMessage =
   | JoinMessage
   | MoveMessage
@@ -170,4 +179,5 @@ export type IncomingMessage =
   | ResourceInteractMessage
   | ExtractionMessage
   | TeamSyncMessage
-  | ActiveCreatureUpdateMessage;
+  | ActiveCreatureUpdateMessage
+  | LootInteractMessage;

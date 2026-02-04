@@ -132,7 +132,9 @@ export class JoinHandler {
       extractedAt: null,
       resourcesCollected: new Map(),
       creaturesCaptured: 0,
-      itemsConsumed: new Map()
+      itemsConsumed: new Map(),
+      joinedAt: Date.now(),
+      roomId: room.id
     };
     
     initializePlayerExtractionData(newPlayer);
@@ -150,7 +152,8 @@ export class JoinHandler {
         newPlayer.x,
         newPlayer.y,
         100,
-        100
+        100,
+        newPlayer.joinedAt // ✅ SPRINT 1: Passar timestamp de join para proteção de spawn
       );
     }
 

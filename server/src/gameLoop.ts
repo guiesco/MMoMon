@@ -272,6 +272,10 @@ export class GameLoop {
     resources: [],
     skillZones: []
   };
+  
+  // ✅ SPRINT 1: Informações adicionais para PvP
+  private extractionPoints: Array<{ x: number; y: number; radius: number; isActive?: boolean }> = [];
+  private roomStartTime: number = 0;
 
   constructor(roomId: string, callbacks: GameLoopCallbacks) {
     this.roomId = roomId;
@@ -345,6 +349,20 @@ export class GameLoop {
   }
 
   /**
+   * Define pontos de extração e tempo de início da sala (para PvP).
+   * 
+   * @param extractionPoints - Lista de pontos de extração
+   * @param roomStartTime - Timestamp de início da sala
+   */
+  setPvPInfo(
+    extractionPoints: Array<{ x: number; y: number; radius: number; isActive?: boolean }>,
+    roomStartTime: number
+  ): void {
+    this.extractionPoints = extractionPoints;
+    this.roomStartTime = roomStartTime;
+  }
+
+  /**
    * Retorna o estado atual da partida.
    */
   getMatchState(): MatchState {
@@ -405,10 +423,11 @@ export class GameLoop {
     x: number,
     y: number,
     hp: number,
-    maxHp: number
+    maxHp: number,
+    joinedAt?: number
   ): void {
     // Criar jogador com todas as propriedades necessárias
-    const player: CombatPlayer & ResourcePlayer & SkillPlayer = {
+    const player: CombatPlayer & ResourcePlayer & SkillPlayer & { joinedAt?: number } = {
       id: playerId,
       x,
       y,
@@ -417,10 +436,11 @@ export class GameLoop {
       lastAttackTime: 0,
       isDead: false,
       expeditionInventory: new Map(),
-      lastSkillTime: 0
+      lastSkillTime: 0,
+      joinedAt: joinedAt || Date.now() // ✅ SPRINT 1: Armazenar timestamp de join para proteção de spawn
     };
     
-    this.combatState.players.set(playerId, player as CombatPlayer);
+    this.combatState.players.set(playerId, player as CombatPlayer & { joinedAt?: number });
     console.log(`[GameLoop] Jogador ${playerId.slice(0, 8)}... registrado em (${x.toFixed(0)}, ${y.toFixed(0)}) - Total: ${this.combatState.players.size} jogadores`);
   }
 
@@ -793,7 +813,13 @@ export class GameLoop {
     }
 
     // 1. Atualizar projéteis e detectar colisões
-    const damageResults = updateProjectiles(this.combatState, deltaSeconds);
+    // ✅ SPRINT 1: Passar informações de PvP (zonas seguras e proteção de spawn)
+    const damageResults = updateProjectiles(
+      this.combatState,
+      deltaSeconds,
+      this.extractionPoints.length > 0 ? this.extractionPoints : undefined,
+      this.roomStartTime > 0 ? this.roomStartTime : undefined
+    );
 
     // 2. Atualizar IA de criaturas (agora retorna resultados de ataque melee)
     const aiAttackResults = updateCreatureAI(this.combatState, deltaSeconds);

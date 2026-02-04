@@ -125,6 +125,16 @@ export class RoomManager {
 
     if (!room.gameLoop.isRunning() && room.matchState !== "finished") {
       room.startedAt = Date.now();
+      
+      // ✅ SPRINT 1: Atualizar informações de PvP quando sala inicia
+      const extractionPoints = room.worldState.extractionPoints.map(ep => ({
+        x: ep.x,
+        y: ep.y,
+        radius: ep.radius,
+        isActive: ep.isActive
+      }));
+      room.gameLoop.setPvPInfo(extractionPoints, room.startedAt);
+      
       room.gameLoop.start();
 
       if (DEBUG_GAME_LOOP) {

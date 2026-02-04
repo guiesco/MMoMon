@@ -368,7 +368,9 @@ wss.on("connection", (ws) => {
         extractedAt: null,
         resourcesCollected: new Map(),
         creaturesCaptured: 0,
-        itemsConsumed: new Map()
+        itemsConsumed: new Map(),
+        joinedAt: Date.now(), // ✅ SPRINT 1: Timestamp de join para proteção de spawn
+        roomId: room.id // ✅ SPRINT 1: ID da sala
       };
       
       // Inicializar dados de extração
@@ -388,7 +390,8 @@ wss.on("connection", (ws) => {
           newPlayer.x,
           newPlayer.y,
           100, // HP inicial
-          100  // HP máximo
+          100, // HP máximo
+          newPlayer.joinedAt // ✅ SPRINT 1: Passar timestamp de join para proteção de spawn
         );
       }
 

@@ -27,6 +27,7 @@ import {
   createSkillZonesUpdateMessage
 } from "../messages";
 import { StateBroadcaster } from "../broadcast/StateBroadcaster";
+import { createLootBagOnDeath } from "../systems/loot";
 import { DEBUG_GAME_LOOP } from "../constants";
 import { isFirebaseAvailable, getDb, FieldValue } from "../firebase";
 import type { ExpeditionDocument } from "../firebaseTypes";
@@ -38,6 +39,16 @@ export function createGameLoop(room: Room): GameLoop {
   const callbacks = createGameLoopCallbacks(room);
   const gameLoop = new GameLoop(room.id, callbacks);
   gameLoop.setDuration(room.durationSeconds);
+  
+  // ✅ SPRINT 1: Definir informações de PvP (zonas seguras e proteção de spawn)
+  const extractionPoints = room.worldState.extractionPoints.map(ep => ({
+    x: ep.x,
+    y: ep.y,
+    radius: ep.radius,
+    isActive: ep.isActive
+  }));
+  gameLoop.setPvPInfo(extractionPoints, room.startedAt || Date.now());
+  
   return gameLoop;
 }
 
@@ -155,6 +166,20 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
 
       if (DEBUG_GAME_LOOP) {
         console.log(`[Room:${room.id}] Jogador ${playerId} foi eliminado por ${killedBy}`);
+      }
+
+      // ✅ SPRINT 1: Criar loot bag quando jogador morre
+      const player = room.players.get(playerId);
+      if (player) {
+        const lootBag = await createLootBagOnDeath(player, killedBy);
+        room.worldState.lootBags.set(lootBag.id, lootBag);
+        
+        // Broadcast de novo loot bag
+        StateBroadcaster.broadcastLootBagsUpdate(room);
+        
+        if (DEBUG_GAME_LOOP) {
+          console.log(`[Room:${room.id}] Loot bag criado em (${lootBag.x.toFixed(0)}, ${lootBag.y.toFixed(0)}) para jogador ${playerId}`);
+        }
       }
 
       // Salvar itens gastos quando jogador morre

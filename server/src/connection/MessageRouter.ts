@@ -1,6 +1,7 @@
 import { WebSocket } from "ws";
-import type { IncomingMessage, Room } from "../types/ServerTypes";
+import type { IncomingMessage, Room, LootInteractMessage } from "../types/ServerTypes";
 import { JoinHandler } from "../handlers/JoinHandler";
+import { handleLootInteract } from "../handlers/LootHandler";
 import { createMoveIntent, createAttackIntent, createSkillIntent, createCaptureIntent, createResourceIntent } from "../intents/IntentFactory";
 import { queueIntent } from "../intents/IntentValidator";
 import { createPlayerMoveMessage } from "../messages";
@@ -136,6 +137,22 @@ export class MessageRouter {
             0
           );
           ws.send(JSON.stringify(message));
+        }
+        break;
+      }
+
+      case "loot_interact": {
+        // ✅ SPRINT 1: Handler de coleta de loot
+        const lootResult = await handleLootInteract(
+          currentRoom,
+          clientId,
+          msg as LootInteractMessage
+        );
+        if (!lootResult.success) {
+          ws.send(JSON.stringify({
+            type: "error",
+            reason: lootResult.error || "loot_collection_failed"
+          }));
         }
         break;
       }

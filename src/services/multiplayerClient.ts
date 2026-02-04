@@ -259,6 +259,39 @@ export interface JoinedConfirmation {
   };
 }
 
+/**
+ * ✅ SPRINT 1: Representação de um loot bag recebido do servidor.
+ */
+export interface RemoteLootBag {
+  id: string;
+  x: number;
+  y: number;
+  resources: Record<string, number>;
+  pokeballs: Record<string, number>;
+  capturedCreatures: number;
+  hasTeamCreature: boolean;
+  createdAt: number;
+}
+
+/**
+ * ✅ SPRINT 1: Mensagem de atualização de loot bags.
+ */
+export interface LootBagsUpdateMessage {
+  type: "lootBagsUpdate";
+  lootBags: RemoteLootBag[];
+}
+
+/**
+ * ✅ SPRINT 1: Confirmação de coleta de loot.
+ */
+export interface LootCollected {
+  lootBagId: string;
+  resources: Record<string, number>;
+  pokeballs: Record<string, number>;
+  capturedCreatures: number;
+  hasTeamCreature: boolean;
+}
+
 // =============================================================================
 // Tipos de Ball (para captura)
 // =============================================================================
@@ -293,6 +326,12 @@ type MultiplayerEvents = {
   
   /** Atualização de skill zones. */
   skillZonesUpdate: (skillZones: RemoteSkillZone[]) => void;
+  
+  /** ✅ SPRINT 1: Atualização de loot bags. */
+  lootBagsUpdate: (lootBags: RemoteLootBag[]) => void;
+  
+  /** ✅ SPRINT 1: Confirmação de coleta de loot. */
+  lootCollected: (data: LootCollected) => void;
   
   /** Resultado de um ataque processado. */
   attackResult: (result: AttackResult) => void;
@@ -557,6 +596,16 @@ export class MultiplayerClient {
     });
   }
 
+  /**
+   * ✅ SPRINT 1: Envia intent de interação com loot bag.
+   */
+  sendLootInteract(lootBagId: string): void {
+    this.send({
+      type: "loot_interact",
+      lootBagId
+    });
+  }
+
   // ===========================================================================
   // Métodos Internos
   // ===========================================================================
@@ -609,6 +658,22 @@ export class MultiplayerClient {
 
         case "skill_zones_update":
           this.events.skillZonesUpdate?.(msg.skillZones ?? []);
+          break;
+
+        case "lootBagsUpdate":
+          // ✅ SPRINT 1: Handler de atualização de loot bags
+          this.events.lootBagsUpdate?.(msg.lootBags ?? []);
+          break;
+
+        case "loot_collected":
+          // ✅ SPRINT 1: Handler de confirmação de coleta de loot
+          this.events.lootCollected?.({
+            lootBagId: msg.lootBagId,
+            resources: msg.resources ?? {},
+            pokeballs: msg.pokeballs ?? {},
+            capturedCreatures: msg.capturedCreatures ?? 0,
+            hasTeamCreature: msg.hasTeamCreature ?? false
+          });
           break;
 
         case "attack_result":
