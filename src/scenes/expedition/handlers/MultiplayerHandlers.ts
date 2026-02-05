@@ -895,7 +895,9 @@ export class MultiplayerHandlers {
           radius: 12,
           actionType: "idle",
           actionTimer: 0,
-          isVisible: true
+          isVisible: true,
+          windupTimer: (p as any).windupTimer ?? 0, // ✅ Windup de ataque
+          skillWindupTimer: (p as any).skillWindupTimer ?? 0 // ✅ Windup de skill
         };
         this.worldState.addPlayer(playerState);
         // Usar SpriteManager
@@ -913,7 +915,9 @@ export class MultiplayerHandlers {
           name: p.name,
           hp: p.hp ?? existingPlayer.hp,
           maxHp: p.maxHp ?? existingPlayer.maxHp,
-          lastUpdate: updateTimestamp
+          lastUpdate: updateTimestamp,
+          windupTimer: (p as any).windupTimer ?? existingPlayer.windupTimer ?? 0, // ✅ Windup de ataque
+          skillWindupTimer: (p as any).skillWindupTimer ?? existingPlayer.skillWindupTimer ?? 0 // ✅ Windup de skill
         });
         
         // Atualiza sprite

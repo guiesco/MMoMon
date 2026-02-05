@@ -11,7 +11,7 @@
  * consistência entre servidor e cliente.
  */
 
-import { calculateEffectiveStats, LEVEL_STAT_BONUS, RANK_CONFIG } from "../../../shared/creatureProgression";
+import { calculateEffectiveStats, RANK_CONFIG } from "../../../shared/creatureProgression";
 import { getCreatureBaseStats, getCreatureById } from "../../../shared/creatures";
 
 // ============================================================================
@@ -70,10 +70,11 @@ export function getEffectiveStatsForWildCreature(
   }
 
   const baseAI = creature.stats.ai;
+  const statProgression = creature.statProgression;
   const rankConfig = RANK_CONFIG[rank] || RANK_CONFIG[1];
   const rankMultiplier = rankConfig.statMultiplier;
   const levelBonus = level - 1;
-  const detectionRangeBonus = 1 + levelBonus * LEVEL_STAT_BONUS.detectionRangePerLevel;
+  const detectionRangeBonus = 1 + levelBonus * statProgression.detectionRangePerLevel;
 
   const detectionRange = Math.floor(baseAI.detectionRange * detectionRangeBonus * rankMultiplier);
 

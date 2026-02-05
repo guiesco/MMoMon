@@ -222,6 +222,10 @@ export class SpriteManager {
       actionIndicator: null,
       actionType: player.actionType,
       actionTimer: player.actionTimer,
+      windupIndicator: null, // ✅ Indicador de windup de ataque
+      skillWindupIndicator: null, // ✅ Indicador de windup de skill
+      windupTimer: player.windupTimer ?? 0,
+      skillWindupTimer: player.skillWindupTimer ?? 0,
       isVisible: player.isVisible,
       skipFirstInterpolation: true
     };
@@ -337,6 +341,10 @@ export class SpriteManager {
     sprite.actionType = player.actionType;
     sprite.actionTimer = player.actionTimer;
     sprite.isVisible = player.isVisible;
+    
+    // ✅ Atualiza windup timers
+    sprite.windupTimer = player.windupTimer ?? 0;
+    sprite.skillWindupTimer = player.skillWindupTimer ?? 0;
 
     // Atualiza visibilidade
     const visible = player.isVisible;
@@ -409,6 +417,15 @@ export class SpriteManager {
         }
 
         this.updateCreatureSpritePosition(sprite);
+        
+        // ✅ Atualizar timers de windup localmente para suavizar efeitos visuais
+        // (O servidor é autoritativo, mas atualizamos localmente para interpolação suave)
+        if (sprite.windupTimer > 0) {
+          sprite.windupTimer = Math.max(0, sprite.windupTimer - dt);
+        }
+        if (sprite.skillWindupTimer !== undefined && sprite.skillWindupTimer > 0) {
+          sprite.skillWindupTimer = Math.max(0, sprite.skillWindupTimer - dt);
+        }
       } catch (error) {
         console.error(`[SpriteManager] Erro ao interpolar criatura ${creatureId.slice(0, 8)}...:`, error);
         this.destroyCreatureSprite(creatureId);
@@ -478,6 +495,12 @@ export class SpriteManager {
         sprite.hpBar.setVisible(false);
         sprite.hpBarBg.setVisible(false);
         sprite.hpBarText.setVisible(false);
+        if (sprite.windupIndicator) {
+          sprite.windupIndicator.setVisible(false);
+        }
+        if (sprite.skillWindupIndicator) {
+          sprite.skillWindupIndicator.setVisible(false);
+        }
         continue;
       }
 
@@ -509,6 +532,86 @@ export class SpriteManager {
       }
 
       this.updatePlayerSpritePosition(sprite);
+      
+      // ✅ Atualizar indicadores visuais de windup para jogadores remotos
+      this.updateRemotePlayerWindupVisuals(sprite, dt);
+    }
+  }
+  
+  /**
+   * ✅ Atualiza indicadores visuais de windup para jogadores remotos.
+   */
+  private updateRemotePlayerWindupVisuals(sprite: RemotePlayerSprite, dt: number): void {
+    // Atualizar windup timer (reduzir com deltaTime)
+    if (sprite.windupTimer > 0) {
+      sprite.windupTimer = Math.max(0, sprite.windupTimer - dt);
+    }
+    if (sprite.skillWindupTimer > 0) {
+      sprite.skillWindupTimer = Math.max(0, sprite.skillWindupTimer - dt);
+    }
+    
+    // Windup de ataque
+    if (sprite.windupTimer > 0) {
+      if (!sprite.windupIndicator) {
+        sprite.windupIndicator = this.scene.add.circle(
+          sprite.currentX,
+          sprite.currentY,
+          sprite.radius + 8,
+          0xffff00, // Amarelo para indicar preparação
+          0.3
+        );
+        sprite.windupIndicator.setStrokeStyle(2, 0xffd700, 0.8);
+        sprite.windupIndicator.setDepth(-1);
+      }
+      
+      sprite.windupIndicator.setPosition(sprite.currentX, sprite.currentY);
+      sprite.windupIndicator.setVisible(sprite.isVisible);
+      
+      // Pulsar durante windup
+      const pulse = 0.5 + Math.sin(Date.now() / 50) * 0.3;
+      sprite.windupIndicator.setAlpha(pulse);
+      
+      // Mostrar progresso do windup
+      const maxWindup = 0.4;
+      const progress = 1 - (sprite.windupTimer / maxWindup);
+      const scale = 0.8 + progress * 0.4;
+      sprite.windupIndicator.setScale(scale);
+    } else {
+      if (sprite.windupIndicator) {
+        sprite.windupIndicator.setVisible(false);
+      }
+    }
+    
+    // Windup de skill
+    if (sprite.skillWindupTimer > 0) {
+      if (!sprite.skillWindupIndicator) {
+        sprite.skillWindupIndicator = this.scene.add.circle(
+          sprite.currentX,
+          sprite.currentY,
+          sprite.radius + 12,
+          0xff00ff, // Magenta para indicar preparação de skill
+          0.4
+        );
+        sprite.skillWindupIndicator.setStrokeStyle(3, 0xff00ff, 0.9);
+        sprite.skillWindupIndicator.setDepth(-1);
+      }
+      
+      sprite.skillWindupIndicator.setPosition(sprite.currentX, sprite.currentY);
+      sprite.skillWindupIndicator.setVisible(sprite.isVisible);
+      
+      // Pulsar durante windup de skill (mais intenso)
+      const pulse = 0.4 + Math.sin(Date.now() / 40) * 0.4;
+      sprite.skillWindupIndicator.setAlpha(pulse);
+      
+      // Mostrar progresso do windup
+      const maxSkillWindup = 0.5;
+      const progress = 1 - (sprite.skillWindupTimer / maxSkillWindup);
+      const scale = 0.7 + progress * 0.5;
+      sprite.skillWindupIndicator.setScale(scale);
+    } else {
+      if (sprite.skillWindupIndicator) {
+        sprite.skillWindupIndicator.setVisible(false);
+      }
     }
   }
 
@@ -538,6 +641,14 @@ export class SpriteManager {
     sprite.hpBarText.setPosition(sprite.currentX, sprite.currentY - sprite.radius - 35);
     if (sprite.actionIndicator) {
       sprite.actionIndicator.setPosition(sprite.currentX, sprite.currentY);
+    }
+    
+    // ✅ Atualizar posição dos indicadores de windup
+    if (sprite.windupIndicator) {
+      sprite.windupIndicator.setPosition(sprite.currentX, sprite.currentY);
+    }
+    if (sprite.skillWindupIndicator) {
+      sprite.skillWindupIndicator.setPosition(sprite.currentX, sprite.currentY);
     }
   }
 
@@ -593,6 +704,13 @@ export class SpriteManager {
     sprite.hpBarText.destroy();
     if (sprite.actionIndicator) {
       sprite.actionIndicator.destroy();
+    }
+    // ✅ Destruir indicadores de windup
+    if (sprite.windupIndicator) {
+      sprite.windupIndicator.destroy();
+    }
+    if (sprite.skillWindupIndicator) {
+      sprite.skillWindupIndicator.destroy();
     }
     this.playerSprites.delete(playerId);
   }

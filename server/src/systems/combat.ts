@@ -4,17 +4,31 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * 
  * Este módulo implementa toda a lógica de combate server-authoritative:
- * - Processamento de ataques de jogadores
+ * - Processamento de ataques de jogadores (básico e skills)
+ * - Sistema de windup para ataques e skills
  * - Criação e atualização de projéteis
  * - Detecção de colisões e aplicação de dano
- * - IA de criaturas (movimento, aggro, ataques)
+ * - Sistema de críticos (5% base, 1.5x dano)
+ * - Type effectiveness (vantagens/desvantagens de tipos)
+ * - IA de criaturas (movimento, aggro, ataques, roaming, fuga)
+ * - Sistema de buffs/debuffs integrado
  * - Morte de jogadores e criaturas
+ * - Dano de contato (proximidade)
  * 
  * O servidor é a única fonte de verdade para:
- * - Posições de projéteis
+ * - Posições de projéteis e skill zones
  * - HP de todas as entidades
- * - Cooldowns de ataque
- * - Estados de IA
+ * - Cooldowns de ataque e skills
+ * - Estados de IA (idle, chasing, attacking, retreating)
+ * - Buffs e debuffs ativos
+ * 
+ * Melhorias Implementadas:
+ * - ✅ Constantes organizadas e extraídas (sem valores mágicos)
+ * - ✅ Validações robustas com logs estruturados
+ * - ✅ Sistema de críticos implementado
+ * - ✅ Otimizações de performance (early exits, filtros pré-loop)
+ * - ✅ Documentação JSDoc completa
+ * - ✅ Tratamento de erros aprimorado
  * 
  * @module server/systems/combat
  */
@@ -30,9 +44,59 @@ import {
 import { COMBAT_CONFIG, ENEMY_VISUAL_CONFIG } from "../../../shared/gameConstants";
 import type { EnemyBehaviorType } from "../../../shared/enums";
 
+// ============================================================================
+// Constantes de Combate
+// ============================================================================
+
 // Constantes de colisão do shared
 const PLAYER_COLLISION_RADIUS = COMBAT_CONFIG.playerCollisionRadius;
 const CREATURE_COLLISION_RADIUS = COMBAT_CONFIG.creatureCollisionRadius;
+
+// Constantes de projéteis
+const PROJECTILE_RADIUS = 4; // pixels
+const PROJECTILE_KNOCKBACK_DISTANCE = 6; // pixels (menor que melee)
+
+// Constantes de knockback
+const MELEE_KNOCKBACK_DISTANCE = 12; // pixels
+const SKILL_KNOCKBACK_DISTANCE = 30; // pixels (electric_surge)
+
+// Constantes de IA
+const FLEE_HP_THRESHOLD = 0.3; // 30% HP para iniciar fuga
+const FLEE_SPEED_MULTIPLIER = 1.2; // 20% mais rápido ao fugir
+const GROUPING_DETECTION_RANGE = 200; // pixels
+const GROUPING_STRENGTH = 0.3; // Força do movimento de agrupamento (0-1)
+const GROUPING_SPEED_MULTIPLIER = 0.4; // Velocidade de agrupamento
+
+// Constantes de roaming
+const ROAMING_RADIUS = 150; // pixels
+const ROAMING_SPEED_MULTIPLIER = 0.4; // 40% da velocidade normal
+const ROAMING_DESTINATION_REACHED_DISTANCE = 15; // pixels
+const ROAMING_NEW_DESTINATION_INTERVAL = 3.0; // segundos
+
+// Constantes de dano
+const MIN_DAMAGE = 1; // Dano mínimo garantido
+const DEFAULT_PLAYER_DEFENSE = 10; // Defesa padrão de jogadores
+const MIN_DEFENSE = 1; // Defesa mínima para evitar divisão por zero
+const MIN_ATTACK = 1; // Ataque mínimo
+
+// Constantes de crítico
+const BASE_CRIT_CHANCE = 0.05; // 5% de chance base
+const CRIT_DAMAGE_MULTIPLIER = 1.5; // 50% de dano extra
+
+// Constantes de validação
+const MAX_COORDINATE = 10000; // Limite máximo de coordenadas (prevenir overflow)
+const MIN_COORDINATE = -10000; // Limite mínimo de coordenadas
+
+// Flags de debug
+const DEBUG_PROJECTILES = process.env.DEBUG_PROJECTILES === "true";
+const DEBUG_AI = process.env.DEBUG_AI === "true" || true; // Temporariamente sempre ativo
+const DEBUG_SKILLS = true; // Debug específico para skills
+const DEBUG_COMBAT = process.env.DEBUG_COMBAT === "true";
+
+// ============================================================================
+// Imports
+// ============================================================================
+
 import {
   updatePlayerBuffs,
   updateCreatureBuffs,
@@ -60,7 +124,12 @@ import { getSpecialSkillByCreatureId } from "../../../shared/attacks";
  * Stats padrão caso a criatura não seja encontrada no lookup.
  * Equivale a um ataque básico sem criatura.
  */
-const DEFAULT_ATTACK_STATS = { damage: 15, speed: 400, range: 200, isProjectile: true };
+const DEFAULT_ATTACK_STATS = { 
+  damage: 15, 
+  speed: 400, 
+  range: 200, 
+  isProjectile: true 
+};
 
 /**
  * Determina o tipo de comportamento (melee ou ranged) baseado na definição da criatura.
@@ -265,8 +334,21 @@ export function processAttackIntent(
     };
   }
 
-  // Validação: coordenadas válidas (básica)
-  if (!isFinite(targetX) || !isFinite(targetY)) {
+  // Validação: coordenadas válidas (com limites)
+  if (
+    !isFinite(targetX) || 
+    !isFinite(targetY) ||
+    targetX < MIN_COORDINATE || 
+    targetX > MAX_COORDINATE ||
+    targetY < MIN_COORDINATE || 
+    targetY > MAX_COORDINATE
+  ) {
+    if (DEBUG_COMBAT) {
+      console.warn(
+        `[Combat] Coordenadas inválidas para ataque: ` +
+        `playerId=${playerId}, target=(${targetX}, ${targetY})`
+      );
+    }
     return {
       success: false,
       failReason: "invalid_position"
@@ -433,9 +515,11 @@ function processAttackExecution(
     const angle = Math.atan2(dy, dx);
     
     let hitCount = 0;
-    const MELEE_KNOCKBACK_DISTANCE = 12; // Pixels de empurrão
     
-    for (const creature of room.creatures) {
+    // Otimização: filtrar criaturas mortas antes do loop
+    const aliveCreaturesForMelee = room.creatures.filter(c => c.currentHp > 0);
+    
+    for (const creature of aliveCreaturesForMelee) {
       const creatureDx = creature.x - player.x;
       const creatureDy = creature.y - player.y;
       const creatureDist = Math.hypot(creatureDx, creatureDy);
@@ -452,7 +536,14 @@ function processAttackExecution(
           const typeMultiplier = creatureId 
             ? calculateTypeEffectiveness(creatureId, creature.creatureType)
             : 1.0;
-          const baseDamage = Math.floor(creatureStats.damage * typeMultiplier);
+          let baseDamage = Math.floor(creatureStats.damage * typeMultiplier);
+          
+          // ✅ Aplicar crítico
+          const critMultiplier = calculateCriticalHit();
+          if (critMultiplier > 1.0 && DEBUG_COMBAT) {
+            console.log(`[Combat] Crítico! Multiplicador: ${critMultiplier}x`);
+          }
+          baseDamage = Math.floor(baseDamage * critMultiplier);
           
           // Aplicar dano considerando defesa (se effectiveStats disponível)
           const attackerAttack = effectiveStats?.attackDamage;
@@ -469,7 +560,7 @@ function processAttackExecution(
             addBuffToCreature(creature, 'stun', effectiveStats.stunDuration, undefined, playerId);
           }
           
-          // ✅ NOVO: Aplicar knockback se criatura sobreviveu
+          // ✅ Aplicar knockback se criatura sobreviveu
           if (!damageResult.died && creatureDist > 0) {
             const knockbackNx = creatureDx / creatureDist;
             const knockbackNy = creatureDy / creatureDist;
@@ -628,12 +719,31 @@ export function updateProjectiles(
   // Filtrar criaturas mortas antes de processar colisões (evita processar criaturas já mortas)
   const aliveCreatures = room.creatures.filter(c => c.currentHp > 0);
   
-  const DEBUG_PROJECTILES = process.env.DEBUG_PROJECTILES === "true";
+  // Early exit: se não há projéteis, retornar vazio
+  if (room.projectiles.length === 0) {
+    return damageResults;
+  }
+  
   const initialProjectileCount = room.projectiles.length;
 
   for (const proj of room.projectiles) {
-    // Validação: projétil deve ter velocidade válida
-    if (!isFinite(proj.velocityX) || !isFinite(proj.velocityY)) {
+    // Validação: projétil deve ter velocidade válida e posição válida
+    if (
+      !isFinite(proj.velocityX) || 
+      !isFinite(proj.velocityY) ||
+      !isFinite(proj.x) || 
+      !isFinite(proj.y) ||
+      proj.x < MIN_COORDINATE || 
+      proj.x > MAX_COORDINATE ||
+      proj.y < MIN_COORDINATE || 
+      proj.y > MAX_COORDINATE
+    ) {
+      if (DEBUG_PROJECTILES) {
+        console.warn(
+          `[Combat] Projétil ${proj.id} inválido: ` +
+          `pos=(${proj.x}, ${proj.y}), vel=(${proj.velocityX}, ${proj.velocityY})`
+        );
+      }
       continue; // Projétil inválido, remover
     }
 
@@ -682,7 +792,17 @@ export function updateProjectiles(
           const typeMultiplier = proj.creatureType
             ? calculateTypeEffectiveness(proj.creatureType, creature.creatureType)
             : 1.0;
-          const baseDamage = Math.floor(proj.damage * typeMultiplier);
+          let baseDamage = Math.floor(proj.damage * typeMultiplier);
+          
+          // ✅ Aplicar crítico (chance base de 5%)
+          const critMultiplier = calculateCriticalHit();
+          if (critMultiplier > 1.0 && DEBUG_COMBAT) {
+            console.log(
+              `[Combat] Projétil ${proj.id} acertou crítico em ${creature.id}! ` +
+              `Multiplicador: ${critMultiplier}x`
+            );
+          }
+          baseDamage = Math.floor(baseDamage * critMultiplier);
           
           // Obter stats do atacante do projétil (se disponível)
           const attackerAttack = proj.attackerAttack;
@@ -701,7 +821,6 @@ export function updateProjectiles(
           
           // Aplicar knockback leve em projéteis
           if (!damageResult.died && creature.currentHp > 0) {
-            const PROJECTILE_KNOCKBACK_DISTANCE = 6; // Menor que melee
             const speed = Math.hypot(proj.velocityX, proj.velocityY);
             
             if (speed > 0) {
@@ -771,12 +890,20 @@ export function updateProjectiles(
 /**
  * Verifica colisão entre projétil e criatura.
  * Usa detecção circular simples (raio do projétil + raio da criatura).
+ * 
+ * @param proj - Projétil a verificar
+ * @param creature - Criatura a verificar
+ * @returns true se há colisão
  */
 function checkProjectileCreatureCollision(
   proj: ServerProjectile,
   creature: ServerCreature
 ): boolean {
-  const PROJECTILE_RADIUS = 4; // pixels
+  // Validação: verificar se criatura está viva
+  if (creature.currentHp <= 0) {
+    return false;
+  }
+  
   const CREATURE_RADIUS = 12; // pixels (aproximado)
   const collisionDistance = PROJECTILE_RADIUS + CREATURE_RADIUS;
 
@@ -789,12 +916,20 @@ function checkProjectileCreatureCollision(
 
 /**
  * Verifica colisão entre projétil e jogador.
+ * 
+ * @param proj - Projétil a verificar
+ * @param player - Jogador a verificar
+ * @returns true se há colisão
  */
 function checkProjectilePlayerCollision(
   proj: ServerProjectile,
   player: CombatPlayer
 ): boolean {
-  const PROJECTILE_RADIUS = 4; // pixels
+  // Validação: verificar se jogador está vivo
+  if (player.isDead || player.hp <= 0) {
+    return false;
+  }
+  
   const PLAYER_RADIUS = 8; // pixels (aproximado)
   const collisionDistance = PROJECTILE_RADIUS + PLAYER_RADIUS;
 
@@ -811,24 +946,60 @@ function checkProjectilePlayerCollision(
 
 /**
  * Calcula o dano final considerando ataque do atacante e defesa do defensor.
+ * 
  * Fórmula: damage * attackerAttack / defenderDefense
+ * 
+ * Garantias:
+ * - Dano mínimo: MIN_DAMAGE (1)
+ * - Defesa mínima: MIN_DEFENSE (1) para evitar divisão por zero
+ * - Ataque mínimo: MIN_ATTACK (1)
+ * - Validação de valores finitos
  * 
  * @param baseDamage - Dano base do ataque/skill
  * @param attackerAttack - Ataque do atacante
  * @param defenderDefense - Defesa do defensor
- * @returns Dano final calculado
+ * @returns Dano final calculado (sempre >= MIN_DAMAGE)
  */
 function calculateDamageWithDefense(
   baseDamage: number,
   attackerAttack: number,
   defenderDefense: number
 ): number {
+  // Validação de entrada
+  if (!isFinite(baseDamage) || !isFinite(attackerAttack) || !isFinite(defenderDefense)) {
+    if (DEBUG_COMBAT) {
+      console.warn(
+        `[Combat] Valores inválidos no cálculo de dano: ` +
+        `baseDamage=${baseDamage}, attack=${attackerAttack}, defense=${defenderDefense}`
+      );
+    }
+    return MIN_DAMAGE;
+  }
+  
   // Evitar divisão por zero e garantir valores mínimos
-  const safeDefense = Math.max(defenderDefense, 1);
-  const safeAttack = Math.max(attackerAttack, 1);
+  const safeDefense = Math.max(defenderDefense, MIN_DEFENSE);
+  const safeAttack = Math.max(attackerAttack, MIN_ATTACK);
+  const safeBaseDamage = Math.max(baseDamage, 0);
   
   // Fórmula: damage * attackerAttack / defenderDefense
-  return Math.max(1, Math.floor(baseDamage * safeAttack / safeDefense));
+  const calculatedDamage = safeBaseDamage * safeAttack / safeDefense;
+  return Math.max(MIN_DAMAGE, Math.floor(calculatedDamage));
+}
+
+/**
+ * Calcula se um ataque é crítico e retorna o multiplicador de dano.
+ * 
+ * Sistema de críticos:
+ * - Chance base: 5% (BASE_CRIT_CHANCE)
+ * - Multiplicador: 1.5x dano (CRIT_DAMAGE_MULTIPLIER)
+ * - Futuro: pode ser expandido com stats de criaturas (ex: agilidade aumenta chance)
+ * 
+ * @param baseCritChance - Chance base de crítico (0-1), padrão: BASE_CRIT_CHANCE
+ * @returns Multiplicador de dano (1.0 = normal, 1.5 = crítico)
+ */
+function calculateCriticalHit(baseCritChance: number = BASE_CRIT_CHANCE): number {
+  const critRoll = Math.random();
+  return critRoll < baseCritChance ? CRIT_DAMAGE_MULTIPLIER : 1.0;
 }
 
 /**
@@ -870,6 +1041,23 @@ export function applyDamageToCreature(
     };
   }
   
+  // Validação: verificar se dano é válido
+  if (!isFinite(damage) || damage < 0) {
+    if (DEBUG_COMBAT) {
+      console.warn(
+        `[Combat] Dano inválido aplicado a criatura ${creature.id}: ${damage}`
+      );
+    }
+    return {
+      targetId: creature.id,
+      attackerId,
+      damage: 0,
+      currentHp: creature.currentHp,
+      maxHp: creature.maxHp,
+      died: false
+    };
+  }
+  
   // Calcular dano final considerando defesa se stats do atacante foram fornecidos
   let finalDamage = damage;
   if (attackerAttack !== undefined && creature.effectiveStats) {
@@ -885,10 +1073,12 @@ export function applyDamageToCreature(
 
   const died = creature.currentHp === 0 && oldHp > 0;
 
-  // Se levou dano mas não morreu, aplicar stun breve
-  if (!died && damage > 0) {
-    // Stun temporário (será resetado pela IA)
-    // Não implementamos timer aqui pois a IA gerencia isso
+  // Log de morte para debug
+  if (died && DEBUG_COMBAT) {
+    console.log(
+      `[Combat] Criatura ${creature.id} (${creature.creatureType}) foi derrotada ` +
+      `por ${attackerId} (dano: ${finalDamage})`
+    );
   }
 
   return {
@@ -944,10 +1134,27 @@ export function applyDamageToPlayer(
     };
   }
   
+  // Validação: verificar se dano é válido
+  if (!isFinite(damage) || damage < 0) {
+    if (DEBUG_COMBAT) {
+      console.warn(
+        `[Combat] Dano inválido aplicado a jogador ${playerId}: ${damage}`
+      );
+    }
+    return {
+      targetId: playerId,
+      attackerId,
+      damage: 0,
+      currentHp: player.hp,
+      maxHp: player.maxHp,
+      died: false
+    };
+  }
+  
   // Calcular dano final considerando defesa se stats do atacante foram fornecidos
   let finalDamage = damage;
   if (attackerAttack !== undefined) {
-    const defenderDefense = playerDefense ?? 10;
+    const defenderDefense = playerDefense ?? DEFAULT_PLAYER_DEFENSE;
     finalDamage = calculateDamageWithDefense(
       damage,
       attackerAttack,
@@ -962,6 +1169,11 @@ export function applyDamageToPlayer(
 
   if (died) {
     player.isDead = true;
+    if (DEBUG_COMBAT) {
+      console.log(
+        `[Combat] Jogador ${playerId} foi eliminado por ${attackerId} (dano: ${finalDamage})`
+      );
+    }
   }
 
   return {
@@ -996,8 +1208,7 @@ export function applyDamageToPlayer(
  * // IA atualizada, projéteis de criaturas criados automaticamente
  * ```
  */
-// Flag para habilitar logs detalhados de IA
-const DEBUG_AI = process.env.DEBUG_AI === "true" || true; // Temporariamente sempre ativo
+// Contador para logs periódicos de IA
 let aiLogCounter = 0;
 
 /**
@@ -1048,10 +1259,6 @@ export function updateCreatureAI(
       // ✅ Usar stats calculados (nível + rank) se disponíveis, senão usar config
       const effectiveMoveSpeed = creature.effectiveStats?.moveSpeed;
       const speedMultiplier = getCreatureSpeedMultiplier(creature);
-      const ROAMING_RADIUS = 150;
-      const ROAMING_SPEED = 0.4;
-      const ROAMING_DESTINATION_REACHED_DISTANCE = 15;
-      const ROAMING_NEW_DESTINATION_INTERVAL = 3.0;
       
       // Atualizar timer de patrulha
       creature.patrolTimer -= deltaTime;
@@ -1074,7 +1281,7 @@ export function updateCreatureAI(
         const distToTarget = Math.hypot(dx, dy);
         
         if (distToTarget > ROAMING_DESTINATION_REACHED_DISTANCE && effectiveMoveSpeed) {
-          const roamingSpeed = effectiveMoveSpeed * ROAMING_SPEED * speedMultiplier;
+          const roamingSpeed = effectiveMoveSpeed * ROAMING_SPEED_MULTIPLIER * speedMultiplier;
           creature.x += (dx / distToTarget) * roamingSpeed * deltaTime;
           creature.y += (dy / distToTarget) * roamingSpeed * deltaTime;
         } else {
@@ -1107,8 +1314,6 @@ export function updateCreatureAI(
     }
 
     // ✅ IA #6: Encontrar criaturas do mesmo tipo próximas para agrupamento
-    const GROUPING_DETECTION_RANGE = 200; // Raio de detecção para agrupamento
-    const GROUPING_STRENGTH = 0.3; // Força do movimento de agrupamento (0-1)
     let groupingDx = 0;
     let groupingDy = 0;
     let groupingCount = 0;
@@ -1151,7 +1356,7 @@ export function updateCreatureAI(
       const speedMultiplier = getCreatureSpeedMultiplier(creature);
       const effectiveMoveSpeed = creature.effectiveStats?.moveSpeed;
       if (!effectiveMoveSpeed) continue;
-      const groupingSpeed = effectiveMoveSpeed * 0.4 * speedMultiplier; // Movimento mais lento para agrupamento
+      const groupingSpeed = effectiveMoveSpeed * GROUPING_SPEED_MULTIPLIER * speedMultiplier;
       
       creature.x += groupingDx * groupingSpeed * deltaTime;
       creature.y += groupingDy * groupingSpeed * deltaTime;
@@ -1194,7 +1399,8 @@ export function updateCreatureAI(
             specialSkill.tickInterval,
             skillLifetime,
             specialSkill.slowModifier,
-            effectiveStats.attackDamage // ✅ Ataque do atacante para calcular dano com defesa
+            effectiveStats.attackDamage, // ✅ Ataque do atacante para calcular dano com defesa
+            creature.creatureType // ✅ Tipo da criatura para type effectiveness
           );
           
           room.skillZones.push(skillZone);
@@ -1269,8 +1475,10 @@ export function updateCreatureAI(
  * 
  * Condições para usar skill:
  * - Skill disponível (cooldown acabou)
- * - Múltiplos jogadores próximos OU jogador com HP baixo OU criatura com HP baixo
  * - Dentro do alcance da skill
+ * - Em combate (jogador detectado)
+ * 
+ * As criaturas usam skills agressivamente sempre que possível quando em combate.
  * 
  * @returns true se skill foi usada, false caso contrário
  */
@@ -1284,6 +1492,9 @@ function tryUseCreatureSkill(
   // Verificar se criatura tem special skill
   const specialSkill = getSpecialSkillByCreatureId(creature.creatureType);
   if (!specialSkill) {
+    if (DEBUG_SKILLS) {
+      console.log(`[AI-SKILL] ${creature.id} (${creature.creatureType}) não tem special skill definida`);
+    }
     return false; // Criatura não tem skill
   }
 
@@ -1301,6 +1512,12 @@ function tryUseCreatureSkill(
   const skillCooldownMs = effectiveStats.specialSkillCooldown * 1000; // Converter para ms (escalado)
   
   if (timeSinceLastSkill < skillCooldownMs) {
+    if (DEBUG_SKILLS) {
+      console.log(
+        `[AI-SKILL] ${creature.id} (${creature.creatureType}) skill em cooldown: ` +
+        `${(timeSinceLastSkill / 1000).toFixed(2)}s / ${(skillCooldownMs / 1000).toFixed(2)}s`
+      );
+    }
     return false; // Skill em cooldown
   }
   
@@ -1311,47 +1528,38 @@ function tryUseCreatureSkill(
 
   // Verificar se está em alcance
   if (closestDistance > skillRange) {
+    if (DEBUG_SKILLS) {
+      console.log(
+        `[AI-SKILL] ${creature.id} (${creature.creatureType}) fora de alcance de skill: ` +
+        `${closestDistance.toFixed(0)}px > ${skillRange.toFixed(0)}px`
+      );
+    }
     return false; // Fora de alcance
   }
 
-  // Condições para usar skill:
-  // 1. Múltiplos jogadores próximos (dentro do raio da skill)
-  // 2. Jogador com HP baixo (< 50%)
-  // 3. Criatura com HP baixo (< 40%)
-  const playerHpPercent = closestPlayer.player.maxHp > 0 
-    ? closestPlayer.player.hp / closestPlayer.player.maxHp 
-    : 1;
-  const creatureHpPercent = creature.maxHp > 0 
-    ? creature.currentHp / creature.maxHp 
-    : 1;
-  
-  let playersInRange = 0;
-  for (const { player } of alivePlayers) {
-    const dx = player.x - creature.x;
-    const dy = player.y - creature.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist <= skillRange) {
-      playersInRange++;
-    }
-  }
-
-  const shouldUseSkill = 
-    playersInRange >= 2 || // Múltiplos jogadores
-    playerHpPercent < 0.5 || // Jogador com HP baixo
-    creatureHpPercent < 0.4; // Criatura com HP baixo
-
-  if (!shouldUseSkill) {
-    return false; // Condições não atendidas
-  }
+  // ✅ Usar skill sempre que possível quando em combate
+  // Se está em alcance e cooldown disponível, usar skill
+  // (Removidas condições restritivas - criaturas agora usam skills agressivamente)
 
   // ✅ Verificar se criatura já está em windup de skill
   if (creature.skillWindupTimer && creature.skillWindupTimer > 0) {
+    if (DEBUG_SKILLS) {
+      console.log(
+        `[AI-SKILL] ${creature.id} (${creature.creatureType}) já está em windup de skill: ` +
+        `${creature.skillWindupTimer.toFixed(2)}s`
+      );
+    }
     return false; // Já está em windup
   }
 
   // Usar skill: iniciar windup ao invés de criar skill zone imediatamente
   const skillType = getSkillTypeFromCreatureId(creature.creatureType);
   if (!skillType || skillType === "heal_wave") {
+    if (DEBUG_SKILLS) {
+      console.log(
+        `[AI-SKILL] ${creature.id} (${creature.creatureType}) skill não mapeada ou é heal_wave: ${skillType}`
+      );
+    }
     return false; // Skill não mapeada ou é heal (não usado por IA)
   }
 
@@ -1370,11 +1578,11 @@ function tryUseCreatureSkill(
       targetY: closestPlayer.player.y
     };
     
-    if (DEBUG_AI) {
+    if (DEBUG_SKILLS) {
       console.log(
-        `[AI] ${creature.id} (${creature.creatureType}) iniciou windup de skill ${skillType} ` +
+        `[AI-SKILL] ✅ ${creature.id} (${creature.creatureType}) iniciou windup de skill ${skillType} ` +
         `em (${closestPlayer.player.x.toFixed(0)}, ${closestPlayer.player.y.toFixed(0)}) ` +
-        `[windup=${skillWindupTime.toFixed(2)}s]`
+        `[windup=${skillWindupTime.toFixed(2)}s, range=${skillRange.toFixed(0)}px, cooldown=${(skillCooldownMs / 1000).toFixed(2)}s]`
       );
     }
     
@@ -1392,7 +1600,8 @@ function tryUseCreatureSkill(
     specialSkill.tickInterval,
     skillLifetime,
     specialSkill.slowModifier,
-    effectiveStats.attackDamage // ✅ Ataque do atacante para calcular dano com defesa
+    effectiveStats.attackDamage, // ✅ Ataque do atacante para calcular dano com defesa
+    creature.creatureType // ✅ Tipo da criatura para type effectiveness
   );
 
   room.skillZones.push(skillZone);
@@ -1401,9 +1610,9 @@ function tryUseCreatureSkill(
   creature.lastSkillTime = currentTime;
   creature.skillCooldownRemaining = effectiveStats.specialSkillCooldown;
 
-  if (DEBUG_AI) {
+  if (DEBUG_SKILLS) {
     console.log(
-      `[AI] ${creature.id} (${creature.creatureType}) usou skill ${skillType} ` +
+      `[AI-SKILL] ✅ ${creature.id} (${creature.creatureType}) usou skill ${skillType} ` +
       `em (${closestPlayer.player.x.toFixed(0)}, ${closestPlayer.player.y.toFixed(0)}) ` +
       `[range=${skillRange.toFixed(0)}, radius=${skillRadius.toFixed(0)}]`
     );
@@ -1492,11 +1701,6 @@ function updateMeleeCreatureAI(
     creature.targetPlayerId = null;
 
     // ✅ Roaming: Sistema de patrulha aleatória
-    const ROAMING_RADIUS = 150; // Raio máximo de roaming a partir da origem
-    const ROAMING_SPEED = 0.4; // Velocidade de roaming (40% da velocidade normal)
-    const ROAMING_DESTINATION_REACHED_DISTANCE = 15; // Distância para considerar destino alcançado
-    const ROAMING_NEW_DESTINATION_INTERVAL = 3.0; // Tempo em segundos antes de escolher novo destino
-    
     // Atualizar timer de patrulha
     creature.patrolTimer -= deltaTime;
     
@@ -1520,7 +1724,7 @@ function updateMeleeCreatureAI(
       
       if (distToTarget > ROAMING_DESTINATION_REACHED_DISTANCE) {
         // Ainda não chegou ao destino, continuar movendo
-        const roamingSpeed = effectiveMoveSpeed * ROAMING_SPEED * speedMultiplier;
+        const roamingSpeed = effectiveMoveSpeed * ROAMING_SPEED_MULTIPLIER * speedMultiplier;
         creature.x += (dx / distToTarget) * roamingSpeed * deltaTime;
         creature.y += (dy / distToTarget) * roamingSpeed * deltaTime;
       } else {
@@ -1644,11 +1848,6 @@ function updateRangedCreatureAI(
     creature.targetPlayerId = null;
 
     // ✅ Roaming: Sistema de patrulha aleatória (mesmo sistema para ranged)
-    const ROAMING_RADIUS = 150; // Raio máximo de roaming a partir da origem
-    const ROAMING_SPEED = 0.4; // Velocidade de roaming (40% da velocidade normal)
-    const ROAMING_DESTINATION_REACHED_DISTANCE = 15; // Distância para considerar destino alcançado
-    const ROAMING_NEW_DESTINATION_INTERVAL = 3.0; // Tempo em segundos antes de escolher novo destino
-    
     // Atualizar timer de patrulha
     creature.patrolTimer -= deltaTime;
     
@@ -1672,7 +1871,7 @@ function updateRangedCreatureAI(
       
       if (distToTarget > ROAMING_DESTINATION_REACHED_DISTANCE) {
         // Ainda não chegou ao destino, continuar movendo
-        const roamingSpeed = effectiveMoveSpeed * ROAMING_SPEED * speedMultiplier;
+        const roamingSpeed = effectiveMoveSpeed * ROAMING_SPEED_MULTIPLIER * speedMultiplier;
         creature.x += (dx / distToTarget) * roamingSpeed * deltaTime;
         creature.y += (dy / distToTarget) * roamingSpeed * deltaTime;
       } else {
@@ -1812,10 +2011,16 @@ export function updateSkillZones(
         const distance = Math.hypot(dx, dy);
 
         if (distance <= zone.radius) {
+          // ✅ Aplicar type effectiveness no dano da skill
+          const typeMultiplier = zone.creatureType
+            ? calculateTypeEffectiveness(zone.creatureType, creature.creatureType)
+            : 1.0;
+          let baseDamage = Math.floor(zone.damagePerTick * typeMultiplier);
+          
           // Criatura está dentro da zona - aplicar dano
           const damageResult = applyDamageToCreature(
             creature,
-            zone.damagePerTick,
+            baseDamage,
             zone.ownerId,
             zone.attackerAttack
           );
@@ -1855,11 +2060,10 @@ export function updateSkillZones(
           } else if (zone.skillType === "electric_surge") {
             // Pulso elétrico: knockback leve
             if (distance > 0 && !damageResult.died) {
-              const knockbackDistance = 30; // Distância de knockback
               const nx = dx / distance;
               const ny = dy / distance;
-              creature.x += nx * knockbackDistance;
-              creature.y += ny * knockbackDistance;
+              creature.x += nx * SKILL_KNOCKBACK_DISTANCE;
+              creature.y += ny * SKILL_KNOCKBACK_DISTANCE;
             }
           }
         }

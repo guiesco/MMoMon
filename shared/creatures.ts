@@ -8,7 +8,7 @@
  */
 
 import type { ElementType } from "./types";
-import { RANK_CONFIG, LEVEL_STAT_BONUS } from "./creatureProgression";
+import { RANK_CONFIG } from "./creatureProgression";
 import type { BasicAttack, SpecialSkill } from "./attacks";
 import {
   ATTACK_CHAMA_RAPIDA,
@@ -46,6 +46,23 @@ export interface CreatureStats {
   ai: CreatureAIStats;
 }
 
+/**
+ * Progressões individuais de stats por nível para cada criatura.
+ * Cada criatura pode ter valores diferentes de progressão.
+ */
+export interface CreatureStatProgression {
+  /** % de HP adicional por nível */
+  hpPerLevel: number;
+  /** % de dano adicional por nível */
+  attackDamagePerLevel: number;
+  /** % de defesa adicional por nível */
+  defensePerLevel: number;
+  /** % de velocidade adicional por nível */
+  moveSpeedPerLevel: number;
+  /** % de alcance de detecção adicional por nível */
+  detectionRangePerLevel: number;
+}
+
 // Re-exportar tipos para compatibilidade
 export type { BasicAttack, SpecialSkill } from "./attacks";
 
@@ -60,6 +77,8 @@ export interface CreatureDefinition {
   stats: CreatureStats;
   basicAttack: BasicAttack;
   specialSkill: SpecialSkill;
+  /** Progressões individuais de stats por nível */
+  statProgression: CreatureStatProgression;
   evolutionChain?: string[];
 }
 
@@ -89,6 +108,13 @@ export const CREATURES: CreatureDefinition[] = [
     },
     basicAttack: ATTACK_CHAMA_RAPIDA,
     specialSkill: SKILL_NEVOEIRO_INCENDIARIO,
+    statProgression: {
+      hpPerLevel: 0.02, // +2% por nível
+      attackDamagePerLevel: 0.018, // +1.8% por nível (ligeiramente acima da média)
+      defensePerLevel: 0.01, // +1% por nível
+      moveSpeedPerLevel: 0.006, // +0.6% por nível (voador, mais rápido)
+      detectionRangePerLevel: 0.004 // +0.4% por nível
+    },
     evolutionChain: ["Pyrognat", "Pyrodactyl", "Solaraptor"]
   },
   {
@@ -107,7 +133,14 @@ export const CREATURES: CreatureDefinition[] = [
       }
     },
     basicAttack: ATTACK_JATO_AGUA,
-    specialSkill: SKILL_MARE_CURATIVA
+    specialSkill: SKILL_MARE_CURATIVA,
+    statProgression: {
+      hpPerLevel: 0.022, // +2.2% por nível (tanque, mais HP)
+      attackDamagePerLevel: 0.015, // +1.5% por nível
+      defensePerLevel: 0.012, // +1.2% por nível (mais defesa)
+      moveSpeedPerLevel: 0.005, // +0.5% por nível
+      detectionRangePerLevel: 0.004 // +0.4% por nível
+    }
   },
   {
     id: "verdant",
@@ -125,7 +158,14 @@ export const CREATURES: CreatureDefinition[] = [
       }
     },
     basicAttack: ATTACK_CHICOTE_VINHA,
-    specialSkill: SKILL_RAIZES_PRENDENTES
+    specialSkill: SKILL_RAIZES_PRENDENTES,
+    statProgression: {
+      hpPerLevel: 0.021, // +2.1% por nível (tanque)
+      attackDamagePerLevel: 0.014, // +1.4% por nível
+      defensePerLevel: 0.013, // +1.3% por nível (mais defesa)
+      moveSpeedPerLevel: 0.004, // +0.4% por nível (mais lento)
+      detectionRangePerLevel: 0.003 // +0.3% por nível (melee, menos range)
+    }
   },
   {
     id: "voltiger",
@@ -144,7 +184,14 @@ export const CREATURES: CreatureDefinition[] = [
       }
     },
     basicAttack: ATTACK_RAIO_CORTANTE,
-    specialSkill: SKILL_SURTO_ELETRICO
+    specialSkill: SKILL_SURTO_ELETRICO,
+    statProgression: {
+      hpPerLevel: 0.018, // +1.8% por nível (glass cannon, menos HP)
+      attackDamagePerLevel: 0.02, // +2% por nível (mais dano)
+      defensePerLevel: 0.008, // +0.8% por nível (menos defesa)
+      moveSpeedPerLevel: 0.007, // +0.7% por nível (mais rápido)
+      detectionRangePerLevel: 0.005 // +0.5% por nível (mais range)
+    }
   }
 ];
 

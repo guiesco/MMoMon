@@ -12,7 +12,6 @@ import {
 export {
   LEVEL_CONFIG,
   XP_REWARDS,
-  LEVEL_STAT_BONUS,
   RANK_CONFIG,
   getXpRequiredForLevel,
   getTotalXpForLevel,

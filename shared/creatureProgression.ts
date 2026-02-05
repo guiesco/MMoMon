@@ -64,26 +64,6 @@ export const RANK_CONFIG: Record<
   5: { name: "Lendário", copiesRequired: 20, statMultiplier: 1.5, color: 0xf59e0b },
 };
 
-/**
- * Bônus de stats por nível.
- * Cada nível adiciona uma porcentagem dos stats base.
- */
-export const LEVEL_STAT_BONUS = {
-  /** % de HP adicional por nível */
-  hpPerLevel: 0.02, // +2% por nível
-  /** % de dano adicional por nível */
-  attackDamagePerLevel: 0.015, // +1.5% por nível
-  /** % de defesa adicional por nível */
-  defensePerLevel: 0.01, // +1% por nível
-  /** % de velocidade adicional por nível */
-  moveSpeedPerLevel: 0.005, // +0.5% por nível
-  /** % de alcance de detecção adicional por nível */
-  detectionRangePerLevel: 0.004, // +0.4% por nível
-  // Nota: Progressões de ataque (attackRangePerLevel, attackCooldownPerLevel, 
-  // attackWindupPerLevel, stunDurationPerLevel) agora são definidas individualmente
-  // em cada BasicAttack em attacks.ts
-} as const;
-
 // ============================================================================
 // FUNÇÕES DE CÁLCULO DE XP
 // ============================================================================
@@ -328,6 +308,13 @@ export type GetCreatureByIdFn = (id: string) => {
     lifetimePerLevel: number;
     damagePerLevel: number;
   };
+  statProgression: {
+    hpPerLevel: number;
+    attackDamagePerLevel: number;
+    defensePerLevel: number;
+    moveSpeedPerLevel: number;
+    detectionRangePerLevel: number;
+  };
 } | undefined;
 
 /**
@@ -372,6 +359,7 @@ export function calculateEffectiveStats(
   const baseStats = creatureDef.stats;
   const basicAttack = creatureDef.basicAttack;
   const specialSkill = creatureDef.specialSkill;
+  const statProgression = creatureDef.statProgression;
   const level = params.level;
   const rank = params.rank;
   const rankConfig = RANK_CONFIG[rank];
@@ -380,10 +368,10 @@ export function calculateEffectiveStats(
     // Fallback para rank inválido
     const rankMultiplier = RANK_CONFIG[1].statMultiplier;
     const levelBonus = level - 1;
-    const hpBonus = 1 + levelBonus * LEVEL_STAT_BONUS.hpPerLevel;
-    const attackBonus = 1 + levelBonus * LEVEL_STAT_BONUS.attackDamagePerLevel;
-    const defenseBonus = 1 + levelBonus * LEVEL_STAT_BONUS.defensePerLevel;
-    const speedBonus = 1 + levelBonus * LEVEL_STAT_BONUS.moveSpeedPerLevel;
+    const hpBonus = 1 + levelBonus * statProgression.hpPerLevel;
+    const attackBonus = 1 + levelBonus * statProgression.attackDamagePerLevel;
+    const defenseBonus = 1 + levelBonus * statProgression.defensePerLevel;
+    const speedBonus = 1 + levelBonus * statProgression.moveSpeedPerLevel;
     // Progressões de ataque agora vêm do basicAttack individual
     const attackRangeBonus = 1 + levelBonus * basicAttack.attackRangePerLevel;
     const attackCooldownBonus = 1 + levelBonus * basicAttack.attackCooldownPerLevel;
@@ -455,10 +443,10 @@ export function calculateEffectiveStats(
   // Calcula bônus por nível (nível 1 = 0 bônus)
   const levelBonus = level - 1;
 
-  const hpBonus = 1 + levelBonus * LEVEL_STAT_BONUS.hpPerLevel;
-  const attackBonus = 1 + levelBonus * LEVEL_STAT_BONUS.attackDamagePerLevel;
-  const defenseBonus = 1 + levelBonus * LEVEL_STAT_BONUS.defensePerLevel;
-  const speedBonus = 1 + levelBonus * LEVEL_STAT_BONUS.moveSpeedPerLevel;
+  const hpBonus = 1 + levelBonus * statProgression.hpPerLevel;
+  const attackBonus = 1 + levelBonus * statProgression.attackDamagePerLevel;
+  const defenseBonus = 1 + levelBonus * statProgression.defensePerLevel;
+  const speedBonus = 1 + levelBonus * statProgression.moveSpeedPerLevel;
   // Progressões de ataque agora vêm do basicAttack individual
   const attackRangeBonus = 1 + levelBonus * basicAttack.attackRangePerLevel;
   const attackCooldownBonus = 1 + levelBonus * basicAttack.attackCooldownPerLevel;

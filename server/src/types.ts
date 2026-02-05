@@ -257,6 +257,9 @@ export interface ServerSkillZone {
   
   /** ✅ Ataque do atacante (para calcular dano com defesa) */
   attackerAttack?: number;
+  
+  /** ✅ Tipo da criatura que criou a skill (para type effectiveness) */
+  creatureType?: string;
 }
 
 /**
@@ -573,11 +576,12 @@ export function createProjectile(
  * @param lifetime - Tempo de vida total
  * @param slowModifier - Modificador de slow (opcional)
  * @param attackerAttack - Ataque do atacante (opcional, para calcular dano com defesa)
+ * @param creatureType - Tipo da criatura que criou a skill (opcional, para type effectiveness)
  * @returns Nova instância de ServerSkillZone
  * 
  * @example
  * ```ts
- * const fireFog = createSkillZone("player-1", "fire_fog", 300, 200, 70, 8, 0.5, 4, undefined, 50);
+ * const fireFog = createSkillZone("player-1", "fire_fog", 300, 200, 70, 8, 0.5, 4, undefined, 50, "pyrognat");
  * ```
  */
 export function createSkillZone(
@@ -590,7 +594,8 @@ export function createSkillZone(
   tickInterval: number,
   lifetime: number,
   slowModifier?: number,
-  attackerAttack?: number
+  attackerAttack?: number,
+  creatureType?: string
 ): ServerSkillZone {
   return {
     id: generateId("skill-zone"),
@@ -604,7 +609,8 @@ export function createSkillZone(
     tickTimer: 0, // Primeiro tick imediato
     lifetime,
     slowModifier,
-    attackerAttack
+    attackerAttack,
+    creatureType
   };
 }
 
