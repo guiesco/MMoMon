@@ -280,6 +280,9 @@ export interface ServerProjectile {
   
   /** ✅ Ataque do atacante (para calcular dano com defesa) */
   attackerAttack?: number;
+  
+  /** ✅ Duração de stun do ataque (escalado) */
+  stunDuration?: number;
 
   /** Posição X atual */
   x: number;
@@ -515,11 +518,12 @@ export function createExtractionPoint(
  * @param maxDistance - Distância máxima em pixels (opcional, padrão: infinito)
  * @param creatureType - Tipo da criatura que disparou (opcional, para type effectiveness)
  * @param attackerAttack - Ataque do atacante (opcional, para calcular dano com defesa)
+ * @param stunDuration - Duração de stun do ataque (opcional, escalado)
  * @returns Nova instância de ServerProjectile
  * 
  * @example
  * ```ts
- * const playerShot = createProjectile("player-1", true, 100, 200, 300, 0, 10, 2.0, 220, "pyrognat", 50);
+ * const playerShot = createProjectile("player-1", true, 100, 200, 300, 0, 10, 2.0, 220, "pyrognat", 50, 0.2);
  * const enemyShot = createProjectile("wild-5", false, 400, 300, -200, 100, 5, 1.5);
  * ```
  */
@@ -534,7 +538,8 @@ export function createProjectile(
   lifetime: number,
   maxDistance: number = Infinity,
   creatureType?: string,
-  attackerAttack?: number
+  attackerAttack?: number,
+  stunDuration?: number
 ): ServerProjectile {
   return {
     id: generateId("proj"),
@@ -542,6 +547,7 @@ export function createProjectile(
     isPlayerProjectile,
     creatureType,
     attackerAttack,
+    stunDuration,
     x,
     y,
     startX: x,

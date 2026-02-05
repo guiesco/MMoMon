@@ -43,7 +43,8 @@ import {
   canCreatureMove,
   canCreatureAttack,
   isPlayerInvulnerable,
-  isCreatureInvulnerable
+  isCreatureInvulnerable,
+  addBuffToCreature
 } from "./buffs";
 
 // ✅ Importar do shared
@@ -111,7 +112,7 @@ export interface AttackResult {
   /** Se o ataque foi aceito e processado */
   success: boolean;
   /** Razão da falha (se aplicável) */
-  failReason?: "cooldown" | "invalid_position" | "dead" | "windup_in_progress";
+  failReason?: "cooldown" | "invalid_position" | "dead" | "windup_in_progress" | "player_not_found";
   /** ✅ ID do atacante (para broadcast) */
   attackerId?: string;
   /** ✅ Coordenadas do alvo (para broadcast) */
@@ -463,6 +464,11 @@ function processAttackExecution(
           );
           hitCount++;
           
+          // ✅ Aplicar stun após ataque melee (usando valor escalado)
+          if (!damageResult.died && effectiveStats?.stunDuration && effectiveStats.stunDuration > 0) {
+            addBuffToCreature(creature, 'stun', effectiveStats.stunDuration, undefined, playerId);
+          }
+          
           // ✅ NOVO: Aplicar knockback se criatura sobreviveu
           if (!damageResult.died && creatureDist > 0) {
             const knockbackNx = creatureDx / creatureDist;
@@ -688,6 +694,11 @@ export function updateProjectiles(
           );
           damageResults.push(damageResult);
           
+          // ✅ Aplicar stun após projétil acertar (usando valor escalado do projétil)
+          if (!damageResult.died && proj.stunDuration && proj.stunDuration > 0) {
+            addBuffToCreature(creature, 'stun', proj.stunDuration, undefined, proj.ownerId);
+          }
+          
           // Aplicar knockback leve em projéteis
           if (!damageResult.died && creature.currentHp > 0) {
             const PROJECTILE_KNOCKBACK_DISTANCE = 6; // Menor que melee
@@ -901,7 +912,7 @@ export function applyDamageToCreature(
  * @param damage - Quantidade de dano base a aplicar
  * @param attackerId - ID do atacante (criatura ou outro jogador)
  * @param attackerAttack - Ataque do atacante (opcional, para calcular dano com defesa)
- * @param playerDefense - Defesa do jogador (opcional, se não fornecido usa player.defense)
+ * @param playerDefense - Defesa do jogador (opcional, usa 10 como padrão se não fornecido)
  * @returns Resultado do dano aplicado
  * 
  * @example
@@ -936,7 +947,7 @@ export function applyDamageToPlayer(
   // Calcular dano final considerando defesa se stats do atacante foram fornecidos
   let finalDamage = damage;
   if (attackerAttack !== undefined) {
-    const defenderDefense = playerDefense ?? player.defense ?? 10;
+    const defenderDefense = playerDefense ?? 10;
     finalDamage = calculateDamageWithDefense(
       damage,
       attackerAttack,
@@ -1183,7 +1194,7 @@ export function updateCreatureAI(
             specialSkill.tickInterval,
             skillLifetime,
             specialSkill.slowModifier,
-            attackDamage // ✅ Ataque do atacante para calcular dano com defesa
+            effectiveStats.attackDamage // ✅ Ataque do atacante para calcular dano com defesa
           );
           
           room.skillZones.push(skillZone);
@@ -1381,7 +1392,7 @@ function tryUseCreatureSkill(
     specialSkill.tickInterval,
     skillLifetime,
     specialSkill.slowModifier,
-    attackDamage // ✅ Ataque do atacante para calcular dano com defesa
+    effectiveStats.attackDamage // ✅ Ataque do atacante para calcular dano com defesa
   );
 
   room.skillZones.push(skillZone);
@@ -1725,7 +1736,8 @@ function updateRangedCreatureAI(
       ENEMY_VISUAL_CONFIG.enemyProjectileLifetime,
       effectiveAttackRange, // Usar alcance calculado (tier + level)
       creature.creatureType, // ✅ Tipo da criatura para type effectiveness
-      attackDamage // ✅ Ataque do atacante para calcular dano com defesa
+      attackDamage, // ✅ Ataque do atacante para calcular dano com defesa
+      creature.effectiveStats?.stunDuration // ✅ Duração de stun escalada
     );
 
     room.projectiles.push(projectile);
