@@ -113,6 +113,8 @@ export interface AttackMessage extends BaseMessage {
   targetY: number;
   creatureId?: string;
   attackType?: "basic" | "special";
+  creatureLevel?: number;
+  creatureRank?: number;
 }
 
 export interface SkillMessage extends BaseMessage {
@@ -121,6 +123,8 @@ export interface SkillMessage extends BaseMessage {
   targetX: number;
   targetY: number;
   creatureId?: string;
+  creatureLevel?: number;
+  creatureRank?: number;
 }
 
 export interface CaptureMessage extends BaseMessage {

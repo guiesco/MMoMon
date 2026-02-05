@@ -10,7 +10,7 @@ import type {
   ResourceState, 
   PlayerState 
 } from "../../../game/worldState";
-import { getCreatureById } from "../../../game/creatures";
+import { getCreatureById } from "../../../../shared/creatures";
 import { getCreatureTheme } from "../../../game/creatureThemes";
 
 /**
@@ -620,6 +620,10 @@ export class SpriteManager {
 
   getAllPlayers(): RemotePlayerSprite[] {
     return Array.from(this.playerSprites.values());
+  }
+
+  getAllPlayerIds(): string[] {
+    return Array.from(this.playerSprites.keys());
   }
 
   get playerSpritesSize(): number {

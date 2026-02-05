@@ -1,69 +1,9 @@
 import Phaser from "phaser";
 import type { CreatureDefinition, ElementType } from "./types";
+import { TYPE_COLORS, HP_BAR_CONFIG } from "../../shared/visualConfig";
 
-/**
- * Cores primárias associadas a cada tipo de criatura.
- * Usadas para colorir as barras de HP e dar identidade visual.
- */
-export const TYPE_COLORS: Record<ElementType, { primary: number; secondary: number; glow: number }> = {
-  Fogo: { primary: 0xf97316, secondary: 0xfbbf24, glow: 0xff6b35 },
-  Água: { primary: 0x3b82f6, secondary: 0x06b6d4, glow: 0x60a5fa },
-  Planta: { primary: 0x22c55e, secondary: 0x84cc16, glow: 0x4ade80 },
-  Elétrico: { primary: 0xfacc15, secondary: 0xfde047, glow: 0xfef08a },
-  Psíquico: { primary: 0xa855f7, secondary: 0xc084fc, glow: 0xd8b4fe },
-  Terrestre: { primary: 0x92400e, secondary: 0xb45309, glow: 0xd97706 },
-  Voador: { primary: 0x7dd3fc, secondary: 0xbae6fd, glow: 0xe0f2fe },
-  Lutador: { primary: 0xdc2626, secondary: 0xef4444, glow: 0xf87171 }
-};
-
-/**
- * Configurações visuais das barras de HP
- */
-export const HP_BAR_CONFIG = {
-  // Barra do jogador no HUD
-  player: {
-    width: 200,
-    height: 18,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: 0x374151,
-    bgColor: 0x1f2937,
-    bgAlpha: 0.9
-  },
-  // Barras de aliados (menores, no HUD)
-  ally: {
-    width: 140,
-    height: 12,
-    borderRadius: 3,
-    borderWidth: 1,
-    borderColor: 0x374151,
-    bgColor: 0x1f2937,
-    bgAlpha: 0.85
-  },
-  // Barras de inimigos (flutuantes)
-  enemy: {
-    width: 40,
-    height: 5,
-    borderRadius: 2,
-    borderWidth: 1,
-    borderColor: 0x1f2937,
-    bgColor: 0x374151,
-    bgAlpha: 0.8,
-    offsetY: -20, // acima do sprite
-    maxDistance: 250 // distância máxima para mostrar barra
-  },
-  // Limiares de estado
-  thresholds: {
-    low: 0.3, // 30% - HP crítico
-    medium: 0.6 // 60% - HP moderado
-  },
-  // Cores de estado
-  stateColors: {
-    healthy: 0x22c55e, // verde
-    medium: 0xfacc15, // amarelo
-    low: 0xef4444 // vermelho
-  }
-};
+// ✅ Re-exportar do shared para manter compatibilidade
+export { TYPE_COLORS, HP_BAR_CONFIG } from "../../shared/visualConfig";
 
 /**
  * Representa uma barra de HP individual com seus elementos gráficos.
@@ -112,7 +52,7 @@ export class HPBarManager {
    */
   createPlayerBar(x: number, y: number, creatureDef: CreatureDefinition | null): HPBarElements {
     const config = HP_BAR_CONFIG.player;
-    const typeColors = creatureDef ? TYPE_COLORS[creatureDef.primaryType] : TYPE_COLORS.Fogo;
+    const typeColors = creatureDef ? TYPE_COLORS[creatureDef.primaryType as ElementType] : TYPE_COLORS.Fogo;
 
     const container = this.scene.add.container(x, y);
     container.setDepth(100);
@@ -181,7 +121,7 @@ export class HPBarManager {
     isActive: boolean
   ): HPBarElements {
     const config = HP_BAR_CONFIG.ally;
-    const typeColors = creatureDef ? TYPE_COLORS[creatureDef.primaryType] : TYPE_COLORS.Fogo;
+    const typeColors = creatureDef ? TYPE_COLORS[creatureDef.primaryType as ElementType] : TYPE_COLORS.Fogo;
 
     const container = this.scene.add.container(x, y);
     container.setDepth(100);
@@ -319,7 +259,7 @@ export class HPBarManager {
 
     const state = this.barStates.get("player");
     const config = HP_BAR_CONFIG.player;
-    const typeColors = creatureDef ? TYPE_COLORS[creatureDef.primaryType] : TYPE_COLORS.Fogo;
+    const typeColors = creatureDef ? TYPE_COLORS[creatureDef.primaryType as ElementType] : TYPE_COLORS.Fogo;
 
     // Verifica se houve mudança
     if (state && state.currentHp === currentHp && state.maxHp === maxHp && !tookDamage) {
@@ -395,7 +335,7 @@ export class HPBarManager {
     bar.container.setAlpha(isActive ? 1 : 0.6);
 
     // Cor baseada no estado
-    let fillColor = HP_BAR_CONFIG.stateColors.healthy;
+    let fillColor: number = HP_BAR_CONFIG.stateColors.healthy;
     if (ratio <= HP_BAR_CONFIG.thresholds.low) {
       fillColor = HP_BAR_CONFIG.stateColors.low;
     } else if (ratio <= HP_BAR_CONFIG.thresholds.medium) {
@@ -463,7 +403,7 @@ export class HPBarManager {
         bar.fill.setSize(fillWidth, config.height - config.borderWidth * 2);
 
         // Cor baseada no estado
-        let fillColor = HP_BAR_CONFIG.stateColors.healthy;
+        let fillColor: number = HP_BAR_CONFIG.stateColors.healthy;
         if (ratio <= HP_BAR_CONFIG.thresholds.low) {
           fillColor = HP_BAR_CONFIG.stateColors.low;
         } else if (ratio <= HP_BAR_CONFIG.thresholds.medium) {
@@ -575,7 +515,7 @@ export class HPBarManager {
   updatePlayerBarColor(creatureDef: CreatureDefinition | null) {
     if (!this.playerBar) return;
 
-    const typeColors = creatureDef ? TYPE_COLORS[creatureDef.primaryType] : TYPE_COLORS.Fogo;
+    const typeColors = creatureDef ? TYPE_COLORS[creatureDef.primaryType as ElementType] : TYPE_COLORS.Fogo;
     
     // Força atualização na próxima chamada de updatePlayerBar
     const state = this.barStates.get("player");
@@ -599,7 +539,7 @@ export class HPBarManager {
     // Verificar se o container ainda é válido (não foi destruído)
     if (!bar.container || !bar.container.scene) return;
 
-    const typeColors = creatureDef ? TYPE_COLORS[creatureDef.primaryType] : TYPE_COLORS.Fogo;
+    const typeColors = creatureDef ? TYPE_COLORS[creatureDef.primaryType as ElementType] : TYPE_COLORS.Fogo;
     const config = HP_BAR_CONFIG.ally;
 
     bar.container.setAlpha(isActive ? 1 : 0.6);

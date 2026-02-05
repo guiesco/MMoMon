@@ -1,12 +1,9 @@
-export type ElementType =
-  | "Fogo"
-  | "Água"
-  | "Planta"
-  | "Elétrico"
-  | "Psíquico"
-  | "Terrestre"
-  | "Voador"
-  | "Lutador";
+// ✅ Re-exportar ElementType do diretório compartilhado para manter sincronizado
+export type { ElementType } from "../../shared/types";
+import type { ElementType } from "../../shared/types";
+// ✅ Re-exportar BasicAttack e SpecialSkill do diretório compartilhado para manter sincronizado
+export type { BasicAttack, SpecialSkill } from "../../shared/attacks";
+import type { BasicAttack, SpecialSkill } from "../../shared/attacks";
 
 export interface CreatureStats {
   hp: number;
@@ -16,20 +13,7 @@ export interface CreatureStats {
   skillCooldown: number;
 }
 
-export interface BasicAttack {
-  name: string;
-  description: string;
-  range: number;
-  damage: number;
-  cooldown: number;
-  isProjectile: boolean;
-}
 
-export interface SpecialSkill {
-  name: string;
-  description: string;
-  cooldown: number;
-}
 
 export interface CreatureDefinition {
   id: string;

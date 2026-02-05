@@ -459,14 +459,18 @@ export class MultiplayerClient {
     targetX: number, 
     targetY: number, 
     creatureId?: string,
-    attackType?: "basic" | "special"
+    attackType?: "basic" | "special",
+    creatureLevel?: number,
+    creatureRank?: number
   ): void {
     this.send({
       type: "attack_basic",
       targetX,
       targetY,
       creatureId,
-      attackType
+      attackType,
+      creatureLevel,
+      creatureRank
     });
   }
 
@@ -477,14 +481,18 @@ export class MultiplayerClient {
     skillType: "fire_fog" | "root_trap" | "electric_surge" | "heal_wave",
     targetX: number,
     targetY: number,
-    creatureId?: string
+    creatureId?: string,
+    creatureLevel?: number,
+    creatureRank?: number
   ): void {
     this.send({
       type: "use_skill",
       skillType,
       targetX,
       targetY,
-      creatureId
+      creatureId,
+      creatureLevel,
+      creatureRank
     });
   }
 

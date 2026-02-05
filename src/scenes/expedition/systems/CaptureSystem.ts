@@ -1,144 +1,148 @@
-import { PlayerState as LocalPlayerState } from "../../../game/playerState";
-import { 
-  CAPTURE_CONFIG, 
-  CAPTURE_BALL_MODIFIERS, 
-  CAPTURE_CREATURE_POOL 
-} from "../../../game/constants";
-import type { RemoteCreatureSprite, PokeballProjectile } from "../types/ExpeditionTypes";
+import Phaser from "phaser";
+import type { MultiplayerClient } from "../../../services/multiplayerClient";
+import type { ProjectileManager } from "../managers/ProjectileManager";
+import type { FeedbackManager } from "../ui/FeedbackManager";
 import type { ExpeditionTelemetry } from "../types/ExpeditionTypes";
 
 /**
  * Gerencia o sistema de captura de criaturas.
+ * Apenas visual - toda lógica é processada no servidor.
  */
 export class CaptureSystem {
+  private scene: Phaser.Scene;
+  private player: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
+  private expeditionInventory: Map<string, number>;
+  private mpClient: MultiplayerClient | null;
+  private projectileManager: ProjectileManager;
+  private feedbackManager: FeedbackManager;
   private telemetry: ExpeditionTelemetry;
-  private creaturesCaptured: number;
-  private createCaptureSuccessFeedback: (x: number, y: number) => void;
-  private createEnhancedFloatingText: (x: number, y: number, text: string, color: number, fontSize?: number) => void;
-  private removeCreature: (id: string) => void;
-  private updateCreatureState: (id: string, state: any) => void;
-  private worldState: any;
+  private captureAttemptPositions: Map<string, { x: number; y: number }>;
 
   constructor(
-    dependencies: {
-      telemetry: ExpeditionTelemetry;
-      creaturesCaptured: number;
-      createCaptureSuccessFeedback: (x: number, y: number) => void;
-      createEnhancedFloatingText: (x: number, y: number, text: string, color: number, fontSize?: number) => void;
-      removeCreature: (id: string) => void;
-      updateCreatureState: (id: string, state: any) => void;
-      worldState: any;
-    }
+    scene: Phaser.Scene,
+    player: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody,
+    expeditionInventory: Map<string, number>,
+    mpClient: MultiplayerClient | null,
+    projectileManager: ProjectileManager,
+    feedbackManager: FeedbackManager,
+    telemetry: ExpeditionTelemetry
   ) {
-    this.telemetry = dependencies.telemetry;
-    this.creaturesCaptured = dependencies.creaturesCaptured;
-    this.createCaptureSuccessFeedback = dependencies.createCaptureSuccessFeedback;
-    this.createEnhancedFloatingText = dependencies.createEnhancedFloatingText;
-    this.removeCreature = dependencies.removeCreature;
-    this.updateCreatureState = dependencies.updateCreatureState;
-    this.worldState = dependencies.worldState;
+    this.scene = scene;
+    this.player = player;
+    this.expeditionInventory = expeditionInventory;
+    this.mpClient = mpClient;
+    this.projectileManager = projectileManager;
+    this.feedbackManager = feedbackManager;
+    this.telemetry = telemetry;
+    this.captureAttemptPositions = new Map();
   }
 
   /**
-   * Calcula a chance de captura.
+   * Lança uma pokébola na direção do mouse.
+   * Apenas cria o visual - o servidor processa a captura.
    */
-  calculateCatchRate(
-    creature: RemoteCreatureSprite,
-    ballType: "poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra"
-  ): number {
-    // Fatores base
-    const baseRate = CAPTURE_CONFIG.baseChance; // 0.25 base
+  throwPokeball(targetX: number, targetY: number): void {
+    // Seleciona automaticamente a melhor pokébola disponível
+    const captureToolsPriority: ("poke-ball-ultra" | "poke-ball-precisa" | "poke-ball-basic")[] = [
+      "poke-ball-ultra",
+      "poke-ball-precisa",
+      "poke-ball-basic"
+    ];
+
+    const chosenBall = captureToolsPriority.find(
+      (id) => (this.expeditionInventory.get(id) ?? 0) > 0
+    );
+
+    if (!chosenBall) {
+      this.feedbackManager.createFloatingText(
+        this.player.x,
+        this.player.y - 30,
+        "Sem Pokébolas!",
+        0xef4444
+      );
+      return;
+    }
+
+    // Consome a pokébola do inventário de expedição (otimista)
+    const currentQuantity = this.expeditionInventory.get(chosenBall) ?? 0;
+    if (currentQuantity <= 0) {
+      return;
+    }
+    this.expeditionInventory.set(chosenBall, currentQuantity - 1);
+
+    // Calcula direção para o alvo
+    const dx = targetX - this.player.x;
+    const dy = targetY - this.player.y;
+    const len = Math.hypot(dx, dy) || 1;
     
-    // Bônus por HP baixo (quanto menor o HP, maior a chance)
-    const hpRatio = creature.currentHp / creature.maxHp;
-    const hpBonus = (1 - hpRatio) * CAPTURE_CONFIG.hpBonusMultiplier;
-    
-    // Penalidade por nível/tier alto (criaturas mais fortes são mais difíceis)
-    const tierPenalty: Record<string, number> = {
-      common: 0,
-      uncommon: 0.05,
-      rare: 0.15,
-      boss: 0.35
+    const speed = 450; // Velocidade da pokébola
+    const velocityX = (dx / len) * speed;
+    const velocityY = (dy / len) * speed;
+
+    // Cor da pokébola baseada no tipo
+    const ballColors: Record<string, number> = {
+      "poke-ball-basic": 0xef4444,    // Vermelho
+      "poke-ball-precisa": 0x3b82f6,   // Azul
+      "poke-ball-ultra": 0xfbbf24      // Dourado
     };
-    const penalty = tierPenalty[creature.tier] ?? 0;
-    
-    // Modificador da pokébola
-    const ballMods = CAPTURE_BALL_MODIFIERS[ballType] ?? CAPTURE_BALL_MODIFIERS["poke-ball-basic"];
-    
-    // Calcula chance final
-    const rawChance = (baseRate + hpBonus - penalty) * ballMods.multiplier + ballMods.flatBonus;
-    
-    return Math.max(0.05, Math.min(CAPTURE_CONFIG.maxChance, rawChance)); // Mínimo 5%, máximo do config
-  }
 
-  /**
-   * Tenta capturar uma criatura.
-   */
-  attemptCapture(
-    target: RemoteCreatureSprite,
-    ballType: "poke-ball-basic" | "poke-ball-precisa" | "poke-ball-ultra"
-  ): { success: boolean; creaturesCaptured: number } {
-    this.telemetry.creaturesEncountered += 1;
-    
-    const chance = this.calculateCatchRate(target, ballType);
-    const roll = Math.random();
-    
-    // Registra chance para cálculo de média
-    this.telemetry.totalCaptureChanceSum += chance;
+    // Cria o sprite da pokébola
+    const sprite = this.scene.add.circle(
+      this.player.x, 
+      this.player.y, 
+      8, 
+      ballColors[chosenBall] ?? 0xef4444, 
+      1
+    );
+    sprite.setStrokeStyle(2, 0xffffff);
 
-    // Log de tentativa de captura
-    console.log("[CAPTURA] Tentativa", {
-      tier: target.tier,
-      hpRatio: (target.currentHp / target.maxHp * 100).toFixed(0) + "%",
-      ball: ballType,
-      chance: (chance * 100).toFixed(1) + "%",
-      roll: (roll * 100).toFixed(1) + "%",
-      success: roll <= chance
+    // Usar ProjectileManager
+    this.projectileManager.addPokeballProjectile({
+      sprite,
+      velocityX,
+      velocityY,
+      lifetime: 2, // 2 segundos de vida
+      ballType: chosenBall
     });
 
-    if (roll <= chance) {
-      // Captura bem-sucedida!
-      const newCreaturesCaptured = this.creaturesCaptured + 1;
-      this.telemetry.creaturesCaptured += 1;
-      this.telemetry.captureSuccesses += 1;
-      
-      // Feedback visual de sucesso
-      this.createCaptureSuccessFeedback(target.sprite.x, target.sprite.y);
-      this.createEnhancedFloatingText(
-        target.sprite.x,
-        target.sprite.y - 20,
-        "✅ CAPTURADO!",
-        0x10b981,
-        24 // Tamanho maior para sucesso
-      );
-      
-      // Remove a criatura do worldState e destrói sprites
-      this.removeCreature(target.id);
+    // Feedback visual ao lançar
+    this.feedbackManager.createFloatingText(
+      this.player.x,
+      this.player.y - 30,
+      "🎯 Lançando...",
+      0x3b82f6
+    );
 
-      // Adiciona criatura ao jogador
-      const chosenDefId =
-        CAPTURE_CREATURE_POOL[Math.floor(Math.random() * CAPTURE_CREATURE_POOL.length)] ?? CAPTURE_CREATURE_POOL[0];
-      LocalPlayerState.addCreature(chosenDefId);
+    // Registra tentativa
+    this.telemetry.captureAttempts += 1;
+  }
 
-      return { success: true, creaturesCaptured: newCreaturesCaptured };
-    } else {
-      // Falha na captura
-      this.telemetry.captureFailures += 1;
-      
-      // Feedback visual de falha
-      this.createEnhancedFloatingText(
-        target.sprite.x,
-        target.sprite.y - 20,
-        "❌ Escapou!",
-        0xef4444,
-        20 // Tamanho médio para falha
-      );
-      
-      // A criatura fica agressiva após falha na captura
-      target.aiState = "chasing";
-      this.updateCreatureState(target.id, { aiState: "chasing" });
+  /**
+   * Armazena posição de criatura antes de enviar tentativa de captura.
+   * Usado como fallback quando recebemos o resultado e a criatura já foi removida.
+   */
+  storeCaptureAttemptPosition(creatureId: string, x: number, y: number): void {
+    this.captureAttemptPositions.set(creatureId, { x, y });
+  }
 
-      return { success: false, creaturesCaptured: this.creaturesCaptured };
-    }
+  /**
+   * Obtém posição armazenada de tentativa de captura.
+   */
+  getCaptureAttemptPosition(creatureId: string): { x: number; y: number } | undefined {
+    return this.captureAttemptPositions.get(creatureId);
+  }
+
+  /**
+   * Remove posição armazenada após uso.
+   */
+  clearCaptureAttemptPosition(creatureId: string): void {
+    this.captureAttemptPositions.delete(creatureId);
+  }
+
+  /**
+   * Atualiza a referência do cliente multiplayer.
+   */
+  setMpClient(mpClient: MultiplayerClient | null): void {
+    this.mpClient = mpClient;
   }
 }

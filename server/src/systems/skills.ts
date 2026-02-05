@@ -21,15 +21,15 @@ import { ServerSkillZone, ServerCreature, createSkillZone } from "../types";
 import { applyDamageToCreature, DamageResult } from "./combat";
 import { addBuffToCreature, BUFF_CONFIG } from "./buffs";
 
+// ✅ Importar do shared
+import { SKILL_COOLDOWN_MS } from "../../../shared/serverConstants";
+import { getCreatureById } from "../../../shared/creatures";
+import { calculateEffectiveStats } from "../../../shared/creatureProgression";
+import { getSpecialSkillByCreatureId } from "../../../shared/attacks";
+
 // ============================================================================
 // Constantes
 // ============================================================================
-
-/**
- * Cooldown global de skills (em milissegundos).
- * Jogador deve esperar este tempo entre usar habilidades.
- */
-const SKILL_COOLDOWN_MS = 8000; // 8 segundos
 
 /**
  * Tipos de skills disponíveis.
@@ -165,7 +165,10 @@ export function processSkillIntent(
   skillType: string,
   targetX: number,
   targetY: number,
-  currentTime: number
+  currentTime: number,
+  creatureId?: string,
+  creatureLevel?: number,
+  creatureRank?: number
 ): SkillResult {
   // Validação: jogador existe
   const player = room.players.get(playerId);
@@ -184,15 +187,6 @@ export function processSkillIntent(
     };
   }
 
-  // Validação: cooldown
-  const timeSinceLastSkill = currentTime - player.lastSkillTime;
-  if (timeSinceLastSkill < SKILL_COOLDOWN_MS) {
-    return {
-      success: false,
-      reason: "cooldown"
-    };
-  }
-
   // Validação: coordenadas válidas
   if (!isFinite(targetX) || !isFinite(targetY)) {
     return {
@@ -201,20 +195,57 @@ export function processSkillIntent(
     };
   }
 
-  // Obter configuração da skill
-  const config = SKILL_CONFIG[skillType as SkillType];
+  // Obter configuração base da skill
+  const baseConfig = SKILL_CONFIG[skillType as SkillType];
+  
+  // Calcular valores escalados se tiver creatureId, level e rank
+  let radius = baseConfig.radius;
+  let damagePerTick = baseConfig.damagePerTick;
+  let lifetime = baseConfig.lifetime;
+  let skillCooldown = SKILL_COOLDOWN_MS;
 
-  // Criar skill zone
+  if (creatureId && creatureLevel !== undefined && creatureRank !== undefined) {
+    const effectiveStats = calculateEffectiveStats(
+      { definitionId: creatureId, level: creatureLevel, rank: creatureRank },
+      getCreatureById
+    );
+    
+    // Usar valores escalados da special skill
+    radius = effectiveStats.specialSkillRadius;
+    damagePerTick = effectiveStats.specialSkillDamagePerTick;
+    lifetime = effectiveStats.specialSkillLifetime;
+    skillCooldown = effectiveStats.specialSkillCooldown * 1000; // Converter para ms
+  } else if (creatureId) {
+    // Se não tiver level/rank, usar valores base da special skill
+    const specialSkill = getSpecialSkillByCreatureId(creatureId);
+    if (specialSkill) {
+      radius = specialSkill.radius;
+      damagePerTick = specialSkill.damagePerTick;
+      lifetime = specialSkill.lifetime;
+      skillCooldown = specialSkill.cooldown * 1000;
+    }
+  }
+
+  // Validação: cooldown escalado
+  const timeSinceLastSkill = currentTime - player.lastSkillTime;
+  if (timeSinceLastSkill < skillCooldown) {
+    return {
+      success: false,
+      reason: "cooldown"
+    };
+  }
+
+  // Criar skill zone com valores escalados
   const skillZone = createSkillZone(
     playerId,
     skillType as "fire_fog" | "root_trap" | "electric_surge",
     targetX,
     targetY,
-    config.radius,
-    config.damagePerTick,
-    config.tickInterval,
-    config.lifetime,
-    config.slowModifier
+    radius,
+    damagePerTick,
+    baseConfig.tickInterval, // tickInterval não escala
+    lifetime,
+    baseConfig.slowModifier // slowModifier não escala
   );
 
   room.skillZones.push(skillZone);

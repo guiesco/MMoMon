@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { PlayerState } from "../game/playerState";
-import { getCreatureById } from "../game/creatures";
+import { getCreatureById } from "../../shared/creatures";
 import type { OwnedCreature } from "../game/types";
 import { getEffectiveStats } from "../game/creatureProgression";
 import { setActiveTeamOnServer } from "../services/firebaseSync";
@@ -271,8 +271,10 @@ export class TeamManagementScene extends Phaser.Scene {
       lines.push(
         `HP: ${effectiveStats.hp} | ATQ: ${effectiveStats.attackDamage} | DEF: ${effectiveStats.defense} | Vel: ${effectiveStats.moveSpeed}`
       );
+      // ✅ Mostrar cooldown escalado da special skill
+      const specialSkillCooldown = effectiveStats.specialSkillCooldown;
       lines.push(
-        `Skill: ${def.specialSkill.name} (CD: ${def.specialSkill.cooldown}s)`
+        `Skill: ${def.specialSkill.name} (CD: ${specialSkillCooldown.toFixed(1)}s)`
       );
     }
 

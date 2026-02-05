@@ -23,19 +23,16 @@ import {
   ServerCreature,
   ServerProjectile,
   ServerSkillZone,
-  createProjectile
+  createProjectile,
+  createSkillZone
 } from "../types";
-import {
-  COMBAT_CONFIG,
-  ENEMY_AI_CONFIG,
-  ENEMY_VISUAL_CONFIG,
-  THREAT_TIERS,
-  PLAYER_COLLISION_RADIUS,
-  CREATURE_COLLISION_RADIUS,
-  ThreatTier,
-  EnemyBehaviorType,
-  EnemyAIState
-} from "../constants";
+// ✅ Importar do shared
+import { COMBAT_CONFIG, ENEMY_VISUAL_CONFIG } from "../../../shared/gameConstants";
+import type { EnemyBehaviorType } from "../../../shared/enums";
+
+// Constantes de colisão do shared
+const PLAYER_COLLISION_RADIUS = COMBAT_CONFIG.playerCollisionRadius;
+const CREATURE_COLLISION_RADIUS = COMBAT_CONFIG.creatureCollisionRadius;
 import {
   updatePlayerBuffs,
   updateCreatureBuffs,
@@ -49,64 +46,57 @@ import {
   isCreatureInvulnerable
 } from "./buffs";
 
+// ✅ Importar do shared
+import { getCreatureAttackStats, getCreatureById } from "../../../shared/creatures";
+import { calculateEffectiveStats } from "../../../shared/creatureProgression";
+import { getSpecialSkillByCreatureId } from "../../../shared/attacks";
+
 // ============================================================================
 // Constantes de Stats de Criaturas
 // ============================================================================
-
-/**
- * Stats de ataque por tipo de criatura.
- * Sincronizado com src/game/creatures.ts
- * 
- * Formato: { creatureId: { damage: número, speed: número, range: número, isProjectile: boolean } }
- * 
- * IMPORTANTE: Estes valores devem corresponder EXATAMENTE aos definidos em creatures.ts
- * para garantir consistência entre cliente e servidor.
- */
-const CREATURE_ATTACK_STATS: Record<string, { damage: number; speed: number; range: number; isProjectile: boolean }> = {
-  // Criaturas iniciais (tier 1) - SINCRONIZADO com creatures.ts
-  "pyrognat": { 
-    damage: 20,    // Chama Rápida
-    speed: 420,    // Velocidade de projétil padrão
-    range: 220,    // Alcance máximo
-    isProjectile: true 
-  },
-  "aquaryl": { 
-    damage: 18,    // Jato d'Água
-    speed: 400,    
-    range: 260,    
-    isProjectile: true 
-  },
-  "verdant": { 
-    damage: 16,    // Chicote de Vinha (melee)
-    speed: 0,      // Não usa velocidade (melee)
-    range: 80,     // Alcance melee
-    isProjectile: false 
-  },
-  "voltiger": { 
-    damage: 24,    // Raio Cortante
-    speed: 450,    
-    range: 280,    
-    isProjectile: true 
-  },
-  
-  // Criaturas intermediárias (tier 2) - valores ilustrativos
-  "flameclaw": { damage: 35, speed: 480, range: 250, isProjectile: true },
-  "tidalfin": { damage: 30, speed: 420, range: 280, isProjectile: true },
-  "leafstorm": { damage: 32, speed: 400, range: 100, isProjectile: false },
-  "sparkwing": { damage: 38, speed: 520, range: 300, isProjectile: true },
-  
-  // Criaturas avançadas (tier 3) - valores ilustrativos
-  "infernodrake": { damage: 50, speed: 500, range: 280, isProjectile: true },
-  "oceanleviathan": { damage: 45, speed: 440, range: 300, isProjectile: true },
-  "foresttitan": { damage: 48, speed: 420, range: 120, isProjectile: false },
-  "thunderbeast": { damage: 55, speed: 550, range: 320, isProjectile: true },
-};
 
 /**
  * Stats padrão caso a criatura não seja encontrada no lookup.
  * Equivale a um ataque básico sem criatura.
  */
 const DEFAULT_ATTACK_STATS = { damage: 15, speed: 400, range: 200, isProjectile: true };
+
+/**
+ * Determina o tipo de comportamento (melee ou ranged) baseado na definição da criatura.
+ * 
+ * @param creatureType - Tipo/espécie da criatura (ex: "pyrognat", "verdant")
+ * @returns Tipo de comportamento ("melee" ou "ranged")
+ */
+export function getCreatureBehaviorType(creatureType: string): EnemyBehaviorType {
+  const attackStats = getCreatureAttackStats(creatureType);
+  
+  if (!attackStats) {
+    // Fallback: se criatura não encontrada, assume ranged como padrão
+    console.warn(`[Combat] Criatura ${creatureType} não encontrada, usando ranged como padrão`);
+    return "ranged";
+  }
+  
+  // Se o ataque é projétil, é ranged; caso contrário, é melee
+  return attackStats.isProjectile ? "ranged" : "melee";
+}
+
+// ============================================================================
+// Sistema de Type Effectiveness (Vantagens e Desvantagens de Tipos)
+// ============================================================================
+
+// ✅ Importar do diretório compartilhado para manter sincronizado com cliente
+import { calculateTypeEffectiveness as sharedCalculateTypeEffectiveness } from "../../../shared/creatureTypes";
+
+/**
+ * Calcula o multiplicador de dano baseado em vantagens/desvantagens de tipos.
+ * 
+ * @param attackerType - Tipo da criatura atacante (ex: "pyrognat")
+ * @param defenderType - Tipo da criatura defensor (ex: "aquaryl")
+ * @returns Multiplicador de dano (1.0 = neutro, 2.0 = super efetivo, 0.5 = não muito efetivo, 0 = imune)
+ */
+export function calculateTypeEffectiveness(attackerType: string, defenderType: string): number {
+  return sharedCalculateTypeEffectiveness(attackerType, defenderType);
+}
 
 // ============================================================================
 // Interfaces e Tipos
@@ -177,6 +167,8 @@ export interface CombatRoomState {
   creatures: ServerCreature[];
   /** Projéteis ativos */
   projectiles: ServerProjectile[];
+  /** ✅ Zonas de skill ativas */
+  skillZones: ServerSkillZone[];
 }
 
 // ============================================================================
@@ -199,11 +191,13 @@ export interface CombatRoomState {
  * @param targetY - Coordenada Y de destino do ataque
  * @param currentTime - Timestamp atual em ms (para cooldown)
  * @param creatureId - ID da criatura ativa (opcional, usa stats padrão se não fornecido)
+ * @param creatureLevel - Nível da criatura ativa (opcional, para escalar valores de IA)
+ * @param creatureRank - Rank da criatura ativa (opcional, para escalar valores de IA)
  * @returns Resultado do ataque
  * 
  * @example
  * ```ts
- * const result = processAttackIntent(room, "player-1", 500, 300, Date.now(), "pyrognat");
+ * const result = processAttackIntent(room, "player-1", 500, 300, Date.now(), "pyrognat", 10, 2);
  * if (result.success) {
  *   console.log(`Projétil criado: ${result.projectileId}`);
  *   // Broadcast AttackResultMessage para clientes
@@ -216,7 +210,9 @@ export function processAttackIntent(
   targetX: number,
   targetY: number,
   currentTime: number,
-  creatureId?: string
+  creatureId?: string,
+  creatureLevel?: number,
+  creatureRank?: number
 ): AttackResult {
   const player = room.players.get(playerId);
 
@@ -236,15 +232,6 @@ export function processAttackIntent(
     };
   }
 
-  // Validação: cooldown de ataque (0.5s entre ataques para evitar spam)
-  const ATTACK_COOLDOWN_MS = 500;
-  if (currentTime - player.lastAttackTime < ATTACK_COOLDOWN_MS) {
-    return {
-      success: false,
-      failReason: "cooldown"
-    };
-  }
-
   // Validação: coordenadas válidas (básica)
   if (!isFinite(targetX) || !isFinite(targetY)) {
     return {
@@ -254,9 +241,40 @@ export function processAttackIntent(
   }
 
   // Buscar stats da criatura ativa (ou usar valores padrão)
+  // Se level e rank foram fornecidos, usar valores de IA escalados
   const creatureStats = creatureId 
-    ? CREATURE_ATTACK_STATS[creatureId] ?? DEFAULT_ATTACK_STATS
+    ? getCreatureAttackStats(
+        creatureId, 
+        COMBAT_CONFIG.projectileSpeed,
+        creatureLevel,
+        creatureRank
+      ) ?? DEFAULT_ATTACK_STATS
     : DEFAULT_ATTACK_STATS;
+
+  // Calcular stats efetivos para obter cooldown escalado
+  let effectiveAttackCooldown = 500; // Cooldown padrão em ms
+  if (creatureId && creatureLevel !== undefined && creatureRank !== undefined) {
+    const effectiveStats = calculateEffectiveStats(
+      { definitionId: creatureId, level: creatureLevel, rank: creatureRank },
+      getCreatureById
+    );
+    // Converter cooldown de segundos para milissegundos
+    effectiveAttackCooldown = effectiveStats.attackCooldown * 1000;
+  } else if (creatureId) {
+    // Se não tiver level/rank, usar cooldown base do ataque
+    const creatureDef = getCreatureById(creatureId);
+    if (creatureDef) {
+      effectiveAttackCooldown = creatureDef.basicAttack.cooldown * 1000;
+    }
+  }
+
+  // Validação: cooldown de ataque escalado
+  if (currentTime - player.lastAttackTime < effectiveAttackCooldown) {
+    return {
+      success: false,
+      failReason: "cooldown"
+    };
+  }
 
   // Verificar se é ataque melee
   if (!creatureStats.isProjectile) {
@@ -283,10 +301,16 @@ export function processAttackIntent(
         const normalizedAngleDiff = Math.min(angleDiff, 2 * Math.PI - angleDiff);
         
         if (normalizedAngleDiff <= Math.PI / 4) { // 45° = π/4
+          // ✅ Aplicar type effectiveness no dano
+          const typeMultiplier = creatureId 
+            ? calculateTypeEffectiveness(creatureId, creature.creatureType)
+            : 1.0;
+          const finalDamage = Math.floor(creatureStats.damage * typeMultiplier);
+          
           // Aplicar dano
           const damageResult = applyDamageToCreature(
             creature,
-            creatureStats.damage,
+            finalDamage,
             playerId
           );
           hitCount++;
@@ -338,7 +362,8 @@ export function processAttackIntent(
     velocityY,
     creatureStats.damage, // Dano baseado na criatura
     COMBAT_CONFIG.projectileLifetime,
-    creatureStats.range // Distância máxima baseada no alcance da criatura
+    creatureStats.range, // Distância máxima baseada no alcance da criatura
+    creatureId // ✅ Tipo da criatura para type effectiveness
   );
 
   room.projectiles.push(projectile);
@@ -451,9 +476,15 @@ export function updateProjectiles(
             );
           }
           
+          // ✅ Aplicar type effectiveness no dano
+          const typeMultiplier = proj.creatureType
+            ? calculateTypeEffectiveness(proj.creatureType, creature.creatureType)
+            : 1.0;
+          const finalDamage = Math.floor(proj.damage * typeMultiplier);
+          
           const damageResult = applyDamageToCreature(
             creature,
-            proj.damage,
+            finalDamage,
             proj.ownerId
           );
           damageResults.push(damageResult);
@@ -749,9 +780,11 @@ export function updateCreatureAI(
       creature.targetPlayerId = null;
       
       // ✅ Roaming: Sistema de patrulha aleatória quando não há jogadores
-      const config = ENEMY_AI_CONFIG[creature.tier]?.[creature.behaviorType];
-      if (!config) continue;
-      
+      // ✅ Calcular config de IA baseado em tier e level
+      const level = creature.level ?? 1;
+
+      // ✅ Usar stats calculados (nível + rank) se disponíveis, senão usar config
+      const effectiveMoveSpeed = creature.effectiveStats?.moveSpeed;
       const speedMultiplier = getCreatureSpeedMultiplier(creature);
       const ROAMING_RADIUS = 150;
       const ROAMING_SPEED = 0.4;
@@ -778,8 +811,8 @@ export function updateCreatureAI(
         const dy = creature.roamingTarget.y - creature.y;
         const distToTarget = Math.hypot(dx, dy);
         
-        if (distToTarget > ROAMING_DESTINATION_REACHED_DISTANCE) {
-          const roamingSpeed = config.moveSpeed * ROAMING_SPEED * speedMultiplier;
+        if (distToTarget > ROAMING_DESTINATION_REACHED_DISTANCE && effectiveMoveSpeed) {
+          const roamingSpeed = effectiveMoveSpeed * ROAMING_SPEED * speedMultiplier;
           creature.x += (dx / distToTarget) * roamingSpeed * deltaTime;
           creature.y += (dy / distToTarget) * roamingSpeed * deltaTime;
         } else {
@@ -792,21 +825,23 @@ export function updateCreatureAI(
   }
 
   for (const creature of room.creatures) {
-    // Obter configuração de IA baseada no tier e tipo
-    const config = ENEMY_AI_CONFIG[creature.tier]?.[creature.behaviorType];
-    if (!config) {
-      if (shouldLog) {
-        console.log(`[AI] ⚠️ Criatura ${creature.id} sem config: tier=${creature.tier}, behavior=${creature.behaviorType}`);
-      }
-      continue;
-    }
-
     // Atualizar cooldown de ataque
     if (creature.attackCooldownRemaining > 0) {
       creature.attackCooldownRemaining = Math.max(
         0,
         creature.attackCooldownRemaining - deltaTime
       );
+    }
+    
+    // ✅ Atualizar cooldown de skill
+    if (creature.skillCooldownRemaining !== undefined && creature.skillCooldownRemaining > 0) {
+      creature.skillCooldownRemaining = Math.max(
+        0,
+        creature.skillCooldownRemaining - deltaTime
+      );
+    } else if (creature.skillCooldownRemaining === undefined) {
+      creature.skillCooldownRemaining = 0;
+      creature.lastSkillTime = 0;
     }
 
     // ✅ IA #6: Encontrar criaturas do mesmo tipo próximas para agrupamento
@@ -852,7 +887,9 @@ export function updateCreatureAI(
     // ✅ IA #6: Aplicar movimento de agrupamento se houver criaturas do mesmo tipo próximas
     if (groupingCount > 0 && canCreatureMove(creature) && creature.aiState !== "attacking") {
       const speedMultiplier = getCreatureSpeedMultiplier(creature);
-      const groupingSpeed = config.moveSpeed * 0.4 * speedMultiplier; // Movimento mais lento para agrupamento
+      const effectiveMoveSpeed = creature.effectiveStats?.moveSpeed;
+      if (!effectiveMoveSpeed) continue;
+      const groupingSpeed = effectiveMoveSpeed * 0.4 * speedMultiplier; // Movimento mais lento para agrupamento
       
       creature.x += groupingDx * groupingSpeed * deltaTime;
       creature.y += groupingDy * groupingSpeed * deltaTime;
@@ -862,13 +899,19 @@ export function updateCreatureAI(
     const prevY = creature.y;
     const prevState = creature.aiState;
 
+    // ✅ IA: Tentar usar skill especial antes de ataque normal
+    const skillUsed = tryUseCreatureSkill(room, creature, closestPlayer, closestDistance, alivePlayers);
+    if (skillUsed) {
+      // Skill foi usada, pular ataque normal neste tick
+      continue;
+    }
+
     // Atualizar comportamento baseado no tipo e coletar resultados de ataque
     let attackResult: AIAttackResult | null = null;
     
     if (creature.behaviorType === "melee") {
       attackResult = updateMeleeCreatureAI(
         creature,
-        config,
         closestPlayer,
         closestDistance,
         deltaTime
@@ -877,7 +920,6 @@ export function updateCreatureAI(
       attackResult = updateRangedCreatureAI(
         room,
         creature,
-        config,
         closestPlayer,
         closestDistance,
         deltaTime
@@ -897,12 +939,145 @@ export function updateCreatureAI(
         `[AI]   ${creature.id} (${creature.behaviorType}): ` +
         `dist=${closestDistance.toFixed(0)}px, state=${creature.aiState}${stateChanged ? ` (era ${prevState})` : ""}, ` +
         `pos=(${creature.x.toFixed(0)}, ${creature.y.toFixed(0)})${moved ? ` (moveu ${Math.hypot(creature.x - prevX, creature.y - prevY).toFixed(1)}px)` : " (parado)"}, ` +
-        `detection=${config.detectionRange}px, attack=${config.attackRange}px`
+        `detection=${creature.effectiveStats?.detectionRange ?? 0}px, attack=${creature.effectiveStats?.attackRange ?? 0}px`
       );
     }
   }
   
   return attackResults;
+}
+
+/**
+ * ✅ IA: Tenta usar skill especial da criatura.
+ * 
+ * Condições para usar skill:
+ * - Skill disponível (cooldown acabou)
+ * - Múltiplos jogadores próximos OU jogador com HP baixo OU criatura com HP baixo
+ * - Dentro do alcance da skill
+ * 
+ * @returns true se skill foi usada, false caso contrário
+ */
+function tryUseCreatureSkill(
+  room: CombatRoomState,
+  creature: ServerCreature,
+  closestPlayer: { id: string; player: CombatPlayer },
+  closestDistance: number,
+  alivePlayers: Array<{ id: string; player: CombatPlayer }>
+): boolean {
+  // Verificar se criatura tem special skill
+  const specialSkill = getSpecialSkillByCreatureId(creature.creatureType);
+  if (!specialSkill) {
+    return false; // Criatura não tem skill
+  }
+
+  // Verificar cooldown
+  const currentTime = Date.now();
+  const timeSinceLastSkill = currentTime - (creature.lastSkillTime || 0);
+  const skillCooldownMs = specialSkill.cooldown * 1000; // Converter para ms
+  
+  if (timeSinceLastSkill < skillCooldownMs) {
+    return false; // Skill em cooldown
+  }
+
+  // Calcular stats escalados da skill
+  const level = creature.level ?? 1;
+  const rank = 1; // Criaturas selvagens sempre rank 1
+  const effectiveStats = calculateEffectiveStats(
+    { definitionId: creature.creatureType, level, rank },
+    getCreatureById
+  );
+  
+  const skillRange = effectiveStats.specialSkillRange;
+  const skillRadius = effectiveStats.specialSkillRadius;
+  const skillDamagePerTick = effectiveStats.specialSkillDamagePerTick;
+  const skillLifetime = effectiveStats.specialSkillLifetime;
+
+  // Verificar se está em alcance
+  if (closestDistance > skillRange) {
+    return false; // Fora de alcance
+  }
+
+  // Condições para usar skill:
+  // 1. Múltiplos jogadores próximos (dentro do raio da skill)
+  // 2. Jogador com HP baixo (< 50%)
+  // 3. Criatura com HP baixo (< 40%)
+  const playerHpPercent = closestPlayer.player.maxHp > 0 
+    ? closestPlayer.player.hp / closestPlayer.player.maxHp 
+    : 1;
+  const creatureHpPercent = creature.maxHp > 0 
+    ? creature.currentHp / creature.maxHp 
+    : 1;
+  
+  let playersInRange = 0;
+  for (const { player } of alivePlayers) {
+    const dx = player.x - creature.x;
+    const dy = player.y - creature.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= skillRange) {
+      playersInRange++;
+    }
+  }
+
+  const shouldUseSkill = 
+    playersInRange >= 2 || // Múltiplos jogadores
+    playerHpPercent < 0.5 || // Jogador com HP baixo
+    creatureHpPercent < 0.4; // Criatura com HP baixo
+
+  if (!shouldUseSkill) {
+    return false; // Condições não atendidas
+  }
+
+  // Usar skill: criar skill zone na posição do jogador mais próximo
+  const skillType = getSkillTypeFromCreatureId(creature.creatureType);
+  if (!skillType || skillType === "heal_wave") {
+    return false; // Skill não mapeada ou é heal (não usado por IA)
+  }
+
+  const skillZone = createSkillZone(
+    creature.id, // ownerId = criatura
+    skillType as "fire_fog" | "root_trap" | "electric_surge",
+    closestPlayer.player.x, // Posição do jogador alvo
+    closestPlayer.player.y,
+    skillRadius,
+    skillDamagePerTick,
+    specialSkill.tickInterval,
+    skillLifetime,
+    specialSkill.slowModifier
+  );
+
+  room.skillZones.push(skillZone);
+  
+  // Atualizar cooldown
+  creature.lastSkillTime = currentTime;
+  creature.skillCooldownRemaining = effectiveStats.specialSkillCooldown;
+
+  if (DEBUG_AI) {
+    console.log(
+      `[AI] ${creature.id} (${creature.creatureType}) usou skill ${skillType} ` +
+      `em (${closestPlayer.player.x.toFixed(0)}, ${closestPlayer.player.y.toFixed(0)}) ` +
+      `[range=${skillRange.toFixed(0)}, radius=${skillRadius.toFixed(0)}]`
+    );
+  }
+
+  return true;
+}
+
+/**
+ * Mapeia creatureId para skillType.
+ */
+function getSkillTypeFromCreatureId(creatureId: string): "fire_fog" | "root_trap" | "electric_surge" | "heal_wave" | null {
+  switch (creatureId) {
+    case "pyrognat":
+      return "fire_fog";
+    case "verdant":
+      return "root_trap";
+    case "voltiger":
+      return "electric_surge";
+    case "aquaryl":
+      return "heal_wave";
+    default:
+      return null;
+  }
 }
 
 /**
@@ -916,7 +1091,6 @@ export function updateCreatureAI(
  */
 function updateMeleeCreatureAI(
   creature: ServerCreature,
-  config: typeof ENEMY_AI_CONFIG.comum.melee,
   closestPlayer: { id: string; player: CombatPlayer },
   distance: number,
   deltaTime: number
@@ -926,8 +1100,19 @@ function updateMeleeCreatureAI(
   // ✅ FASE 9: Aplicar modificador de velocidade dos buffs
   const speedMultiplier = getCreatureSpeedMultiplier(creature);
   
+  // ✅ Usar stats calculados (nível + rank) - obrigatório agora
+  const effectiveMoveSpeed = creature.effectiveStats?.moveSpeed;
+  const detectionRange = creature.effectiveStats?.detectionRange;
+  const attackRange = creature.effectiveStats?.attackRange;
+  const attackCooldown = creature.effectiveStats?.attackCooldown;
+  
+  if (!effectiveMoveSpeed || !detectionRange || !attackRange || !attackCooldown) {
+    console.warn(`[Combat] Criatura ${creature.id} sem effectiveStats completo, pulando IA`);
+    return null;
+  }
+  
   // ✅ Cancelar roaming quando detecta jogador
-  if (distance <= config.detectionRange) {
+  if (distance <= detectionRange) {
     creature.roamingTarget = null;
   }
   
@@ -937,14 +1122,14 @@ function updateMeleeCreatureAI(
   const shouldFlee = hpPercent < FLEE_HP_THRESHOLD;
   
   // ✅ IA #5: Se com pouca vida, tentar fugir do jogador
-  if (shouldFlee && distance <= config.detectionRange && canCreatureMove(creature)) {
+  if (shouldFlee && distance <= detectionRange && canCreatureMove(creature)) {
     creature.aiState = "retreating";
     creature.targetPlayerId = closestPlayer.id;
     
     // Mover para longe do jogador
     const dx = player.x - creature.x;
     const dy = player.y - creature.y;
-    const fleeSpeed = config.moveSpeed * 1.2 * speedMultiplier; // 20% mais rápido ao fugir
+    const fleeSpeed = effectiveMoveSpeed * 1.2 * speedMultiplier; // 20% mais rápido ao fugir
     
     creature.x -= (dx / distance) * fleeSpeed * deltaTime;
     creature.y -= (dy / distance) * fleeSpeed * deltaTime;
@@ -952,7 +1137,7 @@ function updateMeleeCreatureAI(
   }
   
   // Fora de detecção: idle/roaming
-  if (distance > config.detectionRange) {
+  if (distance > detectionRange) {
     creature.aiState = "idle";
     creature.targetPlayerId = null;
 
@@ -985,7 +1170,7 @@ function updateMeleeCreatureAI(
       
       if (distToTarget > ROAMING_DESTINATION_REACHED_DISTANCE) {
         // Ainda não chegou ao destino, continuar movendo
-        const roamingSpeed = config.moveSpeed * ROAMING_SPEED * speedMultiplier;
+        const roamingSpeed = effectiveMoveSpeed * ROAMING_SPEED * speedMultiplier;
         creature.x += (dx / distToTarget) * roamingSpeed * deltaTime;
         creature.y += (dy / distToTarget) * roamingSpeed * deltaTime;
       } else {
@@ -1001,16 +1186,20 @@ function updateMeleeCreatureAI(
   // Dentro de detecção: perseguir
   creature.targetPlayerId = closestPlayer.id;
 
+  // ✅ Usar alcance e dano de effectiveStats (já calculados baseados em tier e level)
+  const effectiveAttackRange = attackRange;
+  const attackDamage = creature.effectiveStats?.attackDamage ?? 0;
+
   // Dentro de alcance de ataque: atacar
-  if (distance <= config.attackRange && creature.attackCooldownRemaining <= 0 && canCreatureAttack(creature)) {
+  if (distance <= effectiveAttackRange && creature.attackCooldownRemaining <= 0 && canCreatureAttack(creature)) {
     creature.aiState = "attacking";
-    creature.attackCooldownRemaining = config.attackCooldown;
+    creature.attackCooldownRemaining = attackCooldown;
 
     // Aplicar dano ao jogador (ataque melee instantâneo)
     const damageResult = applyDamageToPlayer(
       closestPlayer.id,
       player,
-      config.attackDamage,
+      attackDamage,
       creature.id
     );
 
@@ -1028,10 +1217,10 @@ function updateMeleeCreatureAI(
   // Fora de alcance de ataque: perseguir
   if (canCreatureMove(creature)) {
     creature.aiState = "chasing";
-
+    
     const dx = player.x - creature.x;
     const dy = player.y - creature.y;
-    const moveSpeed = config.moveSpeed * deltaTime * speedMultiplier;
+    const moveSpeed = effectiveMoveSpeed * deltaTime * speedMultiplier;
 
     creature.x += (dx / distance) * moveSpeed;
     creature.y += (dy / distance) * moveSpeed;
@@ -1052,7 +1241,6 @@ function updateMeleeCreatureAI(
 function updateRangedCreatureAI(
   room: CombatRoomState,
   creature: ServerCreature,
-  config: typeof ENEMY_AI_CONFIG.comum.ranged,
   closestPlayer: { id: string; player: CombatPlayer },
   distance: number,
   deltaTime: number
@@ -1062,8 +1250,21 @@ function updateRangedCreatureAI(
   // ✅ FASE 9: Aplicar modificador de velocidade dos buffs
   const speedMultiplier = getCreatureSpeedMultiplier(creature);
   
+  // ✅ Usar stats calculados (nível + rank) - obrigatório agora
+  const effectiveMoveSpeed = creature.effectiveStats?.moveSpeed;
+  const detectionRange = creature.effectiveStats?.detectionRange;
+  const attackRange = creature.effectiveStats?.attackRange;
+  const attackCooldown = creature.effectiveStats?.attackCooldown;
+  const preferredDistance = creature.effectiveStats?.preferredDistance;
+  const projectileSpeed = creature.effectiveStats?.projectileSpeed;
+  
+  if (!effectiveMoveSpeed || !detectionRange || !attackRange || !attackCooldown || !preferredDistance || projectileSpeed === undefined) {
+    console.warn(`[Combat] Criatura ${creature.id} sem effectiveStats completo, pulando IA`);
+    return null;
+  }
+  
   // ✅ Cancelar roaming quando detecta jogador
-  if (distance <= config.detectionRange) {
+  if (distance <= detectionRange) {
     creature.roamingTarget = null;
   }
   
@@ -1073,22 +1274,22 @@ function updateRangedCreatureAI(
   const shouldFlee = hpPercent < FLEE_HP_THRESHOLD;
   
   // ✅ IA #5: Se com pouca vida, tentar fugir do jogador
-  if (shouldFlee && distance <= config.detectionRange && canCreatureMove(creature)) {
+  if (shouldFlee && distance <= detectionRange && canCreatureMove(creature)) {
     creature.aiState = "retreating";
     creature.targetPlayerId = closestPlayer.id;
     
     // Mover para longe do jogador
     const dx = player.x - creature.x;
     const dy = player.y - creature.y;
-    const fleeSpeed = config.moveSpeed * 1.2 * speedMultiplier; // 20% mais rápido ao fugir
+    const fleeSpeed = effectiveMoveSpeed * 1.2 * speedMultiplier; // 20% mais rápido ao fugir
     
     creature.x -= (dx / distance) * fleeSpeed * deltaTime;
     creature.y -= (dy / distance) * fleeSpeed * deltaTime;
     return null;
   }
-
+  
   // Fora de detecção: idle/roaming
-  if (distance > config.detectionRange) {
+  if (distance > detectionRange) {
     creature.aiState = "idle";
     creature.targetPlayerId = null;
 
@@ -1121,7 +1322,7 @@ function updateRangedCreatureAI(
       
       if (distToTarget > ROAMING_DESTINATION_REACHED_DISTANCE) {
         // Ainda não chegou ao destino, continuar movendo
-        const roamingSpeed = config.moveSpeed * ROAMING_SPEED * speedMultiplier;
+        const roamingSpeed = effectiveMoveSpeed * ROAMING_SPEED * speedMultiplier;
         creature.x += (dx / distToTarget) * roamingSpeed * deltaTime;
         creature.y += (dy / distToTarget) * roamingSpeed * deltaTime;
       } else {
@@ -1136,7 +1337,14 @@ function updateRangedCreatureAI(
 
   creature.targetPlayerId = closestPlayer.id;
 
-  const preferredDistance = config.preferredDistance ?? 120;
+  // ✅ Usar stats baseados na criatura para velocidade de projétil
+  const creatureAttackStats = getCreatureAttackStats(creature.creatureType, COMBAT_CONFIG.projectileSpeed) ?? DEFAULT_ATTACK_STATS;
+  // ✅ Usar effectiveStats para alcance e dano (já calculados baseados em tier e level)
+  const effectiveAttackRange = attackRange;
+  const attackDamage = creature.effectiveStats?.attackDamage ?? 0;
+  // Velocidade do projétil vem do getCreatureAttackStats (baseado no tipo da criatura)
+  // Se não tiver, usa o do effectiveStats
+  const finalProjectileSpeed = creatureAttackStats.speed || projectileSpeed;
 
   // Muito perto: recuar
   if (distance < preferredDistance * 0.7 && canCreatureMove(creature)) {
@@ -1144,7 +1352,7 @@ function updateRangedCreatureAI(
 
     const dx = player.x - creature.x;
     const dy = player.y - creature.y;
-    const moveSpeed = config.moveSpeed * deltaTime * speedMultiplier;
+    const moveSpeed = effectiveMoveSpeed * deltaTime * speedMultiplier;
 
     // Mover para longe do jogador
     creature.x -= (dx / distance) * moveSpeed;
@@ -1153,20 +1361,19 @@ function updateRangedCreatureAI(
   }
   // Em alcance de ataque: disparar projétil
   else if (
-    distance <= config.attackRange &&
+    distance <= effectiveAttackRange &&
     creature.attackCooldownRemaining <= 0 &&
     canCreatureAttack(creature)
   ) {
     creature.aiState = "attacking";
-    creature.attackCooldownRemaining = config.attackCooldown;
+    creature.attackCooldownRemaining = attackCooldown;
 
     // Criar projétil em direção ao jogador
     const dx = player.x - creature.x;
     const dy = player.y - creature.y;
-    const projectileSpeed = config.projectileSpeed ?? 200;
 
-    const velocityX = (dx / distance) * projectileSpeed;
-    const velocityY = (dy / distance) * projectileSpeed;
+    const velocityX = (dx / distance) * finalProjectileSpeed;
+    const velocityY = (dy / distance) * finalProjectileSpeed;
 
     const projectile = createProjectile(
       creature.id,
@@ -1175,8 +1382,10 @@ function updateRangedCreatureAI(
       creature.y,
       velocityX,
       velocityY,
-      config.attackDamage,
-      ENEMY_VISUAL_CONFIG.enemyProjectileLifetime
+      attackDamage,
+      ENEMY_VISUAL_CONFIG.enemyProjectileLifetime,
+      effectiveAttackRange, // Usar alcance calculado (tier + level)
+      creature.creatureType // ✅ Tipo da criatura para type effectiveness
     );
 
     room.projectiles.push(projectile);
@@ -1188,7 +1397,7 @@ function updateRangedCreatureAI(
 
     const dx = player.x - creature.x;
     const dy = player.y - creature.y;
-    const moveSpeed = config.moveSpeed * deltaTime * speedMultiplier;
+    const moveSpeed = effectiveMoveSpeed * deltaTime * speedMultiplier;
 
     creature.x += (dx / distance) * moveSpeed;
     creature.y += (dy / distance) * moveSpeed;
@@ -1359,13 +1568,9 @@ export function applyContactDamage(
       const collisionDistance = PLAYER_COLLISION_RADIUS + CREATURE_COLLISION_RADIUS;
 
       if (distance <= collisionDistance) {
-        // Obter dano de contato baseado no tier
-        const tierConfig = THREAT_TIERS[creature.tier];
-        const contactDps = tierConfig.contactDamagePerSecond;
-
-        if (contactDps > 0) {
+        if (creature.effectiveStats?.attackDamage && creature.effectiveStats.attackDamage > 0) {
           // Aplicar dano proporcional ao deltaTime
-          const damage = contactDps * deltaTime;
+          const damage = creature.effectiveStats?.attackDamage * deltaTime;
           const damageResult = applyDamageToPlayer(
             playerId,
             player,

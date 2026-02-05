@@ -1,7 +1,8 @@
 import Phaser from "phaser";
-import { getCreatureTheme } from "../../../game/creatureThemes";
-import type { SpecialSkillKind, SkillZone } from "../types/ExpeditionTypes";
+import { getCreatureTheme, type CreatureTheme } from "../../../game/creatureThemes";
+import type { SpecialSkillKind, SkillZone, RemoteCreatureSprite } from "../types/ExpeditionTypes";
 import type { MultiplayerClient } from "../../../services/multiplayerClient";
+import { PlayerState as LocalPlayerState } from "../../../game/playerState";
 
 /**
  * Gerencia habilidades especiais das criaturas.
@@ -20,6 +21,12 @@ export class SkillSystem {
   private healCreature: (amount: number) => void;
   private activeCreatureHp: number;
   private activeCreatureMaxHp: number;
+  private getActiveCreatureInstanceId: () => string | null;
+  private player: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
+  private getAllCreatures: () => RemoteCreatureSprite[];
+  private createHitImpactEffect: (x: number, y: number, theme: CreatureTheme | null) => void;
+  private createDeathEffect: (x: number, y: number, theme: CreatureTheme | null) => void;
+  private createHealFeedback: (x: number, y: number) => void;
 
   constructor(
     scene: Phaser.Scene,
@@ -30,6 +37,12 @@ export class SkillSystem {
       healCreature: (amount: number) => void;
       activeCreatureHp: number;
       activeCreatureMaxHp: number;
+      getActiveCreatureInstanceId: () => string | null;
+      player: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
+      getAllCreatures: () => RemoteCreatureSprite[];
+      createHitImpactEffect: (x: number, y: number, theme: CreatureTheme | null) => void;
+      createDeathEffect: (x: number, y: number, theme: CreatureTheme | null) => void;
+      createHealFeedback: (x: number, y: number) => void;
     }
   ) {
     this.scene = scene;
@@ -39,6 +52,12 @@ export class SkillSystem {
     this.healCreature = dependencies.healCreature;
     this.activeCreatureHp = dependencies.activeCreatureHp;
     this.activeCreatureMaxHp = dependencies.activeCreatureMaxHp;
+    this.getActiveCreatureInstanceId = dependencies.getActiveCreatureInstanceId;
+    this.player = dependencies.player;
+    this.getAllCreatures = dependencies.getAllCreatures;
+    this.createHitImpactEffect = dependencies.createHitImpactEffect;
+    this.createDeathEffect = dependencies.createDeathEffect;
+    this.createHealFeedback = dependencies.createHealFeedback;
   }
 
   /**
@@ -87,7 +106,15 @@ export class SkillSystem {
     // Enviar intent ao servidor
     if (this.mpClient && skillType) {
       const creatureId = this.activeCreatureDef?.id;
-      this.mpClient.sendSkill(skillType, targetX, targetY, creatureId);
+      // Obter level e rank da criatura ativa
+      const activeCreatureInstanceId = this.getActiveCreatureInstanceId();
+      const progress = LocalPlayerState.getProgress();
+      const owned = activeCreatureInstanceId
+        ? progress.creatures.find((c) => c.instanceId === activeCreatureInstanceId)
+        : null;
+      const creatureLevel = owned?.level ?? 1;
+      const creatureRank = owned?.rank ?? 1;
+      this.mpClient.sendSkill(skillType, targetX, targetY, creatureId, creatureLevel, creatureRank);
       
       // Feedback visual imediato (predição local)
       this.specialSkillCooldown = this.specialSkillCooldownTime;
@@ -123,7 +150,9 @@ export class SkillSystem {
   }
 
   /**
-   * Pyrognat – Nevoeiro Incendiário.
+   * Pyrognat – Nevoeiro Incendiário:
+   * Cria uma área de fogo no ponto do cursor que causa dano periódico
+   * em criaturas selvagens que passarem dentro da zona.
    */
   private castPyrognatFireFog(x: number, y: number): void {
     const theme = getCreatureTheme("pyrognat");
@@ -144,46 +173,200 @@ export class SkillSystem {
   }
 
   /**
-   * Aquaryl – Maré Curativa.
+   * Aquaryl – Maré Curativa:
+   * Cura parte do HP da criatura ativa e cria um pequeno efeito visual
+   * de água ao redor do jogador.
    */
   private castAquarylHealWave(): void {
     const theme = getCreatureTheme("aquaryl");
     const healAmount = Math.max(15, this.activeCreatureMaxHp * 0.25);
     this.healCreature(healAmount);
 
-    // Efeito visual de cura
-    const playerX = this.scene.cameras.main.worldView.centerX;
-    const playerY = this.scene.cameras.main.worldView.centerY;
-    const circle = this.scene.add.circle(playerX, playerY, 40, theme.primaryColor, 0.3);
-    circle.setStrokeStyle(2, theme.attackColor, 0.8);
-    
-    this.scene.tweens.add({
-      targets: circle,
-      radius: 60,
-      alpha: 0,
-      duration: 600,
-      onComplete: () => circle.destroy()
-    });
+    // Usar createHealFeedback do ExpeditionScene
+    this.createHealFeedback(this.player.x, this.player.y);
 
-    this.createFloatingText(playerX, playerY - 40, "Maré Curativa!", theme.attackColor);
+    // Partículas de água subindo (efeito adicional específico do Aquaryl)
+    for (let i = 0; i < 6; i++) {
+      const offsetX = Phaser.Math.Between(-25, 25);
+      const particle = this.scene.add.circle(
+        this.player.x + offsetX,
+        this.player.y + 20,
+        4,
+        theme.particleColor,
+        0.8
+      );
+      this.scene.tweens.add({
+        targets: particle,
+        y: this.player.y - 40,
+        alpha: 0,
+        duration: 600,
+        delay: i * 50,
+        onComplete: () => particle.destroy()
+      });
+    }
+
+    this.createFloatingText(
+      this.player.x,
+      this.player.y - 30,
+      `+${Math.floor(healAmount)} HP`,
+      theme.primaryColor
+    );
   }
 
   /**
-   * Voltiger – Surto Elétrico.
+   * Voltiger – Surto Elétrico:
+   * Explosão ao redor do jogador que causa dano moderado e empurra
+   * criaturas próximas para longe.
    */
   private castVoltigerElectricSurge(x: number, y: number): void {
     const theme = getCreatureTheme("voltiger");
-    // Implementação simplificada
-    this.createFloatingText(x, y - 30, "Surto Elétrico!", theme.attackColor);
+    const radius = 90;
+    const pushDistance = 40;
+    const damage = 18;
+
+    // Círculo de explosão elétrica
+    const circle = this.scene.add.circle(
+      this.player.x,
+      this.player.y,
+      0,
+      theme.primaryColor,
+      0.35
+    );
+    this.scene.tweens.add({
+      targets: circle,
+      radius,
+      alpha: 0,
+      duration: 350,
+      onComplete: () => circle.destroy()
+    });
+
+    // Raios elétricos irradiando do centro
+    for (let i = 0; i < 8; i++) {
+      const angle = (Math.PI * 2 * i) / 8;
+      const lightning = this.scene.add.graphics();
+      lightning.lineStyle(2, theme.attackColor, 0.9);
+      lightning.beginPath();
+      lightning.moveTo(this.player.x, this.player.y);
+      
+      // Linha zigzag para simular raio
+      let px = this.player.x;
+      let py = this.player.y;
+      const segments = 4;
+      for (let s = 1; s <= segments; s++) {
+        const progress = s / segments;
+        const targetX = this.player.x + Math.cos(angle) * radius * progress;
+        const targetY = this.player.y + Math.sin(angle) * radius * progress;
+        const jitterX = (Math.random() - 0.5) * 15;
+        const jitterY = (Math.random() - 0.5) * 15;
+        px = targetX + (s < segments ? jitterX : 0);
+        py = targetY + (s < segments ? jitterY : 0);
+        lightning.lineTo(px, py);
+      }
+      lightning.strokePath();
+
+      this.scene.tweens.add({
+        targets: lightning,
+        alpha: 0,
+        duration: 250,
+        onComplete: () => lightning.destroy()
+      });
+    }
+
+    // Aplicar dano e empurrão em criaturas próximas
+    const creaturesInRange = this.getAllCreatures();
+    
+    for (const wc of creaturesInRange) {
+      const dx = wc.sprite.x - this.player.x;
+      const dy = wc.sprite.y - this.player.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= radius && dist > 0) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+
+        wc.sprite.x += nx * pushDistance;
+        wc.sprite.y += ny * pushDistance;
+
+        const newHp = wc.currentHp - damage;
+        wc.currentHp = newHp;
+
+        // Flash elétrico no inimigo
+        const originalColor = wc.sprite.fillColor;
+        wc.sprite.setFillStyle(theme.hitFlashColor);
+        this.createHitImpactEffect(wc.sprite.x, wc.sprite.y, theme);
+        
+        this.scene.time.delayedCall(100, () => {
+          if (wc.currentHp > 0) {
+            const ratio = Math.max(0, wc.currentHp / wc.maxHp);
+            wc.sprite.setFillStyle(ratio > 0.5 ? originalColor : 0xfacc15);
+          }
+        });
+      }
+    }
+
+    this.createFloatingText(
+      this.player.x,
+      this.player.y - 40,
+      "Surto Elétrico!",
+      theme.primaryColor
+    );
   }
 
   /**
-   * Verdant – Armadilha de Raízes.
+   * Verdant – Raízes Prendentes:
+   * Cria uma área de raízes no ponto do cursor que prende e causa dano
+   * em criaturas selvagens que passarem dentro.
    */
   private castVerdantRootTrap(x: number, y: number): void {
     const theme = getCreatureTheme("verdant");
-    // Implementação simplificada
-    this.createFloatingText(x, y - 30, "Armadilha de Raízes!", theme.attackColor);
+    const radius = 60;
+    const duration = 3.5; // segundos
+
+    // Círculo verde de raízes
+    const circle = this.scene.add.circle(x, y, radius, theme.primaryColor, 0.3);
+    circle.setStrokeStyle(3, theme.attackColor, 0.9);
+
+    // Adiciona pequenas "raízes" espalhadas na área
+    const rootLines: Phaser.GameObjects.Graphics[] = [];
+    for (let i = 0; i < 6; i++) {
+      const angle = (Math.PI * 2 * i) / 6 + Math.random() * 0.3;
+      const root = this.scene.add.graphics();
+      root.lineStyle(2, theme.attackColor, 0.7);
+      root.beginPath();
+      root.moveTo(x, y);
+      const endX = x + Math.cos(angle) * (radius * 0.8 + Math.random() * 10);
+      const endY = y + Math.sin(angle) * (radius * 0.8 + Math.random() * 10);
+      
+      // Linha curva para parecer raiz
+      const midX = (x + endX) / 2 + (Math.random() - 0.5) * 20;
+      const midY = (y + endY) / 2 + (Math.random() - 0.5) * 20;
+      root.lineTo(midX, midY);
+      root.lineTo(endX, endY);
+      root.strokePath();
+      rootLines.push(root);
+    }
+
+    // Sistema de zona de skill com tipo expandido
+    const rootZone = {
+      sprite: circle,
+      kind: "fire_fog" as const, // Reutiliza o sistema de zonas
+      remaining: duration,
+      tickTimer: 0,
+      customData: {
+        rootLines,
+        x,
+        y,
+        radius
+      }
+    };
+
+    this.addSkillZone(rootZone);
+
+    // Timer para destruir as raízes visuais junto com a zona
+    this.scene.time.delayedCall(duration * 1000, () => {
+      rootLines.forEach(r => r.destroy());
+    });
+
+    this.createFloatingText(x, y - radius - 10, "Raízes Prendentes!", theme.primaryColor);
   }
 
   /**

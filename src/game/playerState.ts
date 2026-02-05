@@ -1,6 +1,6 @@
 import type { CreatureRank, OwnedCreature, PlayerInventoryEntry, PlayerProgress } from "./types";
 import { DEFAULT_MAP_ID, type MapId } from "./maps";
-import { CREATURES } from "./creatures";
+import { CREATURES } from "../../shared/creatures";
 import {
   getXpRequiredForLevel,
   LEVEL_CONFIG,
@@ -180,9 +180,9 @@ class PlayerStateManager {
           console.log(`[PlayerState] - Itens: ${localData.inventory.length}`);
           console.log(`[PlayerState] - Nome: ${localData.displayName}`);
           
-          // Sincronizar dados locais via servidor
-          const { syncPlayerStateToServer } = await import('../services/firebaseSync');
-          await syncPlayerStateToServer();
+          // Buscar dados atualizados do servidor
+          const { fetchPlayerDataFromServer } = await import('../services/firebaseSync');
+          await fetchPlayerDataFromServer();
         } else {
           // Mesmo sem dados significativos, aguardar snapshot atualizar
           // O onSnapshot vai disparar quando o documento for criado

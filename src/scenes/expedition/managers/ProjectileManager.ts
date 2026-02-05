@@ -7,7 +7,8 @@ import type {
   RemoteProjectileSprite 
 } from "../types/ExpeditionTypes";
 import type { RemoteCreatureSprite } from "../types/ExpeditionTypes";
-import type { MultiplayerClient } from "../../../services/multiplayerClient";
+import type { MultiplayerClient, RemoteProjectile } from "../../../services/multiplayerClient";
+import { getCreatureTheme } from "../../../game/creatureThemes";
 
 /**
  * Gerencia todos os projéteis da expedição.
@@ -29,7 +30,6 @@ export class ProjectileManager {
   private dealDamageToPlayer: (damage: number) => void;
   private createDeathEffect: (x: number, y: number, theme: any) => void;
   private createEnhancedFloatingText: (x: number, y: number, text: string, color: number, fontSize?: number) => void;
-  private attemptCapture: (creature: RemoteCreatureSprite, ballType: string) => void;
   private sendCaptureAttempt: (creatureId: string, ballType: string) => void;
 
   constructor(
@@ -45,7 +45,6 @@ export class ProjectileManager {
       dealDamageToPlayer: (damage: number) => void;
       createDeathEffect: (x: number, y: number, theme: any) => void;
       createEnhancedFloatingText: (x: number, y: number, text: string, color: number, fontSize?: number) => void;
-      attemptCapture: (creature: RemoteCreatureSprite, ballType: string) => void;
       sendCaptureAttempt: (creatureId: string, ballType: string) => void;
     }
   ) {
@@ -60,7 +59,6 @@ export class ProjectileManager {
     this.dealDamageToPlayer = dependencies.dealDamageToPlayer;
     this.createDeathEffect = dependencies.createDeathEffect;
     this.createEnhancedFloatingText = dependencies.createEnhancedFloatingText;
-    this.attemptCapture = dependencies.attemptCapture;
     this.sendCaptureAttempt = dependencies.sendCaptureAttempt;
   }
 
@@ -306,7 +304,6 @@ export class ProjectileManager {
         const dist = Math.hypot(dx, dy);
 
         if (dist < pokeballRadius + creatureRadius) {
-          this.attemptCapture(wc, pb.ballType);
           pb.sprite.destroy();
           this.pokeballProjectiles.splice(i, 1);
           break;
@@ -373,5 +370,100 @@ export class ProjectileManager {
    */
   setMpClient(mpClient: MultiplayerClient | null): void {
     this.mpClient = mpClient;
+  }
+
+  /**
+   * Handler para atualização de projéteis remotos.
+   * Sincroniza projéteis de outros jogadores e IA do servidor.
+   */
+  handleProjectilesUpdate(projectiles: RemoteProjectile[], clientId: string | null, getCreatureSprite: (id: string) => RemoteCreatureSprite | undefined): void {
+    const seen = new Set<string>();
+    
+    for (const proj of projectiles) {
+      // Ignorar projéteis do jogador local (já são renderizados localmente)
+      if (proj.ownerId === clientId) continue;
+      
+      seen.add(proj.id);
+      
+      const existing = this.getRemoteProjectile(proj.id);
+      
+      if (existing) {
+        // Atualiza posição e velocidade
+        existing.sprite.setPosition(proj.x, proj.y);
+        existing.velocityX = proj.velocityX;
+        existing.velocityY = proj.velocityY;
+        existing.lifetime = proj.lifetime;
+      } else {
+        // Cria novo projétil remoto com cor baseada na criatura
+        let color = 0xf97316; // Default laranja para jogador
+        let strokeColor = 0xea580c;
+        let radius = 4;
+        
+        if (!proj.isPlayerProjectile) {
+          // Projétil de criatura: usar cor baseada na espécie da criatura
+          const creatureSprite = getCreatureSprite(proj.ownerId);
+          if (creatureSprite) {
+            const creatureType = creatureSprite.speciesId ?? creatureSprite.creatureType ?? "";
+            const theme = getCreatureTheme(creatureType);
+            color = theme.attackColor;
+            strokeColor = theme.primaryColor;
+            radius = theme.projectileRadius || 5;
+          } else {
+            // Fallback: vermelho padrão se criatura não encontrada
+            color = 0xff4444;
+            strokeColor = 0xcc0000;
+            radius = 5;
+          }
+        }
+        
+        const sprite = this.scene.add.circle(proj.x, proj.y, radius, color);
+        sprite.setStrokeStyle(1, strokeColor, 0.8);
+        sprite.setDepth(100); // Acima de outras entidades
+        
+        // Se é projétil de inimigo, criar efeito de disparo na origem
+        if (!proj.isPlayerProjectile) {
+          // Tentar encontrar a criatura que disparou para criar efeito visual
+          const creatureSprite = getCreatureSprite(proj.ownerId);
+          if (creatureSprite) {
+            const creatureType = creatureSprite.speciesId ?? creatureSprite.creatureType ?? "";
+            const theme = getCreatureTheme(creatureType);
+            
+            // Efeito de "muzzle flash" na criatura que atacou com cor do tema
+            const flash = this.scene.add.circle(
+              creatureSprite.sprite.x, 
+              creatureSprite.sprite.y, 
+              8, 
+              theme.particleColor, 
+              0.6
+            );
+            this.scene.tweens.add({
+              targets: flash,
+              alpha: 0,
+              scale: 1.5,
+              duration: 100,
+              onComplete: () => flash.destroy()
+            });
+          }
+        }
+        
+        this.addRemoteProjectile({
+          id: proj.id,
+          sprite,
+          ownerId: proj.ownerId,
+          isPlayerProjectile: proj.isPlayerProjectile,
+          velocityX: proj.velocityX,
+          velocityY: proj.velocityY,
+          lifetime: proj.lifetime
+        });
+      }
+    }
+    
+    // Remove projéteis que não existem mais no servidor
+    const allRemoteProjectiles = this.getAllRemoteProjectiles();
+    for (const proj of allRemoteProjectiles) {
+      if (!seen.has(proj.id)) {
+        this.removeRemoteProjectile(proj.id);
+      }
+    }
   }
 }

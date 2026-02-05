@@ -42,7 +42,6 @@ import {
   CAPTURE_CONFIG,
   CAPTURE_BALL_MODIFIERS,
   CAPTURE_TIER_PENALTIES,
-  CAPTURE_CREATURE_POOL
 } from "../constants";
 
 // =============================================================================
@@ -102,14 +101,6 @@ export interface PlayerExpeditionInventory {
  */
 function generateCreatureInstanceId(): string {
   return `captured-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-}
-
-/**
- * Escolhe aleatoriamente uma espécie de criatura do pool de captura.
- */
-function selectRandomCreatureSpecies(): string {
-  const pool = CAPTURE_CREATURE_POOL;
-  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 /**

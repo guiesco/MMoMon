@@ -36,7 +36,9 @@ export class IntentFactory {
         targetX: msg.targetX,
         targetY: msg.targetY,
         creatureId: msg.creatureId,
-        attackType: msg.attackType ?? "basic"
+        attackType: msg.attackType ?? "basic",
+        creatureLevel: msg.creatureLevel,
+        creatureRank: msg.creatureRank
       }
     };
   }
@@ -53,7 +55,9 @@ export class IntentFactory {
         skillType: msg.skillType,
         targetX: msg.targetX,
         targetY: msg.targetY,
-        creatureId: msg.creatureId
+        creatureId: msg.creatureId,
+        creatureLevel: msg.creatureLevel,
+        creatureRank: msg.creatureRank
       }
     };
   }

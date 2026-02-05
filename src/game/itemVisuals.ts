@@ -6,48 +6,30 @@
  * - Categoria do item (captura, recurso, consumível, upgrade)
  * - Raridade/tier do item (Básico → Lendário)
  * - Valor relativo para decisões de risco x recompensa
+ * 
+ * ✅ Agora re-exporta do diretório compartilhado para manter sincronizado com servidor
  */
 
 import type { ItemKind, ItemTier } from "./types";
 
-// ============================================================================
-// TIPOS
-// ============================================================================
+// ✅ Re-exportar tipos e constantes do shared
+export type {
+  ItemCategory,
+  CategoryVisualConfig,
+  TierVisualConfig
+} from "../../shared/visualConfig";
 
-export type ItemCategory = 
-  | "capture"       // Pokébolas e ferramentas de captura
-  | "raw_resource"  // Recursos brutos para crafting
-  | "consumable"    // Itens de uso imediato (poções)
-  | "upgrade";      // Upgrades de base/permanentes
+export {
+  CATEGORY_VISUALS,
+  TIER_VISUALS,
+  QUICK_COLORS,
+  RESOURCE_PICKUP_OVERRIDES
+} from "../../shared/visualConfig";
 
-export interface CategoryVisualConfig {
-  /** Nome amigável da categoria (para UI) */
-  label: string;
-  /** Cor principal da categoria (hex) */
-  primaryColor: number;
-  /** Cor de texto/contraste para a categoria */
-  textColor: string;
-  /** Ícone/símbolo simples representando a categoria */
-  symbol: string;
-  /** Forma base do pickup no mapa */
-  shape: "diamond" | "circle" | "hexagon" | "star";
-}
+// Importar do shared para uso nas funções
+import { CATEGORY_VISUALS, TIER_VISUALS, RESOURCE_PICKUP_OVERRIDES, type ItemCategory } from "../../shared/visualConfig";
 
-export interface TierVisualConfig {
-  /** Nome do tier */
-  label: string;
-  /** Cor de borda/destaque do tier */
-  borderColor: number;
-  /** Cor de fundo para UI (com alpha) */
-  bgColor: string;
-  /** Intensidade de brilho (0-1) - usado para efeitos visuais */
-  glowIntensity: number;
-  /** Espessura da borda */
-  borderWidth: number;
-  /** Cor do texto indicativo de tier */
-  tierTextColor: string;
-}
-
+// Interface para resultado visual (específica do client)
 export interface ItemVisualResult {
   category: CategoryVisualConfig;
   tier: TierVisualConfig;
@@ -56,92 +38,6 @@ export interface ItemVisualResult {
   /** Cor de borda do pickup */
   pickupBorderColor: number;
 }
-
-// ============================================================================
-// CONFIGURAÇÕES DE CATEGORIA
-// ============================================================================
-
-/**
- * Configuração visual por categoria de item.
- * Cores escolhidas para comunicar função rapidamente:
- * - Vermelho: captura (associação com pokébolas)
- * - Âmbar/Dourado: recursos (minérios, materiais)
- * - Verde: consumíveis (cura, vitalidade)
- * - Azul: upgrades (tecnologia, progressão)
- */
-export const CATEGORY_VISUALS: Record<ItemCategory, CategoryVisualConfig> = {
-  capture: {
-    label: "Captura",
-    primaryColor: 0xef4444, // vermelho
-    textColor: "#fecaca",
-    symbol: "◉",
-    shape: "circle"
-  },
-  raw_resource: {
-    label: "Recurso",
-    primaryColor: 0xf59e0b, // âmbar
-    textColor: "#fef3c7",
-    symbol: "◆",
-    shape: "diamond"
-  },
-  consumable: {
-    label: "Consumível",
-    primaryColor: 0x22c55e, // verde
-    textColor: "#bbf7d0",
-    symbol: "♥",
-    shape: "hexagon"
-  },
-  upgrade: {
-    label: "Upgrade",
-    primaryColor: 0x3b82f6, // azul
-    textColor: "#bfdbfe",
-    symbol: "★",
-    shape: "star"
-  }
-};
-
-// ============================================================================
-// CONFIGURAÇÕES DE RARIDADE/TIER
-// ============================================================================
-
-/**
- * Configuração visual por tier de raridade.
- * Tiers mais raros têm cores mais brilhantes e bordas mais destacadas.
- */
-export const TIER_VISUALS: Record<ItemTier, TierVisualConfig> = {
-  "Básico": {
-    label: "Básico",
-    borderColor: 0x6b7280, // cinza
-    bgColor: "rgba(107, 114, 128, 0.15)",
-    glowIntensity: 0,
-    borderWidth: 1,
-    tierTextColor: "#9ca3af"
-  },
-  "Avançado": {
-    label: "Avançado",
-    borderColor: 0x3b82f6, // azul
-    bgColor: "rgba(59, 130, 246, 0.2)",
-    glowIntensity: 0.3,
-    borderWidth: 2,
-    tierTextColor: "#60a5fa"
-  },
-  "Épico": {
-    label: "Épico",
-    borderColor: 0xa855f7, // roxo
-    bgColor: "rgba(168, 85, 247, 0.25)",
-    glowIntensity: 0.6,
-    borderWidth: 2,
-    tierTextColor: "#c084fc"
-  },
-  "Lendário": {
-    label: "Lendário",
-    borderColor: 0xfbbf24, // dourado
-    bgColor: "rgba(251, 191, 36, 0.3)",
-    glowIntensity: 1.0,
-    borderWidth: 3,
-    tierTextColor: "#fcd34d"
-  }
-};
 
 // ============================================================================
 // MAPEAMENTO ITEM KIND → CATEGORY
@@ -259,52 +155,6 @@ export function getContrastTextColor(bgColor: number): string {
   
   return luminance > 0.5 ? "#1f2937" : "#f9fafb";
 }
-
-// ============================================================================
-// CONSTANTES DE REFERÊNCIA RÁPIDA
-// ============================================================================
-
-/**
- * Cores rápidas para uso direto em código.
- * Evita ter que chamar getItemVisuals para casos simples.
- */
-export const QUICK_COLORS = {
-  // Por categoria
-  capture: 0xef4444,
-  raw_resource: 0xf59e0b,
-  consumable: 0x22c55e,
-  upgrade: 0x3b82f6,
-  
-  // Por tier
-  tierBasico: 0x6b7280,
-  tierAvancado: 0x3b82f6,
-  tierEpico: 0xa855f7,
-  tierLendario: 0xfbbf24,
-
-  // Cores de texto CSS
-  textCapture: "#fecaca",
-  textResource: "#fef3c7",
-  textConsumable: "#bbf7d0",
-  textUpgrade: "#bfdbfe"
-} as const;
-
-/**
- * Configuração de pickup por ID de recurso específico.
- * Permite customização fina de cores para recursos individuais.
- */
-export const RESOURCE_PICKUP_OVERRIDES: Record<string, { color: number; borderColor: number }> = {
-  // Recursos comuns (tons de âmbar)
-  "resource-ferro-cristalino": { color: 0xfbbf24, borderColor: 0x78350f },
-  
-  // Recursos avançados (tons mais distintos)
-  "resource-mola-precisao": { color: 0x60a5fa, borderColor: 0x1e40af },
-  "resource-seiva-eterna": { color: 0x4ade80, borderColor: 0x166534 },
-  "resource-cristal-caverna": { color: 0x22d3ee, borderColor: 0x0e7490 },
-  
-  // Recursos épicos (tons vibrantes)
-  "resource-energia-pura": { color: 0xa855f7, borderColor: 0x6b21a8 },
-  "resource-essencia-sombria": { color: 0x8b5cf6, borderColor: 0x4c1d95 }
-};
 
 /**
  * Obtém cores de pickup para um recurso específico.

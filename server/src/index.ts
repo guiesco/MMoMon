@@ -108,17 +108,6 @@ function broadcastMessage(room: Room, message: AttackResultMessage | PlayerDeath
   StateBroadcaster.broadcastMessage(room, message);
 }
 
-/**
- * Processa o sistema de extração para uma sala.
- * FASE 4: Movido para ExtractionHandler
- * @deprecated Use processExtractionSystem de handlers/ExtractionHandler
- */
-async function processExtractionSystem(room: Room, deltaMs: number): Promise<void> {
-  // Esta função foi movida para handlers/ExtractionHandler.ts
-  // Mantida apenas para compatibilidade durante migração
-  const { processExtractionSystem: handler } = await import("./handlers/ExtractionHandler");
-  return handler(room, deltaMs);
-}
 
 /**
  * Envia mensagem de extração para todos os clientes da sala.
@@ -129,29 +118,6 @@ function broadcastExtractionMessage(
   message: ReturnType<typeof createExtractionStateMessage>
 ): void {
   StateBroadcaster.broadcastExtractionMessage(room, message);
-}
-
-/**
- * Cria e configura o game loop para uma sala.
- * FASE 4: Movido para GameLoopManager
- * @deprecated Use createGameLoop de managers/GameLoopManager
- */
-function createGameLoop(room: Room): GameLoop {
-  const { createGameLoop: managerCreate } = require("./managers/GameLoopManager");
-  return managerCreate(room);
-}
-
-/**
- * Handler para quando uma partida termina.
- * FASE 4: Movido para GameLoopManager
- * @deprecated Esta função foi movida para managers/GameLoopManager
- */
-function handleMatchFinished(room: Room): void {
-  // Esta função foi movida para managers/GameLoopManager.ts
-  // Mantida apenas para compatibilidade durante migração
-  if (DEBUG_GAME_LOOP) {
-    console.log(`[Room:${room.id}] Partida finalizada. Jogadores: ${room.players.size}`);
-  }
 }
 
 /**
@@ -188,14 +154,6 @@ function cleanupRoom(roomId: string): void {
   if (DEBUG_GAME_LOOP) {
     console.log(`[Server] ✓ Sala removida completamente: ${roomId}`);
   }
-}
-
-/**
- * Remove uma sala do servidor completamente.
- * @deprecated Use cleanupRoom() ao invés desta função.
- */
-function removeRoom(roomId: string): void {
-  cleanupRoom(roomId);
 }
 
 /**

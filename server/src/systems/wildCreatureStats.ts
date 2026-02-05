@@ -4,93 +4,15 @@
  * ✅ IA #9: Calcula stats baseados em tipo + nível + estrelas (rank)
  * ao invés de usar valores fixos baseados em tier.
  * 
+ * ✅ Valores de IA agora fazem parte dos atributos das criaturas e escalam
+ * da mesma forma que outros atributos (atk, hp, etc).
+ * 
  * Este módulo replica a lógica de progressão do cliente para garantir
  * consistência entre servidor e cliente.
  */
 
-// ============================================================================
-// CONFIGURAÇÃO DE PROGRESSÃO (Sincronizado com cliente)
-// ============================================================================
-
-/**
- * Configuração do sistema de ranks (estrelas).
- * Sincronizado com src/game/creatureProgression.ts
- */
-const RANK_CONFIG: Record<
-  number,
-  {
-    name: string;
-    copiesRequired: number;
-    statMultiplier: number;
-    color: number;
-  }
-> = {
-  1: { name: "Comum", copiesRequired: 0, statMultiplier: 1.0, color: 0x9ca3af },
-  2: { name: "Incomum", copiesRequired: 2, statMultiplier: 1.1, color: 0x22c55e },
-  3: { name: "Raro", copiesRequired: 5, statMultiplier: 1.2, color: 0x3b82f6 },
-  4: { name: "Épico", copiesRequired: 10, statMultiplier: 1.35, color: 0xa855f7 },
-  5: { name: "Lendário", copiesRequired: 20, statMultiplier: 1.5, color: 0xf59e0b },
-};
-
-/**
- * Bônus de stats por nível.
- * Sincronizado com src/game/creatureProgression.ts
- */
-const LEVEL_STAT_BONUS = {
-  /** % de HP adicional por nível */
-  hpPerLevel: 0.02, // +2% por nível
-  /** % de dano adicional por nível */
-  attackDamagePerLevel: 0.015, // +1.5% por nível
-  /** % de defesa adicional por nível */
-  defensePerLevel: 0.01, // +1% por nível
-  /** % de velocidade adicional por nível */
-  moveSpeedPerLevel: 0.005, // +0.5% por nível
-} as const;
-
-// ============================================================================
-// DEFINIÇÕES DE CRIATURAS (Sincronizado com cliente)
-// ============================================================================
-
-/**
- * Stats base das criaturas.
- * Sincronizado com src/game/creatures.ts
- */
-const CREATURE_BASE_STATS: Record<string, { 
-  hp: number; 
-  moveSpeed: number; 
-  defense: number; 
-  attackDamage: number; 
-  skillCooldown: number 
-}> = {
-  pyrognat: {
-    hp: 80,
-    moveSpeed: 260,
-    defense: 8,
-    attackDamage: 20,
-    skillCooldown: 12
-  },
-  aquaryl: {
-    hp: 90,
-    moveSpeed: 240,
-    defense: 10,
-    attackDamage: 16,
-    skillCooldown: 10
-  },
-  verdant: {
-    hp: 100,
-    moveSpeed: 220,
-    defense: 12,
-    attackDamage: 14,
-    skillCooldown: 11
-  },
-  voltiger: {
-    hp: 70,
-    moveSpeed: 280,
-    defense: 6,
-    attackDamage: 22,
-    skillCooldown: 9
-  }
-};
+import { calculateEffectiveStats, LEVEL_STAT_BONUS, RANK_CONFIG } from "../../../shared/creatureProgression";
+import { getCreatureBaseStats, getCreatureById } from "../../../shared/creatures";
 
 // ============================================================================
 // FUNÇÕES DE CÁLCULO DE STATS
@@ -100,10 +22,12 @@ const CREATURE_BASE_STATS: Record<string, {
  * ✅ IA #9: Calcula os stats efetivos de uma criatura selvagem
  * baseado em tipo + nível + estrelas (rank).
  * 
+ * Agora inclui valores de IA escalados como parte dos stats.
+ * 
  * @param creatureType - Tipo/espécie da criatura (ex: "pyrognat")
  * @param level - Nível da criatura (1-50)
  * @param rank - Estrelas/rank da criatura (1-5)
- * @returns Stats efetivos calculados
+ * @returns Stats efetivos calculados (incluindo valores de IA)
  */
 export function getEffectiveStatsForWildCreature(
   creatureType: string,
@@ -115,54 +39,84 @@ export function getEffectiveStatsForWildCreature(
   defense: number;
   attackDamage: number;
   skillCooldown: number;
+  detectionRange: number;
+  attackRange: number;
+  attackCooldown: number;
+  attackWindup: number;
+  stunDuration: number;
+  preferredDistance: number;
+  projectileSpeed: number;
 } {
-  const baseStats = CREATURE_BASE_STATS[creatureType];
-  if (!baseStats) {
+  // Usa a função genérica do shared para calcular stats base
+  const baseStats = calculateEffectiveStats(
+    {
+      definitionId: creatureType,
+      level: level,
+      rank: rank
+    },
+    getCreatureById
+  );
+
+  // Adiciona campos específicos de IA que não estão na interface genérica
+  const creature = getCreatureById(creatureType);
+  if (!creature) {
     // Fallback se definição não encontrada
     console.warn(`[WildCreatureStats] Criatura ${creatureType} não encontrada, usando stats padrão`);
     return {
-      hp: 100,
-      moveSpeed: 200,
-      defense: 10,
-      attackDamage: 15,
-      skillCooldown: 10,
+      ...baseStats,
+      detectionRange: 150,
+      preferredDistance: 50
     };
   }
 
-  const rankConfig = RANK_CONFIG[rank];
-  if (!rankConfig) {
-    console.warn(`[WildCreatureStats] Rank ${rank} inválido, usando rank 1`);
-    const rankMultiplier = RANK_CONFIG[1].statMultiplier;
-    const levelBonus = level - 1;
-    const hpBonus = 1 + levelBonus * LEVEL_STAT_BONUS.hpPerLevel;
-    const attackBonus = 1 + levelBonus * LEVEL_STAT_BONUS.attackDamagePerLevel;
-    const defenseBonus = 1 + levelBonus * LEVEL_STAT_BONUS.defensePerLevel;
-    const speedBonus = 1 + levelBonus * LEVEL_STAT_BONUS.moveSpeedPerLevel;
-
-    return {
-      hp: Math.floor(baseStats.hp * hpBonus * rankMultiplier),
-      moveSpeed: Math.floor(baseStats.moveSpeed * speedBonus * rankMultiplier),
-      defense: Math.floor(baseStats.defense * defenseBonus * rankMultiplier),
-      attackDamage: Math.floor(baseStats.attackDamage * attackBonus * rankMultiplier),
-      skillCooldown: baseStats.skillCooldown, // cooldown não escala
-    };
-  }
-
+  const baseAI = creature.stats.ai;
+  const rankConfig = RANK_CONFIG[rank] || RANK_CONFIG[1];
   const rankMultiplier = rankConfig.statMultiplier;
-
-  // Calcula bônus por nível (nível 1 = 0 bônus)
   const levelBonus = level - 1;
+  const detectionRangeBonus = 1 + levelBonus * LEVEL_STAT_BONUS.detectionRangePerLevel;
 
-  const hpBonus = 1 + levelBonus * LEVEL_STAT_BONUS.hpPerLevel;
-  const attackBonus = 1 + levelBonus * LEVEL_STAT_BONUS.attackDamagePerLevel;
-  const defenseBonus = 1 + levelBonus * LEVEL_STAT_BONUS.defensePerLevel;
-  const speedBonus = 1 + levelBonus * LEVEL_STAT_BONUS.moveSpeedPerLevel;
+  const detectionRange = Math.floor(baseAI.detectionRange * detectionRangeBonus * rankMultiplier);
 
   return {
-    hp: Math.floor(baseStats.hp * hpBonus * rankMultiplier),
-    moveSpeed: Math.floor(baseStats.moveSpeed * speedBonus * rankMultiplier),
-    defense: Math.floor(baseStats.defense * defenseBonus * rankMultiplier),
-    attackDamage: Math.floor(baseStats.attackDamage * attackBonus * rankMultiplier),
-    skillCooldown: baseStats.skillCooldown, // cooldown não escala
+    ...baseStats,
+    detectionRange,
+    preferredDistance: baseAI.preferredDistance // não escala
+  };
+}
+
+/**
+ * Calcula os valores de IA de uma criatura baseados em tipo, nível e rank.
+ * 
+ * Agora usa os valores de IA das definições de criaturas ao invés de valores
+ * baseados em tier.
+ * 
+ * @param creatureType - Tipo/espécie da criatura (ex: "pyrognat")
+ * @param level - Nível da criatura (1-50)
+ * @param rank - Estrelas/rank da criatura (1-5)
+ * @returns Valores de IA escalados baseados no nível e rank
+ */
+export function getAIConfigForWildCreature(
+  creatureType: string,
+  level: number,
+  rank: number
+): {
+  detectionRange: number;
+  attackRange: number;
+  attackCooldown: number;
+  attackWindup: number;
+  stunDuration: number;
+  preferredDistance: number;
+  projectileSpeed: number;
+} {
+  const effectiveStats = getEffectiveStatsForWildCreature(creatureType, level, rank);
+  
+  return {
+    detectionRange: effectiveStats.detectionRange,
+    attackRange: effectiveStats.attackRange,
+    attackCooldown: effectiveStats.attackCooldown,
+    attackWindup: effectiveStats.attackWindup,
+    stunDuration: effectiveStats.stunDuration,
+    preferredDistance: effectiveStats.preferredDistance,
+    projectileSpeed: effectiveStats.projectileSpeed
   };
 }

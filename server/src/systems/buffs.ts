@@ -40,30 +40,9 @@ export interface Buff {
   appliedAt: number;     // Timestamp quando foi aplicado
 }
 
-// ============================================================================
-// Constantes de Buffs
-// ============================================================================
-
-export const BUFF_CONFIG = {
-  // Buffs de velocidade
-  SPEED_BOOST_MULTIPLIER: 1.5,    // +50% velocidade
-  SLOW_MULTIPLIER: 0.5,            // -50% velocidade
-  FREEZE_MULTIPLIER: 0,            // 0% velocidade (congelado)
-  
-  // Durações padrão
-  DEFAULT_SPEED_DURATION: 3,       // segundos
-  DEFAULT_SLOW_DURATION: 2,
-  DEFAULT_FREEZE_DURATION: 1.5,
-  DEFAULT_STUN_DURATION: 1,
-  DEFAULT_POISON_DURATION: 5,
-  DEFAULT_SHIELD_DURATION: 5,
-  DEFAULT_INVULNERABLE_DURATION: 0.5,
-  DEFAULT_REGEN_DURATION: 5,
-  
-  // Valores
-  POISON_DAMAGE_PER_SECOND: 2,
-  REGEN_HP_PER_SECOND: 5,
-};
+// ✅ Re-exportar do shared
+export { BUFF_CONFIG } from "../../../shared/serverConstants";
+import { BUFF_CONFIG } from "../../../shared/serverConstants";
 
 // ============================================================================
 // Gerenciamento de Buffs em Players

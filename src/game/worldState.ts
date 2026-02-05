@@ -5,7 +5,6 @@
  * Cliente apenas recebe e renderiza o estado sincronizado.
  * 
  * RemoteWorldState: Implementação padrão - sincroniza com servidor via WebSocket
- * LocalWorldState: @deprecated Mantido apenas para testes - não deve ser usado em produção
  */
 
 import type { ThreatTier, EnemyBehaviorType, EnemyAIState, EnemyBehaviorConfig } from "./constants";
@@ -135,7 +134,6 @@ export interface ExtractionPointState {
 /**
  * Interface para gerenciamento de estado do mundo.
  * Implementada por RemoteWorldState (multiplayer-first, padrão).
- * LocalWorldState está deprecated e mantido apenas para testes.
  */
 export interface GameWorldState {
   // Coleções de entidades
@@ -175,129 +173,6 @@ export interface GameWorldState {
   getAllExtractionPoints(): ExtractionPointState[];
   
   clear(): void;
-}
-
-// =============================================================================
-// Implementação Local (Deprecated - Apenas para Testes)
-// =============================================================================
-
-/**
- * @deprecated Arquitetura multiplayer-first: sempre use RemoteWorldState.
- * Esta implementação é mantida apenas para testes unitários.
- * Em produção, o servidor é sempre a fonte de verdade.
- * 
- * Implementação local do estado do mundo.
- * Não deve ser usada em produção - apenas para testes.
- */
-export class LocalWorldState implements GameWorldState {
-  readonly creatures: Map<string, CreatureState> = new Map();
-  readonly resources: Map<string, ResourceState> = new Map();
-  readonly players: Map<string, PlayerState> = new Map();
-  readonly extractionPoints: Map<string, ExtractionPointState> = new Map();
-  
-  // Leitura
-  getCreature(id: string): CreatureState | undefined {
-    return this.creatures.get(id);
-  }
-  
-  getResource(id: string): ResourceState | undefined {
-    return this.resources.get(id);
-  }
-  
-  getPlayer(id: string): PlayerState | undefined {
-    return this.players.get(id);
-  }
-  
-  getExtractionPoint(id: string): ExtractionPointState | undefined {
-    return this.extractionPoints.get(id);
-  }
-  
-  // Escrita
-  updateCreature(id: string, updates: Partial<CreatureState>): void {
-    const existing = this.creatures.get(id);
-    if (existing) {
-      this.creatures.set(id, { ...existing, ...updates });
-    }
-  }
-  
-  updateResource(id: string, updates: Partial<ResourceState>): void {
-    const existing = this.resources.get(id);
-    if (existing) {
-      this.resources.set(id, { ...existing, ...updates });
-    }
-  }
-  
-  updatePlayer(id: string, updates: Partial<PlayerState>): void {
-    const existing = this.players.get(id);
-    if (existing) {
-      this.players.set(id, { ...existing, ...updates });
-    }
-  }
-  
-  updateExtractionPoint(id: string, updates: Partial<ExtractionPointState>): void {
-    const existing = this.extractionPoints.get(id);
-    if (existing) {
-      this.extractionPoints.set(id, { ...existing, ...updates });
-    }
-  }
-  
-  // Criação
-  addCreature(creature: CreatureState): void {
-    this.creatures.set(creature.id, creature);
-  }
-  
-  addResource(resource: ResourceState): void {
-    this.resources.set(resource.id, resource);
-  }
-  
-  addPlayer(player: PlayerState): void {
-    this.players.set(player.id, player);
-  }
-  
-  addExtractionPoint(point: ExtractionPointState): void {
-    this.extractionPoints.set(point.id, point);
-  }
-  
-  // Remoção
-  removeCreature(id: string): void {
-    this.creatures.delete(id);
-  }
-  
-  removeResource(id: string): void {
-    this.resources.delete(id);
-  }
-  
-  removePlayer(id: string): void {
-    this.players.delete(id);
-  }
-  
-  removeExtractionPoint(id: string): void {
-    this.extractionPoints.delete(id);
-  }
-  
-  // Utilidade
-  getAllCreatures(): CreatureState[] {
-    return Array.from(this.creatures.values());
-  }
-  
-  getAllResources(): ResourceState[] {
-    return Array.from(this.resources.values());
-  }
-  
-  getAllPlayers(): PlayerState[] {
-    return Array.from(this.players.values());
-  }
-  
-  getAllExtractionPoints(): ExtractionPointState[] {
-    return Array.from(this.extractionPoints.values());
-  }
-  
-  clear(): void {
-    this.creatures.clear();
-    this.resources.clear();
-    this.players.clear();
-    this.extractionPoints.clear();
-  }
 }
 
 // =============================================================================

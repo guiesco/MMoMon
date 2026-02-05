@@ -19,12 +19,15 @@
 
 import { ServerResource } from "../types";
 
+// ✅ Importar do shared
+import { RESOURCE_CONFIG } from "../../../shared/gameConstants";
+
 // ============================================================================
 // Constantes
 // ============================================================================
 
 /** Raio de coleta de recursos (em pixels) */
-const RESOURCE_COLLECTION_RANGE = 20;
+const RESOURCE_COLLECTION_RANGE = RESOURCE_CONFIG.collectionRange;
 
 // ============================================================================
 // Interfaces

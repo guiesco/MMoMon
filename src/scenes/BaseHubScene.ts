@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { PlayerState } from "../game/playerState";
-import { getCreatureById } from "../game/creatures";
+import { getCreatureById } from "../../shared/creatures";
 import { getItemById } from "../game/items";
 import { getMapConfig, getNextMapId } from "../game/maps";
 import {

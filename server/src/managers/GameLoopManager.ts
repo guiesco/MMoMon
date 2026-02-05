@@ -17,6 +17,9 @@ import { updateSkillZones } from "../systems/combat";
 import { processCaptureIntent, type BallType } from "../systems/capture";
 import { allPlayersExtractedOrDead, processExtractionIntent } from "../systems/extraction";
 import { processExtractionSystem } from "../handlers/ExtractionHandler";
+import { getCreatureById } from "../../../shared/creatures";
+import { calculateEffectiveStats } from "../../../shared/creatureProgression";
+import { getSpecialSkillByCreatureId } from "../../../shared/attacks";
 import {
   createAttackResultMessage,
   createPlayerDeathMessage,
@@ -160,8 +163,8 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
       }
     },
 
-    onSkillUsed: (playerId: string, skillType, targetX, targetY, creatureId) => {
-      handleSkillUsed(room, playerId, skillType, targetX, targetY, creatureId);
+    onSkillUsed: (playerId: string, skillType, targetX, targetY, creatureId, creatureLevel?, creatureRank?) => {
+      handleSkillUsed(room, playerId, skillType, targetX, targetY, creatureId, creatureLevel, creatureRank);
     },
 
     onResourceCollected: (playerId: string, resourceId: string, resourceType: string, quantity: number) => {
@@ -528,7 +531,26 @@ function handleCaptureResult(room: Room, playerId: string, targetId: string, bal
 }
 
 /**
+ * Mapeia creatureId para skillType.
+ */
+function getSkillTypeFromCreatureId(creatureId: string): "fire_fog" | "root_trap" | "electric_surge" | "heal_wave" | null {
+  switch (creatureId) {
+    case "pyrognat":
+      return "fire_fog";
+    case "verdant":
+      return "root_trap";
+    case "voltiger":
+      return "electric_surge";
+    case "aquaryl":
+      return "heal_wave";
+    default:
+      return null;
+  }
+}
+
+/**
  * Handler para uso de skill.
+ * Agora usa valores escalados das special skills baseados em level e rank.
  */
 function handleSkillUsed(
   room: Room,
@@ -536,7 +558,9 @@ function handleSkillUsed(
   skillType: "fire_fog" | "root_trap" | "electric_surge" | "heal_wave",
   targetX: number,
   targetY: number,
-  creatureId?: string
+  creatureId?: string,
+  creatureLevel?: number,
+  creatureRank?: number
 ): void {
   // Heal não cria zona de skill no servidor
   if (skillType === "heal_wave") {
@@ -546,59 +570,87 @@ function handleSkillUsed(
     return;
   }
 
-  // Configurações por tipo de skill
-  let zone;
+  // Se não tiver creatureId, tentar inferir do skillType
+  if (!creatureId) {
+    const creatureIdMap: Record<string, string> = {
+      "fire_fog": "pyrognat",
+      "root_trap": "verdant",
+      "electric_surge": "voltiger"
+    };
+    creatureId = creatureIdMap[skillType];
+  }
+
+  // Obter valores escalados da special skill
+  let radius = 70;
+  let damagePerTick = 8;
+  let lifetime = 4;
+  let tickInterval = 0.5;
+  let slowModifier = 0.3;
+
+  if (creatureId) {
+    if (creatureLevel !== undefined && creatureRank !== undefined) {
+      // Usar valores escalados
+      const effectiveStats = calculateEffectiveStats(
+        { definitionId: creatureId, level: creatureLevel, rank: creatureRank },
+        getCreatureById
+      );
+      radius = effectiveStats.specialSkillRadius;
+      damagePerTick = effectiveStats.specialSkillDamagePerTick;
+      lifetime = effectiveStats.specialSkillLifetime;
+    } else {
+      // Usar valores base
+      const specialSkill = getSpecialSkillByCreatureId(creatureId);
+      if (specialSkill) {
+        radius = specialSkill.radius;
+        damagePerTick = specialSkill.damagePerTick;
+        lifetime = specialSkill.lifetime;
+        tickInterval = specialSkill.tickInterval;
+        slowModifier = specialSkill.slowModifier ?? 0.3;
+      }
+    }
+  }
+
+  // Ajustar valores específicos por tipo de skill (tickInterval e slowModifier)
   switch (skillType) {
-    case "fire_fog": // Pyrognat - Nevoeiro Incendiário
-      zone = createSkillZone(
-        playerId,
-        "fire_fog",
-        targetX,
-        targetY,
-        70,  // radius
-        8,   // damagePerTick
-        0.5, // tickInterval (0.5s)
-        4,   // lifetime (4s)
-        0.3  // slowModifier (30% mais lento)
-      );
+    case "fire_fog":
+      tickInterval = 0.5;
+      slowModifier = 0.7; // 30% mais lento
       break;
-      
-    case "root_trap": // Verdant - Raízes Prendentes
-      zone = createSkillZone(
-        playerId,
-        "root_trap",
-        targetX,
-        targetY,
-        60,  // radius
-        5,   // damagePerTick
-        0.5, // tickInterval
-        3,   // lifetime (3s - mais curto)
-        0.7  // slowModifier (70% mais lento - efeito maior)
-      );
+    case "root_trap":
+      tickInterval = 0.5;
+      slowModifier = 0.3; // 70% mais lento
       break;
-      
-    case "electric_surge": // Voltiger - Surto Elétrico
-      zone = createSkillZone(
-        playerId,
-        "electric_surge",
-        targetX,
-        targetY,
-        80,  // radius (maior área)
-        12,  // damagePerTick (alto dano)
-        0.3, // tickInterval (ticks mais rápidos)
-        2,   // lifetime (2s - explosão rápida)
-        0    // sem slow
-      );
+    case "electric_surge":
+      tickInterval = 0.4;
+      slowModifier = 0; // sem slow
       break;
   }
+
+  // Criar skill zone com valores escalados
+  const zone = createSkillZone(
+    playerId,
+    skillType as "fire_fog" | "root_trap" | "electric_surge",
+    targetX,
+    targetY,
+    radius,
+    damagePerTick,
+    tickInterval,
+    lifetime,
+    slowModifier
+  );
   
   if (zone) {
-    // Adicionar zona ao worldState
+    // Adicionar zona ao worldState e combatState (sincronização)
     room.worldState.skillZones.push(zone);
+    if (room.gameLoop) {
+      const combatState = room.gameLoop.getCombatState();
+      combatState.skillZones.push(zone);
+    }
     
     if (DEBUG_GAME_LOOP) {
       console.log(
-        `[Room:${room.id}] Skill ${skillType} criada por ${playerId} em (${targetX.toFixed(0)}, ${targetY.toFixed(0)})`
+        `[Room:${room.id}] Skill ${skillType} criada por ${playerId} em (${targetX.toFixed(0)}, ${targetY.toFixed(0)}) ` +
+        `[radius=${radius}, damage=${damagePerTick}, lifetime=${lifetime.toFixed(1)}s]`
       );
     }
   }

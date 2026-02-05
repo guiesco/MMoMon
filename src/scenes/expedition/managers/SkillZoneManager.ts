@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import type { SkillZone } from "../types/ExpeditionTypes";
 import type { RemoteCreatureSprite } from "../types/ExpeditionTypes";
+import type { RemoteSkillZone } from "../../../services/multiplayerClient";
 
 /**
  * Gerencia zonas de habilidades especiais (ex: nevoeiro incendiário).
@@ -129,5 +130,75 @@ export class SkillZoneManager {
    */
   getAllZones(): SkillZone[] {
     return [...this.skillZones];
+  }
+
+  /**
+   * Handler para atualização de skill zones.
+   * Sincroniza skill zones recebidas do servidor com a renderização local.
+   */
+  handleSkillZonesUpdate(skillZones: RemoteSkillZone[]): void {
+    const seen = new Set<string>();
+    
+    for (const zone of skillZones) {
+      seen.add(zone.id);
+      
+      const existing = this.remoteSkillZones.get(zone.id);
+      
+      if (existing) {
+        // Zona já existe - atualizar propriedades se necessário
+        // (por enquanto zonas são estáticas, mas podemos atualizar alpha baseado em lifetime)
+        const lifetimeRatio = Math.max(0, Math.min(1, zone.lifetime / 4)); // Assumindo 4s máximo
+        existing.setAlpha(0.25 * lifetimeRatio + 0.1); // Fade out gradual
+      } else {
+        // Criar nova skill zone
+        const { color, strokeColor } = this.getSkillZoneColors(zone.skillType);
+        
+        const circle = this.scene.add.circle(zone.x, zone.y, zone.radius, color, 0.25);
+        circle.setStrokeStyle(2, strokeColor, 0.9);
+        circle.setDepth(50); // Abaixo de jogadores/criaturas mas acima do chão
+        
+        this.remoteSkillZones.set(zone.id, circle);
+        
+        // Efeito de criação (expansão)
+        circle.setScale(0.1);
+        this.scene.tweens.add({
+          targets: circle,
+          scale: 1,
+          duration: 200,
+          ease: "Back.easeOut"
+        });
+      }
+    }
+    
+    // Remove zones que não existem mais no servidor
+    for (const [id, circle] of this.remoteSkillZones) {
+      if (!seen.has(id)) {
+        // Efeito de desaparecimento
+        this.scene.tweens.add({
+          targets: circle,
+          alpha: 0,
+          scale: 1.2,
+          duration: 150,
+          onComplete: () => circle.destroy()
+        });
+        this.remoteSkillZones.delete(id);
+      }
+    }
+  }
+
+  /**
+   * Retorna cores para renderização de skill zones baseado no tipo.
+   */
+  private getSkillZoneColors(skillType: "fire_fog" | "root_trap" | "electric_surge"): { color: number; strokeColor: number } {
+    switch (skillType) {
+      case "fire_fog":
+        return { color: 0xf97316, strokeColor: 0xea580c }; // Laranja
+      case "root_trap":
+        return { color: 0x22c55e, strokeColor: 0x16a34a }; // Verde
+      case "electric_surge":
+        return { color: 0xfbbf24, strokeColor: 0xf59e0b }; // Amarelo
+      default:
+        return { color: 0x6366f1, strokeColor: 0x4f46e5 }; // Roxo default
+    }
   }
 }

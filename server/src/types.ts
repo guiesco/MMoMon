@@ -96,6 +96,12 @@ export interface ServerCreature {
   /** Timer de patrulha (para movimento idle) */
   patrolTimer: number;
   
+  /** ✅ Tempo restante de cooldown de skill especial (em segundos) */
+  skillCooldownRemaining: number;
+  
+  /** ✅ Último tempo que a criatura usou skill (timestamp em ms) */
+  lastSkillTime: number;
+  
   /** ✅ Roaming: Destino atual de patrulha (null se não está patrulhando) */
   roamingTarget?: { x: number; y: number } | null;
 
@@ -104,6 +110,21 @@ export interface ServerCreature {
   
   /** Nível da criatura selvagem (baseado no tier) */
   level?: number;
+  
+  /** ✅ Stats calculados baseados em nível e rank (armazenados para uso na IA) */
+  effectiveStats?: {
+    moveSpeed: number;
+    defense: number;
+    attackDamage: number;
+    // Valores de IA calculados baseados em tier e level
+    detectionRange: number;
+    attackRange: number;
+    attackCooldown: number;
+    attackWindup: number;
+    stunDuration: number;
+    preferredDistance: number;
+    projectileSpeed: number;
+  };
   
   /** ✅ FASE 9: Buffs e debuffs ativos na criatura */
   buffs?: Array<{
@@ -240,6 +261,9 @@ export interface ServerProjectile {
 
   /** Se o projétil foi disparado por um jogador (true) ou criatura (false) */
   isPlayerProjectile: boolean;
+  
+  /** ✅ Tipo da criatura que disparou o projétil (para type effectiveness) */
+  creatureType?: string;
 
   /** Posição X atual */
   x: number;
@@ -381,7 +405,9 @@ export function createCreature(
     patrolTimer: 0,
     roamingTarget: null,
     targetPlayerId: null,
-    level
+    level,
+    skillCooldownRemaining: 0,
+    lastSkillTime: 0
   };
 }
 
@@ -470,11 +496,12 @@ export function createExtractionPoint(
  * @param damage - Dano ao colidir
  * @param lifetime - Tempo de vida em segundos
  * @param maxDistance - Distância máxima em pixels (opcional, padrão: infinito)
+ * @param creatureType - Tipo da criatura que disparou (opcional, para type effectiveness)
  * @returns Nova instância de ServerProjectile
  * 
  * @example
  * ```ts
- * const playerShot = createProjectile("player-1", true, 100, 200, 300, 0, 10, 2.0, 220);
+ * const playerShot = createProjectile("player-1", true, 100, 200, 300, 0, 10, 2.0, 220, "pyrognat");
  * const enemyShot = createProjectile("wild-5", false, 400, 300, -200, 100, 5, 1.5);
  * ```
  */
@@ -487,12 +514,14 @@ export function createProjectile(
   velocityY: number,
   damage: number,
   lifetime: number,
-  maxDistance: number = Infinity
+  maxDistance: number = Infinity,
+  creatureType?: string
 ): ServerProjectile {
   return {
     id: generateId("proj"),
     ownerId,
     isPlayerProjectile,
+    creatureType,
     x,
     y,
     startX: x,

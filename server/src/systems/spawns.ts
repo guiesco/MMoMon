@@ -19,239 +19,41 @@ import {
   resetIdCounter
 } from "../types";
 import { getEffectiveStatsForWildCreature } from "./wildCreatureStats";
+import { getCreatureBehaviorType } from "./combat";
 
-/**
- * Configuração de um mapa para spawns.
- * Espelha a estrutura de MapConfig do cliente.
- */
-export interface MapSpawnConfig {
-  /** ID do mapa/bioma */
-  id: string;
-  /** Número de criaturas selvagens a spawnar */
-  wildSpawnCount: number;
-  /** Número de recursos a spawnar */
-  resourceSpawnCount: number;
-  /** Largura do mundo em pixels */
-  worldWidth: number;
-  /** Altura do mundo em pixels */
-  worldHeight: number;
-  /** Pontos de extração (posição e raio) */
-  extractionPoints: Array<{ x: number; y: number; radius: number }>;
-}
+// ✅ Importar e re-exportar tipos e configurações do shared
+import type { MapSpawnConfig, ThreatTierWeights } from "../../../shared/spawnConfig";
+import {
+  DEFAULT_TIER_WEIGHTS,
+  MAP_LEVEL_CONFIGS,
+  MAP_RANK_CONFIGS,
+  MAP_TIER_WEIGHTS,
+  CREATURE_TYPE_POOL,
+  getMapLevelConfig,
+  getMapRankConfig,
+  getMapTierWeights
+} from "../../../shared/spawnConfig";
+import { BIOME_RESOURCES, RESOURCE_CONFIG, type BiomeId } from "../../../shared/gameConstants";
 
-/**
- * Configuração de spawns de criaturas por tier.
- * Define a distribuição de tiers de ameaça.
- */
-export interface ThreatTierWeights {
-  comum: number;
-  perigosa: number;
-  elite: number;
-}
+// Re-exportar para compatibilidade
+export type {
+  MapSpawnConfig,
+  ThreatTierWeights,
+  MapLevelConfig,
+  MapRankConfig,
+  BiomeResourceConfig
+} from "../../../shared/spawnConfig";
 
-/**
- * Configuração de níveis por tier para um mapa.
- * Define o range de níveis que cada tier pode ter em um mapa específico.
- */
-export interface MapLevelConfig {
-  comum: { min: number; max: number };
-  perigosa: { min: number; max: number };
-  elite: { min: number; max: number };
-}
-
-/**
- * Configuração de ranks (estrelas) por tier para um mapa.
- * Define o range de ranks que cada tier pode ter em um mapa específico.
- */
-export interface MapRankConfig {
-  comum: { min: number; max: number };
-  perigosa: { min: number; max: number };
-  elite: { min: number; max: number };
-}
-
-/**
- * Configuração de spawns por bioma.
- * Define quais recursos aparecem em cada bioma.
- */
-export interface BiomeResourceConfig {
-  common: string[];
-  rare: string[];
-}
-
-// ============================================================================
-// CONFIGURAÇÕES DE SPAWN (copiadas/adaptadas de src/game/constants.ts)
-// ============================================================================
-
-/**
- * Distribuição padrão de tiers de ameaça.
- * A soma não precisa ser 1.0 (é normalizada em runtime).
- */
-export const DEFAULT_TIER_WEIGHTS: ThreatTierWeights = {
-  comum: 0.55,
-  perigosa: 0.3,
-  elite: 0.15
-};
-
-/**
- * Configuração de níveis por tier por mapa.
- * Mapas mais difíceis têm níveis mais altos, podendo chegar até nível 50.
- */
-export const MAP_LEVEL_CONFIGS: Record<string, MapLevelConfig> = {
-  "floresta-celestial": {
-    comum: { min: 1, max: 5 },
-    perigosa: { min: 4, max: 10 },
-    elite: { min: 8, max: 15 }
-  },
-  "cavernas-cristalinas": {
-    comum: { min: 5, max: 12 },
-    perigosa: { min: 10, max: 20 },
-    elite: { min: 18, max: 30 }
-  },
-  "ruinas-antigas": {
-    comum: { min: 10, max: 20 },
-    perigosa: { min: 18, max: 35 },
-    elite: { min: 30, max: 50 }
-  },
-  "pantano-sombrio": {
-    comum: { min: 8, max: 15 },
-    perigosa: { min: 15, max: 28 },
-    elite: { min: 25, max: 45 }
-  }
-};
-
-/**
- * Configuração de ranks (estrelas) por tier por mapa.
- * Mapas mais difíceis têm mais estrelas.
- */
-export const MAP_RANK_CONFIGS: Record<string, MapRankConfig> = {
-  "floresta-celestial": {
-    comum: { min: 1, max: 1 },
-    perigosa: { min: 2, max: 3 },
-    elite: { min: 3, max: 4 }
-  },
-  "cavernas-cristalinas": {
-    comum: { min: 1, max: 2 },
-    perigosa: { min: 2, max: 4 },
-    elite: { min: 4, max: 5 }
-  },
-  "ruinas-antigas": {
-    comum: { min: 2, max: 3 },
-    perigosa: { min: 3, max: 5 },
-    elite: { min: 4, max: 5 }
-  },
-  "pantano-sombrio": {
-    comum: { min: 1, max: 2 },
-    perigosa: { min: 3, max: 4 },
-    elite: { min: 4, max: 5 }
-  }
-};
-
-/**
- * Distribuição de tiers de ameaça por mapa.
- * Mapas mais difíceis têm mais elites e menos comuns.
- */
-export const MAP_TIER_WEIGHTS: Record<string, ThreatTierWeights> = {
-  "floresta-celestial": {
-    comum: 0.60,  // 60% comuns (mapa fácil)
-    perigosa: 0.30, // 30% perigosas
-    elite: 0.10    // 10% elites
-  },
-  "cavernas-cristalinas": {
-    comum: 0.45,  // 45% comuns
-    perigosa: 0.35, // 35% perigosas
-    elite: 0.20    // 20% elites
-  },
-  "ruinas-antigas": {
-    comum: 0.30,  // 30% comuns (mapa difícil)
-    perigosa: 0.40, // 40% perigosas
-    elite: 0.30    // 30% elites
-  },
-  "pantano-sombrio": {
-    comum: 0.40,  // 40% comuns
-    perigosa: 0.40, // 40% perigosas
-    elite: 0.20    // 20% elites
-  }
-};
-
-/**
- * Retorna a configuração de níveis para um mapa.
- * Se o mapa não existir, retorna configuração padrão (floresta-celestial).
- */
-export function getMapLevelConfig(mapId: string): MapLevelConfig {
-  return MAP_LEVEL_CONFIGS[mapId] ?? MAP_LEVEL_CONFIGS["floresta-celestial"];
-}
-
-/**
- * Retorna a configuração de ranks para um mapa.
- * Se o mapa não existir, retorna configuração padrão (floresta-celestial).
- */
-export function getMapRankConfig(mapId: string): MapRankConfig {
-  return MAP_RANK_CONFIGS[mapId] ?? MAP_RANK_CONFIGS["floresta-celestial"];
-}
-
-/**
- * Retorna a distribuição de tiers para um mapa.
- * Se o mapa não existir, retorna distribuição padrão.
- */
-export function getMapTierWeights(mapId: string): ThreatTierWeights {
-  return MAP_TIER_WEIGHTS[mapId] ?? DEFAULT_TIER_WEIGHTS;
-}
-
-/**
- * Chance de uma criatura ser ranged vs melee.
- * 0.35 = 35% de chance de ser ranged, 65% de ser melee.
- */
-export const RANGED_SPAWN_CHANCE = 0.35;
-
-/**
- * HP base por tier de ameaça.
- * Valores espelhados de src/game/constants.ts (THREAT_TIERS).
- */
-export const TIER_BASE_HP: Record<ThreatTier, number> = {
-  comum: 60,
-  perigosa: 90,
-  elite: 130
-};
-
-/**
- * Recursos disponíveis por bioma.
- * Espelhado de src/game/constants.ts (BIOME_RESOURCES).
- */
-export const BIOME_RESOURCES: Record<string, BiomeResourceConfig> = {
-  "floresta-celestial": {
-    common: ["resource-ferro-cristalino"],
-    rare: ["resource-seiva-eterna"]
-  },
-  "cavernas-cristalinas": {
-    common: ["resource-ferro-cristalino"],
-    rare: ["resource-cristal-caverna", "resource-energia-pura"]
-  },
-  "ruinas-antigas": {
-    common: ["resource-ferro-cristalino", "resource-mola-precisao"],
-    rare: ["resource-energia-pura"]
-  },
-  "pantano-sombrio": {
-    common: ["resource-ferro-cristalino"],
-    rare: ["resource-essencia-sombria"]
-  }
-};
-
-/**
- * Chance de spawnar um recurso raro (vs comum).
- * 0.2 = 20% de chance de recurso raro.
- */
-export const RARE_RESOURCE_CHANCE = 0.2;
-
-/**
- * Pool de tipos de criaturas disponíveis para spawn.
- * Por enquanto, usa um pool genérico. No futuro pode variar por bioma.
- */
-export const CREATURE_TYPE_POOL = [
-  "pyrognat",
-  "aquaryl",
-  "verdant",
-  "voltiger"
-];
+export {
+  DEFAULT_TIER_WEIGHTS,
+  MAP_LEVEL_CONFIGS,
+  MAP_RANK_CONFIGS,
+  MAP_TIER_WEIGHTS,
+  CREATURE_TYPE_POOL,
+  getMapLevelConfig,
+  getMapRankConfig,
+  getMapTierWeights
+} from "../../../shared/spawnConfig";
 
 // ============================================================================
 // FUNÇÕES DE SPAWN
@@ -312,16 +114,6 @@ function pickTier(rng: SeededRandom, weights: ThreatTierWeights): ThreatTier {
 }
 
 /**
- * Sorteia um tipo de comportamento de IA (melee vs ranged).
- * 
- * @param rng - Gerador de números aleatórios
- * @returns Tipo de comportamento
- */
-function pickBehaviorType(rng: SeededRandom): EnemyBehaviorType {
-  return rng.next() < RANGED_SPAWN_CHANCE ? "ranged" : "melee";
-}
-
-/**
  * Sorteia um tipo de criatura do pool.
  * 
  * @param rng - Gerador de números aleatórios
@@ -342,9 +134,9 @@ function pickResource(
   rng: SeededRandom,
   biomeId: string
 ): [string, boolean] {
-  const biomeConfig = BIOME_RESOURCES[biomeId] ?? BIOME_RESOURCES["floresta-celestial"];
+  const biomeConfig = BIOME_RESOURCES[biomeId as BiomeId] ?? BIOME_RESOURCES["floresta-celestial"];
   
-  const isRare = rng.next() < RARE_RESOURCE_CHANCE && biomeConfig.rare.length > 0;
+  const isRare = rng.next() < RESOURCE_CONFIG.rareChance && biomeConfig.rare.length > 0;
   
   if (isRare) {
     const idx = rng.between(0, biomeConfig.rare.length - 1);
@@ -421,8 +213,9 @@ export function initializeWorldSpawns(
     const y = rng.between(spawnMinY, worldHeight - marginY);
     
     const tier = pickTier(rng, weights);
-    const behaviorType = pickBehaviorType(rng);
     const creatureType = pickCreatureType(rng);
+    // ✅ Determina behaviorType baseado na definição da criatura (não mais aleatório)
+    const behaviorType = getCreatureBehaviorType(creatureType);
     
     // ✅ Calcular nível e estrelas baseado no tier E no mapa
     const tierLevelRange = levelConfig[tier];
@@ -432,13 +225,26 @@ export function initializeWorldSpawns(
     const tierRankRange = rankConfig[tier];
     const rank = rng.between(tierRankRange.min, tierRankRange.max);
     
-    // ✅ IA #9: Calcular HP baseado em tipo + nível + estrelas ao invés de tier direto
+    // ✅ Calcular TODOS os stats baseados em tipo + nível + estrelas ao invés de tier direto
     const effectiveStats = getEffectiveStatsForWildCreature(creatureType, level, rank);
     const maxHp = effectiveStats.hp;
 
     const creature = createCreature(creatureType, x, y, tier, behaviorType, maxHp);
     // Garantir que o nível está definido (já é definido em createCreature, mas garantimos)
     creature.level = level;
+    // ✅ Armazenar TODOS os stats calculados para uso na IA (incluindo valores de IA)
+    creature.effectiveStats = {
+      moveSpeed: effectiveStats.moveSpeed,
+      defense: effectiveStats.defense,
+      attackDamage: effectiveStats.attackDamage,
+      detectionRange: effectiveStats.detectionRange,
+      attackRange: effectiveStats.attackRange,
+      attackCooldown: effectiveStats.attackCooldown,
+      attackWindup: effectiveStats.attackWindup,
+      stunDuration: effectiveStats.stunDuration,
+      preferredDistance: effectiveStats.preferredDistance,
+      projectileSpeed: effectiveStats.projectileSpeed
+    };
     worldState.creatures.push(creature);
   }
 
@@ -515,8 +321,9 @@ export function respawnCreature(
   const levelConfig = getMapLevelConfig(mapConfig.id);
   const rankConfig = getMapRankConfig(mapConfig.id);
   
-  const behaviorType = pickBehaviorType(random);
   const creatureType = pickCreatureType(random);
+  // ✅ Determina behaviorType baseado na definição da criatura (não mais aleatório)
+  const behaviorType = getCreatureBehaviorType(creatureType);
   
   // ✅ Calcular nível e estrelas baseado no tier E no mapa
   const tierLevelRange = levelConfig[finalTier];
@@ -526,12 +333,25 @@ export function respawnCreature(
   const tierRankRange = rankConfig[finalTier];
   const rank = random.between(tierRankRange.min, tierRankRange.max);
   
-  // ✅ Calcular HP baseado em tipo + nível + estrelas ao invés de tier direto
+  // ✅ Calcular TODOS os stats baseados em tipo + nível + estrelas ao invés de tier direto
   const effectiveStats = getEffectiveStatsForWildCreature(creatureType, level, rank);
   const maxHp = effectiveStats.hp;
 
   const creature = createCreature(creatureType, x, y, finalTier, behaviorType, maxHp);
   creature.level = level;
+  // ✅ Armazenar TODOS os stats calculados para uso na IA (incluindo valores de IA)
+  creature.effectiveStats = {
+    moveSpeed: effectiveStats.moveSpeed,
+    defense: effectiveStats.defense,
+    attackDamage: effectiveStats.attackDamage,
+    detectionRange: effectiveStats.detectionRange,
+    attackRange: effectiveStats.attackRange,
+    attackCooldown: effectiveStats.attackCooldown,
+    attackWindup: effectiveStats.attackWindup,
+    stunDuration: effectiveStats.stunDuration,
+    preferredDistance: effectiveStats.preferredDistance,
+    projectileSpeed: effectiveStats.projectileSpeed
+  };
   return creature;
 }
 

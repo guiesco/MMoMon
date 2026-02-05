@@ -83,6 +83,8 @@ export interface AttackIntent extends Intent {
     targetId?: string;
     creatureId?: string;
     attackType?: "basic" | "special";
+    creatureLevel?: number;
+    creatureRank?: number;
   };
 }
 
@@ -117,6 +119,8 @@ export interface SkillIntent extends Intent {
     targetX: number;
     targetY: number;
     creatureId?: string;
+    creatureLevel?: number;
+    creatureRank?: number;
   };
 }
 
@@ -180,7 +184,9 @@ export interface GameLoopCallbacks {
     skillType: "fire_fog" | "root_trap" | "electric_surge" | "heal_wave",
     targetX: number,
     targetY: number,
-    creatureId?: string
+    creatureId?: string,
+    creatureLevel?: number,
+    creatureRank?: number
   ) => void;
 
   /**
@@ -592,7 +598,9 @@ export class GameLoop {
           intent.data.targetX as number,
           intent.data.targetY as number,
           Date.now(),
-          intent.data.creatureId // Passar creatureId para usar stats específicos
+          intent.data.creatureId as string | undefined,
+          intent.data.creatureLevel as number | undefined,
+          intent.data.creatureRank as number | undefined
         );
 
         // Enviar confirmação imediata ao cliente
@@ -647,7 +655,10 @@ export class GameLoop {
           intent.data.skillType as string,
           intent.data.targetX as number,
           intent.data.targetY as number,
-          Date.now()
+          Date.now(),
+          intent.data.creatureId as string | undefined,
+          intent.data.creatureLevel as number | undefined,
+          intent.data.creatureRank as number | undefined
         );
 
         if (skillResult.success && this.callbacks.onSkillZoneCreated) {
@@ -674,7 +685,9 @@ export class GameLoop {
             intent.data.skillType as "fire_fog" | "root_trap" | "electric_surge" | "heal_wave",
             intent.data.targetX as number,
             intent.data.targetY as number,
-            intent.data.creatureId as string | undefined
+            intent.data.creatureId as string | undefined,
+            intent.data.creatureLevel as number | undefined,
+            intent.data.creatureRank as number | undefined
           );
           this.debugLog(`Skill ${intent.data.skillType} usada por ${intent.playerId}`);
         }

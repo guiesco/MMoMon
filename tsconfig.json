@@ -11,8 +11,12 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "../../shared/*": ["shared/*"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "shared"]
 }
 

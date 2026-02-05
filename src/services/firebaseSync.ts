@@ -313,14 +313,6 @@ export async function craftItemsBatch(
   }
 }
 
-/**
- * Sincroniza o estado completo do jogador com o servidor (DEPRECATED)
- * Mantido apenas para compatibilidade - usar fetchPlayerDataFromServer() para leitura
- */
-export async function syncPlayerStateToServer(): Promise<boolean> {
-  // Redirecionar para fetchPlayerDataFromServer (apenas leitura)
-  return fetchPlayerDataFromServer();
-}
 
 /**
  * Salva a mochila (preparedExpeditionInventory) no servidor
@@ -437,5 +429,5 @@ export async function setSelectedMapIdOnServer(
  * Todas as operações de expedição são agora gerenciadas pelo servidor.
  * O servidor salva automaticamente recompensas quando extração completa.
  * 
- * Mantido apenas: syncPlayerStateToServer() para crafting/loadout/equipe.
+ * Usar endpoints específicos para operações específicas.
  */
