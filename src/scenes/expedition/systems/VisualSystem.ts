@@ -1,7 +1,6 @@
 import { ENEMY_VISUAL_CONFIG } from "../../../game/constants";
 import type { RemoteCreatureSprite } from "../types/ExpeditionTypes";
 import type { CreatureTheme } from "../../../game/creatureThemes";
-import type { Phaser } from "phaser";
 
 /**
  * Gerencia visuais de feedback de criaturas (aggro, attack tells, etc).
@@ -18,6 +17,15 @@ export class VisualSystem {
   private activeHp = 0;
   private activeMaxHp = 0;
   private activeTheme: CreatureTheme | null = null;
+  private windupIndicator: Phaser.GameObjects.Arc | null = null; // ✅ Indicador visual de windup de ataque
+  private skillWindupIndicator: Phaser.GameObjects.Arc | null = null; // ✅ Indicador visual de windup de skill
+  private combatSystem: { 
+    isInWindup: () => boolean; 
+    getWindupTime: () => number;
+    isInSkillWindup: (skillSystem: any) => boolean;
+    getSkillWindupTime: (skillSystem: any) => number;
+  } | null = null; // ✅ Referência para verificar windup
+  private skillSystem: { isInSkillWindup: () => boolean; getSkillWindupTime: () => number } | null = null; // ✅ Referência para skill system
 
   constructor(
     scene: Phaser.Scene,
@@ -49,6 +57,108 @@ export class VisualSystem {
     this.activeTheme = activeTheme;
     this.damageTakenRecently = damageTakenRecently;
     this.damageTakenDecayTimer = damageTakenDecayTimer;
+  }
+  
+  /**
+   * ✅ Define referência ao CombatSystem para verificar windup.
+   */
+  setCombatSystem(combatSystem: { 
+    isInWindup: () => boolean; 
+    getWindupTime: () => number;
+    isInSkillWindup: (skillSystem: any) => boolean;
+    getSkillWindupTime: (skillSystem: any) => number;
+  } | null): void {
+    this.combatSystem = combatSystem;
+  }
+  
+  /**
+   * ✅ Define referência ao SkillSystem para verificar windup de skill.
+   */
+  setSkillSystem(skillSystem: { isInSkillWindup: () => boolean; getSkillWindupTime: () => number } | null): void {
+    this.skillSystem = skillSystem;
+  }
+  
+  /**
+   * ✅ Atualiza o indicador visual de windup do jogador (ataque e skill).
+   */
+  updatePlayerWindupVisual(): void {
+    if (!this.combatSystem || !this.player) return;
+    
+    // Windup de ataque
+    const isInWindup = this.combatSystem.isInWindup();
+    const windupProgress = this.combatSystem.getWindupTime();
+    
+    if (isInWindup && windupProgress > 0) {
+      // Criar ou atualizar indicador de windup de ataque
+      if (!this.windupIndicator) {
+        this.windupIndicator = this.scene.add.circle(
+          this.player.x,
+          this.player.y,
+          this.player.body.radius + 8,
+          0xffff00, // Amarelo para indicar preparação
+          0.3
+        );
+        this.windupIndicator.setStrokeStyle(2, 0xffd700, 0.8);
+        this.windupIndicator.setDepth(-1);
+      }
+      
+      // Atualizar posição e animação
+      this.windupIndicator.setPosition(this.player.x, this.player.y);
+      this.windupIndicator.setVisible(true);
+      
+      // Pulsar durante windup
+      const pulse = 0.5 + Math.sin(this.expeditionTime * 20) * 0.3;
+      this.windupIndicator.setAlpha(pulse);
+      
+      // Mostrar progresso do windup (círculo que preenche)
+      const maxWindup = 0.4; // Valor máximo de windup (ajustar conforme necessário)
+      const progress = 1 - (windupProgress / maxWindup);
+      const scale = 0.8 + progress * 0.4;
+      this.windupIndicator.setScale(scale);
+    } else {
+      // Esconder indicador quando não está em windup
+      if (this.windupIndicator) {
+        this.windupIndicator.setVisible(false);
+      }
+    }
+    
+    // ✅ Windup de skill
+    const isInSkillWindup = this.combatSystem.isInSkillWindup(this.skillSystem);
+    const skillWindupProgress = this.combatSystem.getSkillWindupTime(this.skillSystem);
+    
+    if (isInSkillWindup && skillWindupProgress > 0) {
+      // Criar ou atualizar indicador de windup de skill
+      if (!this.skillWindupIndicator) {
+        this.skillWindupIndicator = this.scene.add.circle(
+          this.player.x,
+          this.player.y,
+          this.player.body.radius + 12,
+          0xff00ff, // Magenta para indicar preparação de skill
+          0.4
+        );
+        this.skillWindupIndicator.setStrokeStyle(3, 0xff00ff, 0.9);
+        this.skillWindupIndicator.setDepth(-1);
+      }
+      
+      // Atualizar posição e animação
+      this.skillWindupIndicator.setPosition(this.player.x, this.player.y);
+      this.skillWindupIndicator.setVisible(true);
+      
+      // Pulsar durante windup de skill (mais intenso)
+      const pulse = 0.4 + Math.sin(this.expeditionTime * 25) * 0.4;
+      this.skillWindupIndicator.setAlpha(pulse);
+      
+      // Mostrar progresso do windup
+      const maxSkillWindup = 0.5;
+      const progress = 1 - (skillWindupProgress / maxSkillWindup);
+      const scale = 0.7 + progress * 0.5;
+      this.skillWindupIndicator.setScale(scale);
+    } else {
+      // Esconder indicador quando não está em windup de skill
+      if (this.skillWindupIndicator) {
+        this.skillWindupIndicator.setVisible(false);
+      }
+    }
   }
 
   /**
@@ -89,14 +199,47 @@ export class VisualSystem {
           ENEMY_VISUAL_CONFIG.attackTellColor,
           ENEMY_VISUAL_CONFIG.attackTellAlpha
         );
-        wc.attackTellIndicator.setDepth(-1);
+        if (wc.attackTellIndicator) {
+          wc.attackTellIndicator.setDepth(-1);
+        }
       }
-      wc.attackTellIndicator.setPosition(wc.sprite.x, wc.sprite.y);
-      wc.attackTellIndicator.setVisible(true);
-      const flashIntensity = Math.sin(this.expeditionTime * 25) * 0.3 + 0.5;
-      wc.attackTellIndicator.setAlpha(flashIntensity);
+      if (wc.attackTellIndicator) {
+        wc.attackTellIndicator.setPosition(wc.sprite.x, wc.sprite.y);
+        wc.attackTellIndicator.setVisible(true);
+        const flashIntensity = Math.sin(this.expeditionTime * 25) * 0.3 + 0.5;
+        wc.attackTellIndicator.setAlpha(flashIntensity);
+      }
     } else if (wc.attackTellIndicator) {
       wc.attackTellIndicator.setVisible(false);
+    }
+    
+    // ✅ Tell de skill (flash colorido antes da skill)
+    if (wc.skillWindupTimer && wc.skillWindupTimer > 0) {
+      if (!wc.skillTellIndicator) {
+        wc.skillTellIndicator = this.scene.add.circle(
+          wc.sprite.x,
+          wc.sprite.y,
+          wc.sprite.radius + 8,
+          0xff00ff, // Magenta para skill
+          0.5
+        );
+        if (wc.skillTellIndicator) {
+          wc.skillTellIndicator.setStrokeStyle(3, 0xff00ff, 0.9);
+          wc.skillTellIndicator.setDepth(-1);
+        }
+      }
+      if (wc.skillTellIndicator) {
+        wc.skillTellIndicator.setPosition(wc.sprite.x, wc.sprite.y);
+        wc.skillTellIndicator.setVisible(true);
+        const flashIntensity = 0.3 + Math.sin(this.expeditionTime * 30) * 0.5;
+        wc.skillTellIndicator.setAlpha(flashIntensity);
+        
+        // Pulsar mais intenso para skills
+        const pulse = 0.8 + Math.sin(this.expeditionTime * 30) * 0.3;
+        wc.skillTellIndicator.setScale(pulse);
+      }
+    } else if (wc.skillTellIndicator) {
+      wc.skillTellIndicator.setVisible(false);
     }
     
     // Detecta execução de ataque melee em multiplayer

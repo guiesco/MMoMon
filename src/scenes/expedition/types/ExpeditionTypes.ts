@@ -22,6 +22,9 @@ export type ExpeditionState =
 export interface Projectile {
   sprite: Phaser.GameObjects.Arc;
   lifetime: number;
+  // ✅ Adicionar velocidade para atualização manual (sincronização com servidor)
+  velocityX?: number;
+  velocityY?: number;
 }
 
 /**
@@ -183,11 +186,13 @@ export interface RemoteCreatureSprite {
   aiConfig: EnemyBehaviorConfig;
   attackCooldownRemaining: number;
   windupTimer: number;
+  skillWindupTimer?: number; // ✅ Windup de skill de criaturas
   stunTimer: number;
   
   // Visuais de IA
   aggroIndicator: Phaser.GameObjects.Arc | null;
   attackTellIndicator?: Phaser.GameObjects.Arc;
+  skillTellIndicator?: Phaser.GameObjects.Arc; // ✅ Indicador visual de windup de skill
   
   // Patrulha
   patrolOrigin: { x: number; y: number };

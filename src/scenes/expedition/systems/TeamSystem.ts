@@ -1,5 +1,6 @@
 import { PlayerState as LocalPlayerState } from "../../../game/playerState";
 import { getCreatureById } from "../../../../shared/creatures";
+import { getSpecialSkillByCreatureId } from "../../../../shared/attacks";
 import { getCreatureTheme, type CreatureTheme } from "../../../game/creatureThemes";
 import { getEffectiveStats } from "../../../game/creatureProgression";
 import type { CreatureDefinition } from "../../../game/types";
@@ -101,7 +102,16 @@ export class TeamSystem {
     this.speed = effectiveStats.moveSpeed;
     this.basicAttackCooldownTime = effectiveStats.attackCooldown;
     this.specialSkillCooldownTime = effectiveStats.specialSkillCooldown;
-    this.activeSpecialSkillName = def.specialSkill.name;
+    
+    // ✅ Usar shared/attacks para obter skill consistentemente
+    const specialSkill = getSpecialSkillByCreatureId(def.id);
+    if (specialSkill) {
+      this.activeSpecialSkillName = specialSkill.name;
+    } else {
+      // Fallback para def.specialSkill se getSpecialSkillByCreatureId não encontrar
+      this.activeSpecialSkillName = def.specialSkill?.name ?? "Habilidade Especial";
+      console.warn(`[TeamSystem] Skill não encontrada no shared para ${def.id}, usando fallback`);
+    }
 
     // Mapeia a definição para um tipo de habilidade concreta
     let skillKind: SpecialSkillKind | null = null;
@@ -124,7 +134,6 @@ export class TeamSystem {
     }
 
     this.activeSpecialSkillKind = skillKind;
-    this.activeSpecialSkillName = def.specialSkill.name;
 
     // Atualiza o SkillSystem com a skill ativa
     const creatureTheme = getCreatureTheme(def.id);
@@ -264,6 +273,22 @@ export class TeamSystem {
   // Setters para dependências
   setSkillSystem(skillSystem: SkillSystem | null): void {
     this.skillSystem = skillSystem;
+    // ✅ Se já houver uma criatura ativa, atualizar o SkillSystem imediatamente
+    if (skillSystem && this.activeCreatureDef && this.activeSpecialSkillKind !== null) {
+      const progress = LocalPlayerState.getProgress();
+      const owned = this.activeCreatureInstanceId
+        ? progress.creatures.find((c) => c.instanceId === this.activeCreatureInstanceId)
+        : null;
+      const effectiveStats = owned ? getEffectiveStats(owned) : null;
+      const creatureTheme = getCreatureTheme(this.activeCreatureDef.id);
+      skillSystem.setActiveSkill(
+        this.activeSpecialSkillKind,
+        this.activeSpecialSkillName,
+        effectiveStats?.specialSkillCooldown ?? this.specialSkillCooldownTime,
+        this.activeCreatureDef,
+        creatureTheme
+      );
+    }
   }
 
   setHpBarManager(hpBarManager: HPBarManager | null): void {

@@ -17,6 +17,7 @@ import {
   updateProjectiles,
   updateCreatureAI,
   applyContactDamage,
+  updatePlayerWindups,
   DamageResult,
   AIAttackResult
 } from "./systems/combat";
@@ -33,6 +34,7 @@ import {
 import {
   processSkillIntent,
   updateSkillZones,
+  updatePlayerSkillWindups,
   SkillRoomState,
   SkillPlayer,
   SkillResult,
@@ -422,6 +424,8 @@ export class GameLoop {
       maxHp,
       lastAttackTime: 0,
       isDead: false,
+      windupTimer: 0, // ✅ Inicializar windup timer
+      skillWindupTimer: 0, // ✅ Inicializar skill windup timer
       expeditionInventory: new Map(),
       lastSkillTime: 0
     };
@@ -803,6 +807,47 @@ export class GameLoop {
     for (const creature of this.combatState.creatures) {
       const buffEffects = updateCreatureBuffs(creature, deltaSeconds);
       // TODO: Broadcast efeitos de poison/regen se houver
+    }
+
+    // ✅ 0.5: Atualizar windup de jogadores e executar ataques quando windup termina
+    const windupAttackResults = updatePlayerWindups(this.combatState, deltaSeconds);
+    // Processar resultados de ataques que foram executados após windup
+    if (windupAttackResults.length > 0 && this.callbacks.onAttackAccepted) {
+      for (const result of windupAttackResults) {
+        if (result.success) {
+          this.callbacks.onAttackAccepted(
+            result.attackerId!,
+            result.targetX ?? 0,
+            result.targetY ?? 0,
+            true,
+            result.projectileId
+          );
+        }
+      }
+    }
+
+    // ✅ 0.6: Atualizar windup de skills de jogadores e executar skills quando windup termina
+    const windupSkillResults = updatePlayerSkillWindups(
+      this.combatState as unknown as SkillRoomState,
+      deltaSeconds
+    );
+    // Processar resultados de skills que foram executadas após windup
+    if (windupSkillResults.length > 0 && this.callbacks.onSkillZoneCreated) {
+      for (const result of windupSkillResults) {
+        if (result.success && result.skillZoneId) {
+          // Encontrar a skill zone criada
+          const skillZone = this.combatState.skillZones.find(z => z.id === result.skillZoneId);
+          if (skillZone) {
+            this.callbacks.onSkillZoneCreated(
+              skillZone.ownerId,
+              skillZone.id,
+              result.skillType!,
+              skillZone.x,
+              skillZone.y
+            );
+          }
+        }
+      }
     }
 
     // 1. Atualizar projéteis e detectar colisões

@@ -3,6 +3,7 @@ import { getCreatureTheme, type CreatureTheme } from "../../../game/creatureThem
 import type { SpecialSkillKind, SkillZone, RemoteCreatureSprite } from "../types/ExpeditionTypes";
 import type { MultiplayerClient } from "../../../services/multiplayerClient";
 import { PlayerState as LocalPlayerState } from "../../../game/playerState";
+import { getEffectiveStats } from "../../../game/creatureProgression";
 
 /**
  * Gerencia habilidades especiais das criaturas.
@@ -11,6 +12,8 @@ export class SkillSystem {
   private scene: Phaser.Scene;
   private specialSkillCooldown = 0;
   private specialSkillCooldownTime = 0;
+  private specialSkillWindup = 0; // ✅ Windup de skill
+  private pendingSkill: { targetX: number; targetY: number } | null = null; // ✅ Skill pendente durante windup
   private activeSpecialSkillKind: SpecialSkillKind | null = null;
   private activeSpecialSkillName = "Habilidade Especial";
   private activeCreatureTheme: any = null;
@@ -61,12 +64,37 @@ export class SkillSystem {
   }
 
   /**
-   * Atualiza o cooldown da habilidade.
+   * Atualiza o cooldown e windup da habilidade.
    */
   update(dt: number): void {
     if (this.specialSkillCooldown > 0) {
       this.specialSkillCooldown = Math.max(0, this.specialSkillCooldown - dt);
     }
+    
+    // ✅ Atualizar windup de skill
+    if (this.specialSkillWindup > 0) {
+      this.specialSkillWindup = Math.max(0, this.specialSkillWindup - dt);
+      
+      // Se windup terminou, a skill já foi executada pelo servidor
+      // (em multiplayer, o servidor é autoritativo)
+      if (this.specialSkillWindup <= 0) {
+        this.pendingSkill = null;
+      }
+    }
+  }
+  
+  /**
+   * ✅ Verifica se está em windup de skill.
+   */
+  isInSkillWindup(): boolean {
+    return this.specialSkillWindup > 0;
+  }
+  
+  /**
+   * ✅ Retorna o tempo restante de windup de skill.
+   */
+  getSkillWindupTime(): number {
+    return this.specialSkillWindup;
   }
 
   /**
@@ -114,6 +142,23 @@ export class SkillSystem {
         : null;
       const creatureLevel = owned?.level ?? 1;
       const creatureRank = owned?.rank ?? 1;
+      
+      // ✅ Obter windup time da special skill (escalado)
+      let skillWindupTime = 0.5; // Default
+      if (owned) {
+        const effectiveStats = getEffectiveStats(owned);
+        skillWindupTime = effectiveStats.specialSkillWindup;
+      } else {
+        const specialSkill = this.activeCreatureDef?.specialSkill;
+        skillWindupTime = specialSkill?.attackWindup ?? 0.5;
+      }
+      
+      // ✅ Iniciar windup local (sincronizado com servidor)
+      if (skillWindupTime > 0) {
+        this.specialSkillWindup = skillWindupTime;
+        this.pendingSkill = { targetX, targetY };
+      }
+      
       this.mpClient.sendSkill(skillType, targetX, targetY, creatureId, creatureLevel, creatureRank);
       
       // Feedback visual imediato (predição local)

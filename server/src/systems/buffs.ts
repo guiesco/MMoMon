@@ -335,6 +335,14 @@ export function getCreatureSpeedMultiplier(creature: ServerCreature): number {
  * Verifica se um jogador pode se mover (não está stunned/frozen).
  */
 export function canPlayerMove(player: CombatPlayer): boolean {
+  // ✅ Bloquear movimento durante windup de ataque
+  if (player.windupTimer > 0) {
+    return false;
+  }
+  // ✅ Bloquear movimento durante windup de skill
+  if (player.skillWindupTimer && player.skillWindupTimer > 0) {
+    return false;
+  }
   return !playerHasBuff(player, 'stun') && !playerHasBuff(player, 'freeze');
 }
 
@@ -342,6 +350,10 @@ export function canPlayerMove(player: CombatPlayer): boolean {
  * Verifica se um jogador pode atacar (não está stunned).
  */
 export function canPlayerAttack(player: CombatPlayer): boolean {
+  // ✅ Bloquear ataque durante windup
+  if (player.windupTimer > 0) {
+    return false;
+  }
   return !playerHasBuff(player, 'stun');
 }
 
@@ -349,6 +361,14 @@ export function canPlayerAttack(player: CombatPlayer): boolean {
  * Verifica se uma criatura pode se mover.
  */
 export function canCreatureMove(creature: ServerCreature): boolean {
+  // ✅ Bloquear movimento durante windup de ataque
+  if (creature.windupTimer > 0) {
+    return false;
+  }
+  // ✅ Bloquear movimento durante windup de skill
+  if (creature.skillWindupTimer && creature.skillWindupTimer > 0) {
+    return false;
+  }
   return !creatureHasBuff(creature, 'stun') && !creatureHasBuff(creature, 'freeze');
 }
 

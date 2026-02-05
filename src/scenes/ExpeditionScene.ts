@@ -425,6 +425,7 @@ export class ExpeditionScene extends Phaser.Scene {
     // Inicializar VisualSystem
     this.visualSystem = new VisualSystem(this, this.player);
     this.visualSystem.setDangerRing(this.dangerRing);
+    // ✅ Conectar skillSystem ao visualSystem (será feito depois que skillSystem for criado)
     
     // Arquitetura multiplayer-first: servidor sempre inicializa o mundo
     // Não faz spawn local - aguarda sincronização do servidor
@@ -444,6 +445,7 @@ export class ExpeditionScene extends Phaser.Scene {
       this.state,
       this.mpClient
     );
+    
     
     // SkillZoneManager (precisa ser inicializado antes do SkillSystem)
     this.skillZoneManager = new SkillZoneManager(this, {
@@ -579,6 +581,10 @@ export class ExpeditionScene extends Phaser.Scene {
     );
     this.combatSystem.setCooldownTime(this.teamSystem.attackCooldownTime);
     
+    // ✅ Conectar MovementSystem ao CombatSystem para bloquear movimento durante windup
+    this.movementSystem.setCombatSystem(this.combatSystem);
+    this.movementSystem.setSkillSystem(this.skillSystem); // ✅ Conectar skillSystem para bloquear movimento durante windup de skill
+    
     // Inicializar InteractionSystem
     this.interactionSystem = new InteractionSystem(
       this,
@@ -604,6 +610,7 @@ export class ExpeditionScene extends Phaser.Scene {
       extractionSystem: this.extractionSystem,
       progressionSystem: this.progressionSystem,
       visualSystem: this.visualSystem,
+      projectileManager: this.projectileManager,
       player: this.player,
       scene: this,
       setState: (state) => { this.state = state; },
@@ -680,7 +687,8 @@ export class ExpeditionScene extends Phaser.Scene {
         // Atualizar MultiplayerHandlers com clientId e mpClient
         this.multiplayerHandlers.setDependencies({
           mpClient: this.mpClient,
-          clientId: this.clientId
+          clientId: this.clientId,
+          projectileManager: this.projectileManager
         });
         
         // Usar posição inicial fornecida pelo servidor
@@ -1072,6 +1080,9 @@ export class ExpeditionScene extends Phaser.Scene {
       this.damageTakenRecently,
       this.damageTakenDecayTimer
     );
+    
+    // ✅ Atualizar efeito visual de windup do jogador
+    this.visualSystem.updatePlayerWindupVisual();
     // Atualizar decay do dano recebido
     if (this.damageTakenDecayTimer > 0) {
       this.damageTakenDecayTimer -= dt;

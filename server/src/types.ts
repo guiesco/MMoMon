@@ -102,6 +102,16 @@ export interface ServerCreature {
   /** ✅ Último tempo que a criatura usou skill (timestamp em ms) */
   lastSkillTime: number;
   
+  /** ✅ Tempo restante do windup de skill (em segundos) - bloqueia movimento */
+  skillWindupTimer: number;
+  
+  /** ✅ Dados da skill pendente durante windup */
+  pendingSkill?: {
+    skillType: string;
+    targetX: number;
+    targetY: number;
+  };
+  
   /** ✅ Roaming: Destino atual de patrulha (null se não está patrulhando) */
   roamingTarget?: { x: number; y: number } | null;
 
@@ -244,6 +254,9 @@ export interface ServerSkillZone {
 
   /** Modificador de slow (0.0 a 1.0, onde 0.5 = 50% mais lento) */
   slowModifier?: number;
+  
+  /** ✅ Ataque do atacante (para calcular dano com defesa) */
+  attackerAttack?: number;
 }
 
 /**
@@ -264,6 +277,9 @@ export interface ServerProjectile {
   
   /** ✅ Tipo da criatura que disparou o projétil (para type effectiveness) */
   creatureType?: string;
+  
+  /** ✅ Ataque do atacante (para calcular dano com defesa) */
+  attackerAttack?: number;
 
   /** Posição X atual */
   x: number;
@@ -407,7 +423,8 @@ export function createCreature(
     targetPlayerId: null,
     level,
     skillCooldownRemaining: 0,
-    lastSkillTime: 0
+    lastSkillTime: 0,
+    skillWindupTimer: 0 // ✅ Inicializar windup de skill
   };
 }
 
@@ -497,11 +514,12 @@ export function createExtractionPoint(
  * @param lifetime - Tempo de vida em segundos
  * @param maxDistance - Distância máxima em pixels (opcional, padrão: infinito)
  * @param creatureType - Tipo da criatura que disparou (opcional, para type effectiveness)
+ * @param attackerAttack - Ataque do atacante (opcional, para calcular dano com defesa)
  * @returns Nova instância de ServerProjectile
  * 
  * @example
  * ```ts
- * const playerShot = createProjectile("player-1", true, 100, 200, 300, 0, 10, 2.0, 220, "pyrognat");
+ * const playerShot = createProjectile("player-1", true, 100, 200, 300, 0, 10, 2.0, 220, "pyrognat", 50);
  * const enemyShot = createProjectile("wild-5", false, 400, 300, -200, 100, 5, 1.5);
  * ```
  */
@@ -515,13 +533,15 @@ export function createProjectile(
   damage: number,
   lifetime: number,
   maxDistance: number = Infinity,
-  creatureType?: string
+  creatureType?: string,
+  attackerAttack?: number
 ): ServerProjectile {
   return {
     id: generateId("proj"),
     ownerId,
     isPlayerProjectile,
     creatureType,
+    attackerAttack,
     x,
     y,
     startX: x,
@@ -546,11 +566,12 @@ export function createProjectile(
  * @param tickInterval - Intervalo entre ticks
  * @param lifetime - Tempo de vida total
  * @param slowModifier - Modificador de slow (opcional)
+ * @param attackerAttack - Ataque do atacante (opcional, para calcular dano com defesa)
  * @returns Nova instância de ServerSkillZone
  * 
  * @example
  * ```ts
- * const fireFog = createSkillZone("player-1", "fire_fog", 300, 200, 70, 8, 0.5, 4);
+ * const fireFog = createSkillZone("player-1", "fire_fog", 300, 200, 70, 8, 0.5, 4, undefined, 50);
  * ```
  */
 export function createSkillZone(
@@ -562,7 +583,8 @@ export function createSkillZone(
   damagePerTick: number,
   tickInterval: number,
   lifetime: number,
-  slowModifier?: number
+  slowModifier?: number,
+  attackerAttack?: number
 ): ServerSkillZone {
   return {
     id: generateId("skill-zone"),
@@ -575,7 +597,8 @@ export function createSkillZone(
     tickInterval,
     tickTimer: 0, // Primeiro tick imediato
     lifetime,
-    slowModifier
+    slowModifier,
+    attackerAttack
   };
 }
 

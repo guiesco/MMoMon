@@ -252,6 +252,7 @@ function broadcastGameStateUpdates(room: Room): void {
         behaviorType: c.behaviorType,
         attackCooldownRemaining: c.attackCooldownRemaining,
         windupTimer: c.windupTimer,
+        skillWindupTimer: c.skillWindupTimer, // ✅ Windup de skill
         stunTimer: c.stunTimer,
         patrolOriginX: c.patrolOrigin.x,
         patrolOriginY: c.patrolOrigin.y,

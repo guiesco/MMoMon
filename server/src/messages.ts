@@ -93,6 +93,10 @@ export interface PlayerPresence {
     duration: number;
     value?: number;
   }>;
+  
+  // ✅ Windup timers para sincronização visual
+  windupTimer?: number;
+  skillWindupTimer?: number;
 }
 
 /** Representação de uma criatura selvagem */
@@ -111,6 +115,7 @@ export interface WildCreatureState {
   behaviorType?: "melee" | "ranged";
   attackCooldownRemaining?: number;
   windupTimer?: number;
+  skillWindupTimer?: number; // ✅ Windup de skill de criaturas
   stunTimer?: number;
   patrolOriginX?: number;
   patrolOriginY?: number;

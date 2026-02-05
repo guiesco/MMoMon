@@ -69,17 +69,33 @@ export class CombatSystem {
     const effectiveStats = owned ? getEffectiveStats(owned) : null;
     const windupTime = effectiveStats?.attackWindup ?? def.basicAttack.attackWindup ?? 0.4;
 
-    // Se há windup, iniciar o timer e armazenar o alvo
+    // ✅ WINDUP SINCRONIZADO: Em multiplayer, iniciar windup e aguardar resposta do servidor
+    // O servidor também processa windup, então ambos devem estar sincronizados
+    if (this.mpClient) {
+      const creatureId = def.id;
+      const creatureLevel = owned?.level ?? 1;
+      const creatureRank = owned?.rank ?? 1;
+      
+      // Enviar intent ao servidor (servidor iniciará windup)
+      this.mpClient.sendAttack(targetX, targetY, creatureId, "basic", creatureLevel, creatureRank);
+      
+      // ✅ Iniciar windup local (sincronizado com servidor)
+      if (windupTime > 0) {
+        this.basicAttackWindup = windupTime;
+        this.pendingAttack = { targetX, targetY };
+        // Não criar projétil ainda - aguardar windup terminar
+      } else {
+        // Se não há windup, criar projétil imediatamente (predição local)
+        this.executeBasicAttack(targetX, targetY);
+      }
+      
+      return true;
+    }
+    
+    // Comportamento single-player: windup bloqueia o ataque
     if (windupTime > 0) {
       this.basicAttackWindup = windupTime;
       this.pendingAttack = { targetX, targetY };
-      // Em modo multiplayer, enviar intent imediatamente (servidor gerencia windup)
-      if (this.mpClient) {
-        const creatureId = def.id;
-        const creatureLevel = owned?.level ?? 1;
-        const creatureRank = owned?.rank ?? 1;
-        this.mpClient.sendAttack(targetX, targetY, creatureId, "basic", creatureLevel, creatureRank);
-      }
       return true;
     }
 
@@ -134,6 +150,10 @@ export class CombatSystem {
         const projectileRadius = theme?.projectileRadius ?? 4;
         const speed = projectileSpeed;
         
+        // ✅ Calcular velocidade em pixels por segundo (igual ao servidor)
+        const velocityX = Math.cos(angle) * speed;
+        const velocityY = Math.sin(angle) * speed;
+        
         const sprite = this.scene.add.circle(
           this.player.x,
           this.player.y,
@@ -141,10 +161,11 @@ export class CombatSystem {
           projectileColor
         );
         sprite.setStrokeStyle(1, theme?.strokeColor ?? 0xea580c, 0.8);
-        this.scene.physics.add.existing(sprite);
-        const body = sprite.body as Phaser.Physics.Arcade.Body;
-        body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
-        body.setAllowGravity(false);
+        // ✅ NÃO usar physics body - atualizar manualmente para sincronização
+        // this.scene.physics.add.existing(sprite);
+        // const body = sprite.body as Phaser.Physics.Arcade.Body;
+        // body.setVelocity(velocityX, velocityY);
+        // body.setAllowGravity(false);
 
         this.createMuzzleFlash(this.player.x, this.player.y, angle, theme);
 
@@ -154,7 +175,9 @@ export class CombatSystem {
 
         this.projectileManager.addProjectile({
           sprite,
-          lifetime
+          lifetime,
+          velocityX, // ✅ Armazenar velocidade para atualização manual
+          velocityY
         });
       }
       
@@ -198,6 +221,10 @@ export class CombatSystem {
       const projectileRadius = theme?.projectileRadius ?? 4;
       const speed = projectileSpeed;
       
+      // ✅ Calcular velocidade em pixels por segundo (igual ao servidor)
+      const velocityX = Math.cos(angle) * speed;
+      const velocityY = Math.sin(angle) * speed;
+      
       const sprite = this.scene.add.circle(
         this.player.x,
         this.player.y,
@@ -205,10 +232,11 @@ export class CombatSystem {
         projectileColor
       );
       sprite.setStrokeStyle(1, theme?.strokeColor ?? 0xea580c, 0.8);
-      this.scene.physics.add.existing(sprite);
-      const body = sprite.body as Phaser.Physics.Arcade.Body;
-      body.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
-      body.setAllowGravity(false);
+      // ✅ NÃO usar physics body - atualizar manualmente para sincronização
+      // this.scene.physics.add.existing(sprite);
+      // const body = sprite.body as Phaser.Physics.Arcade.Body;
+      // body.setVelocity(velocityX, velocityY);
+      // body.setAllowGravity(false);
 
       this.createMuzzleFlash(this.player.x, this.player.y, angle, theme);
 
@@ -218,7 +246,9 @@ export class CombatSystem {
 
       this.projectileManager.addProjectile({
         sprite,
-        lifetime
+        lifetime,
+        velocityX, // ✅ Armazenar velocidade para atualização manual
+        velocityY
       });
       this.telemetry.projectilesFired += 1;
     }
@@ -282,12 +312,49 @@ export class CombatSystem {
     if (this.basicAttackWindup > 0) {
       this.basicAttackWindup = Math.max(0, this.basicAttackWindup - dt);
       
+      // ✅ Executar ataque após windup terminar
       if (this.basicAttackWindup <= 0 && this.pendingAttack) {
         const { targetX, targetY } = this.pendingAttack;
         this.pendingAttack = null;
-        this.executeBasicAttack(targetX, targetY);
+        
+        // Em multiplayer, o servidor já processou o ataque após windup
+        // Mas criamos o projétil visual localmente para predição
+        if (this.mpClient) {
+          this.executeBasicAttack(targetX, targetY);
+        } else {
+          // Single-player: executar ataque após windup
+          this.executeBasicAttack(targetX, targetY);
+        }
       }
     }
+  }
+  
+  /**
+   * ✅ Verifica se o jogador está em windup (bloqueia movimento).
+   */
+  isInWindup(): boolean {
+    return this.basicAttackWindup > 0;
+  }
+  
+  /**
+   * ✅ Retorna o tempo restante de windup (para efeito visual).
+   */
+  getWindupTime(): number {
+    return this.basicAttackWindup;
+  }
+  
+  /**
+   * ✅ Verifica se o jogador está em windup de skill (bloqueia movimento).
+   */
+  isInSkillWindup(skillSystem: { isInSkillWindup: () => boolean } | null): boolean {
+    return skillSystem?.isInSkillWindup() ?? false;
+  }
+  
+  /**
+   * ✅ Retorna o tempo restante de windup de skill (para efeito visual).
+   */
+  getSkillWindupTime(skillSystem: { getSkillWindupTime: () => number } | null): number {
+    return skillSystem?.getSkillWindupTime() ?? 0;
   }
 
   // Setters

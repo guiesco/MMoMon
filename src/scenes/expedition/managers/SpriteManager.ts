@@ -115,9 +115,11 @@ export class SpriteManager {
       aiConfig: creature.aiConfig,
       attackCooldownRemaining: creature.attackCooldownRemaining,
       windupTimer: creature.windupTimer,
+      skillWindupTimer: creature.skillWindupTimer, // ✅ Windup de skill
       stunTimer: creature.stunTimer,
       aggroIndicator,
       attackTellIndicator: undefined,
+      skillTellIndicator: undefined, // ✅ Indicador de skill
       patrolOrigin: creature.patrolOrigin,
       patrolTimer: creature.patrolTimer,
       state: creature.state,
@@ -254,6 +256,7 @@ export class SpriteManager {
     // Atualiza timers de IA
     sprite.attackCooldownRemaining = state.attackCooldownRemaining;
     sprite.windupTimer = state.windupTimer;
+    sprite.skillWindupTimer = (state as any).skillWindupTimer ?? 0; // ✅ Windup de skill
     sprite.stunTimer = state.stunTimer;
     sprite.aiState = state.aiState;
     

@@ -111,7 +111,14 @@ export interface AttackResult {
   /** Se o ataque foi aceito e processado */
   success: boolean;
   /** Razão da falha (se aplicável) */
-  failReason?: "cooldown" | "invalid_position" | "dead";
+  failReason?: "cooldown" | "invalid_position" | "dead" | "windup_in_progress";
+  /** ✅ ID do atacante (para broadcast) */
+  attackerId?: string;
+  /** ✅ Coordenadas do alvo (para broadcast) */
+  targetX?: number;
+  targetY?: number;
+  /** ✅ Tempo de windup (se iniciou windup) */
+  windupTime?: number;
 }
 
 /**
@@ -143,6 +150,31 @@ export interface CombatPlayer {
   maxHp: number;
   lastAttackTime: number;
   isDead: boolean;
+  
+  /** ✅ Tempo restante do windup de ataque (em segundos) - bloqueia movimento e ataque */
+  windupTimer: number;
+  
+  /** ✅ Dados do ataque pendente durante windup */
+  pendingAttack?: {
+    targetX: number;
+    targetY: number;
+    creatureId?: string;
+    creatureLevel?: number;
+    creatureRank?: number;
+  };
+  
+  /** ✅ Tempo restante do windup de skill (em segundos) - bloqueia movimento */
+  skillWindupTimer: number;
+  
+  /** ✅ Dados da skill pendente durante windup */
+  pendingSkill?: {
+    skillType: string;
+    targetX: number;
+    targetY: number;
+    creatureId?: string;
+    creatureLevel?: number;
+    creatureRank?: number;
+  };
   
   /** ✅ FASE 9: Buffs e debuffs ativos no jogador */
   buffs?: Array<{
@@ -240,30 +272,38 @@ export function processAttackIntent(
     };
   }
 
-  // Buscar stats da criatura ativa (ou usar valores padrão)
-  // Se level e rank foram fornecidos, usar valores de IA escalados
-  const creatureStats = creatureId 
-    ? getCreatureAttackStats(
-        creatureId, 
-        COMBAT_CONFIG.projectileSpeed,
-        creatureLevel,
-        creatureRank
-      ) ?? DEFAULT_ATTACK_STATS
-    : DEFAULT_ATTACK_STATS;
-
-  // Calcular stats efetivos para obter cooldown escalado
+  // ✅ Usar calculateEffectiveStats do shared para obter todos os valores escalados consistentemente
+  let effectiveStats: ReturnType<typeof calculateEffectiveStats> | null = null;
+  let creatureStats = DEFAULT_ATTACK_STATS;
   let effectiveAttackCooldown = 500; // Cooldown padrão em ms
+  
   if (creatureId && creatureLevel !== undefined && creatureRank !== undefined) {
-    const effectiveStats = calculateEffectiveStats(
+    // Calcular stats efetivos usando shared (inclui projectileSpeed, attackRange, etc)
+    effectiveStats = calculateEffectiveStats(
       { definitionId: creatureId, level: creatureLevel, rank: creatureRank },
       getCreatureById
     );
+    
+    // Usar valores do effectiveStats
+    const creatureDef = getCreatureById(creatureId);
+    if (creatureDef) {
+      creatureStats = {
+        damage: effectiveStats.attackDamage,
+        speed: effectiveStats.projectileSpeed, // ✅ Usar projectileSpeed do effectiveStats
+        range: effectiveStats.attackRange, // ✅ Usar attackRange do effectiveStats
+        isProjectile: creatureDef.basicAttack.isProjectile
+      };
+    }
     // Converter cooldown de segundos para milissegundos
     effectiveAttackCooldown = effectiveStats.attackCooldown * 1000;
   } else if (creatureId) {
-    // Se não tiver level/rank, usar cooldown base do ataque
+    // Se não tiver level/rank, usar valores base
     const creatureDef = getCreatureById(creatureId);
     if (creatureDef) {
+      creatureStats = getCreatureAttackStats(
+        creatureId, 
+        COMBAT_CONFIG.projectileSpeed
+      ) ?? DEFAULT_ATTACK_STATS;
       effectiveAttackCooldown = creatureDef.basicAttack.cooldown * 1000;
     }
   }
@@ -274,6 +314,112 @@ export function processAttackIntent(
       success: false,
       failReason: "cooldown"
     };
+  }
+
+  // ✅ Validação: jogador não pode atacar se já está em windup
+  if (player.windupTimer > 0) {
+    return {
+      success: false,
+      failReason: "windup_in_progress"
+    };
+  }
+
+  // ✅ Obter windup time do effectiveStats (escalado)
+  const windupTime = effectiveStats?.attackWindup ?? 
+    (creatureId ? getCreatureById(creatureId)?.basicAttack.attackWindup ?? 0.4 : 0.4);
+
+  // ✅ Se há windup, iniciar timer e armazenar dados do ataque
+  if (windupTime > 0) {
+    player.windupTimer = windupTime;
+    player.pendingAttack = {
+      targetX,
+      targetY,
+      creatureId,
+      creatureLevel,
+      creatureRank
+    };
+    
+    return {
+      success: true,
+      projectileId: undefined, // Projétil será criado após windup
+      windupTime: windupTime, // Informar cliente sobre o windup
+      attackerId: playerId,
+      targetX,
+      targetY
+    };
+  }
+
+  // Se não há windup, processar ataque imediatamente
+  return processAttackExecution(
+    room,
+    playerId,
+    targetX,
+    targetY,
+    currentTime,
+    creatureId,
+    creatureLevel,
+    creatureRank,
+    effectiveStats,
+    creatureStats
+  );
+}
+
+/**
+ * ✅ Executa o ataque após windup terminar (ou imediatamente se windup = 0).
+ * Função separada para reutilização.
+ */
+function processAttackExecution(
+  room: CombatRoomState,
+  playerId: string,
+  targetX: number,
+  targetY: number,
+  currentTime: number,
+  creatureId?: string,
+  creatureLevel?: number,
+  creatureRank?: number,
+  effectiveStats?: ReturnType<typeof calculateEffectiveStats> | null,
+  creatureStats?: { damage: number; speed: number; range: number; isProjectile: boolean }
+): AttackResult {
+  const player = room.players.get(playerId);
+  if (!player) {
+    return {
+      success: false,
+      failReason: "player_not_found"
+    };
+  }
+
+  // Recalcular stats se não foram fornecidos
+  if (!creatureStats || !effectiveStats) {
+    let recalculatedStats: ReturnType<typeof calculateEffectiveStats> | null = null;
+    let recalculatedCreatureStats = DEFAULT_ATTACK_STATS;
+    
+    if (creatureId && creatureLevel !== undefined && creatureRank !== undefined) {
+      recalculatedStats = calculateEffectiveStats(
+        { definitionId: creatureId, level: creatureLevel, rank: creatureRank },
+        getCreatureById
+      );
+      
+      const creatureDef = getCreatureById(creatureId);
+      if (creatureDef) {
+        recalculatedCreatureStats = {
+          damage: recalculatedStats.attackDamage,
+          speed: recalculatedStats.projectileSpeed,
+          range: recalculatedStats.attackRange,
+          isProjectile: creatureDef.basicAttack.isProjectile
+        };
+      }
+    } else if (creatureId) {
+      const creatureDef = getCreatureById(creatureId);
+      if (creatureDef) {
+        recalculatedCreatureStats = getCreatureAttackStats(
+          creatureId, 
+          COMBAT_CONFIG.projectileSpeed
+        ) ?? DEFAULT_ATTACK_STATS;
+      }
+    }
+    
+    effectiveStats = recalculatedStats;
+    creatureStats = recalculatedCreatureStats;
   }
 
   // Verificar se é ataque melee
@@ -305,13 +451,15 @@ export function processAttackIntent(
           const typeMultiplier = creatureId 
             ? calculateTypeEffectiveness(creatureId, creature.creatureType)
             : 1.0;
-          const finalDamage = Math.floor(creatureStats.damage * typeMultiplier);
+          const baseDamage = Math.floor(creatureStats.damage * typeMultiplier);
           
-          // Aplicar dano
+          // Aplicar dano considerando defesa (se effectiveStats disponível)
+          const attackerAttack = effectiveStats?.attackDamage;
           const damageResult = applyDamageToCreature(
             creature,
-            finalDamage,
-            playerId
+            baseDamage,
+            playerId,
+            attackerAttack
           );
           hitCount++;
           
@@ -363,7 +511,8 @@ export function processAttackIntent(
     creatureStats.damage, // Dano baseado na criatura
     COMBAT_CONFIG.projectileLifetime,
     creatureStats.range, // Distância máxima baseada no alcance da criatura
-    creatureId // ✅ Tipo da criatura para type effectiveness
+    creatureId, // ✅ Tipo da criatura para type effectiveness
+    effectiveStats?.attackDamage // ✅ Ataque do atacante para calcular dano com defesa
   );
 
   room.projectiles.push(projectile);
@@ -385,6 +534,53 @@ export function processAttackIntent(
     success: true,
     projectileId: projectile.id
   };
+}
+
+/**
+ * ✅ Atualiza windup de todos os jogadores e executa ataques quando windup termina.
+ * Deve ser chamado a cada tick do game loop.
+ */
+export function updatePlayerWindups(
+  room: CombatRoomState,
+  deltaTime: number
+): AttackResult[] {
+  const attackResults: AttackResult[] = [];
+  
+  for (const [playerId, player] of room.players) {
+    if (player.windupTimer > 0) {
+      // Reduzir windup timer
+      player.windupTimer = Math.max(0, player.windupTimer - deltaTime);
+      
+      // Se windup terminou, executar ataque
+      if (player.windupTimer <= 0 && player.pendingAttack) {
+        const { targetX, targetY, creatureId, creatureLevel, creatureRank } = player.pendingAttack;
+        player.pendingAttack = undefined;
+        
+        // Executar ataque
+        const result = processAttackExecution(
+          room,
+          playerId,
+          targetX,
+          targetY,
+          Date.now(),
+          creatureId,
+          creatureLevel,
+          creatureRank
+        );
+        
+        // Adicionar informações do atacante para broadcast
+        result.attackerId = playerId;
+        result.targetX = targetX;
+        result.targetY = targetY;
+        
+        if (result.success) {
+          attackResults.push(result);
+        }
+      }
+    }
+  }
+  
+  return attackResults;
 }
 
 // ============================================================================
@@ -480,12 +676,15 @@ export function updateProjectiles(
           const typeMultiplier = proj.creatureType
             ? calculateTypeEffectiveness(proj.creatureType, creature.creatureType)
             : 1.0;
-          const finalDamage = Math.floor(proj.damage * typeMultiplier);
+          const baseDamage = Math.floor(proj.damage * typeMultiplier);
           
+          // Obter stats do atacante do projétil (se disponível)
+          const attackerAttack = proj.attackerAttack;
           const damageResult = applyDamageToCreature(
             creature,
-            finalDamage,
-            proj.ownerId
+            baseDamage,
+            proj.ownerId,
+            attackerAttack
           );
           damageResults.push(damageResult);
           
@@ -519,11 +718,14 @@ export function updateProjectiles(
             );
           }
           
+          // Obter stats do atacante do projétil (se disponível)
+          const attackerAttack = proj.attackerAttack;
           const damageResult = applyDamageToPlayer(
             playerId,
             player,
             proj.damage,
-            proj.ownerId
+            proj.ownerId,
+            attackerAttack
           );
           damageResults.push(damageResult);
           hit = true;
@@ -597,19 +799,42 @@ function checkProjectilePlayerCollision(
 // ============================================================================
 
 /**
+ * Calcula o dano final considerando ataque do atacante e defesa do defensor.
+ * Fórmula: damage * attackerAttack / defenderDefense
+ * 
+ * @param baseDamage - Dano base do ataque/skill
+ * @param attackerAttack - Ataque do atacante
+ * @param defenderDefense - Defesa do defensor
+ * @returns Dano final calculado
+ */
+function calculateDamageWithDefense(
+  baseDamage: number,
+  attackerAttack: number,
+  defenderDefense: number
+): number {
+  // Evitar divisão por zero e garantir valores mínimos
+  const safeDefense = Math.max(defenderDefense, 1);
+  const safeAttack = Math.max(attackerAttack, 1);
+  
+  // Fórmula: damage * attackerAttack / defenderDefense
+  return Math.max(1, Math.floor(baseDamage * safeAttack / safeDefense));
+}
+
+/**
  * Aplica dano a uma criatura.
  * 
  * Reduz HP da criatura e verifica morte.
  * Se a criatura morrer, marca para remoção (currentHp = 0).
  * 
  * @param creature - Criatura alvo
- * @param damage - Quantidade de dano a aplicar
+ * @param damage - Quantidade de dano base a aplicar
  * @param attackerId - ID do atacante (para telemetria/logs)
+ * @param attackerAttack - Ataque do atacante (opcional, para calcular dano com defesa)
  * @returns Resultado do dano aplicado
  * 
  * @example
  * ```ts
- * const result = applyDamageToCreature(creature, 20, "player-1");
+ * const result = applyDamageToCreature(creature, 20, "player-1", 50);
  * if (result.died) {
  *   console.log(`Criatura ${result.targetId} foi derrotada!`);
  *   // Spawnar recursos, XP, etc.
@@ -619,7 +844,8 @@ function checkProjectilePlayerCollision(
 export function applyDamageToCreature(
   creature: ServerCreature,
   damage: number,
-  attackerId: string
+  attackerId: string,
+  attackerAttack?: number
 ): DamageResult {
   // ✅ FASE 9: Verificar invulnerabilidade
   if (isCreatureInvulnerable(creature)) {
@@ -633,8 +859,18 @@ export function applyDamageToCreature(
     };
   }
   
+  // Calcular dano final considerando defesa se stats do atacante foram fornecidos
+  let finalDamage = damage;
+  if (attackerAttack !== undefined && creature.effectiveStats) {
+    finalDamage = calculateDamageWithDefense(
+      damage,
+      attackerAttack,
+      creature.effectiveStats.defense
+    );
+  }
+  
   const oldHp = creature.currentHp;
-  creature.currentHp = Math.max(0, creature.currentHp - damage);
+  creature.currentHp = Math.max(0, creature.currentHp - finalDamage);
 
   const died = creature.currentHp === 0 && oldHp > 0;
 
@@ -647,7 +883,7 @@ export function applyDamageToCreature(
   return {
     targetId: creature.id,
     attackerId,
-    damage,
+    damage: finalDamage,
     currentHp: creature.currentHp,
     maxHp: creature.maxHp,
     died
@@ -662,13 +898,15 @@ export function applyDamageToCreature(
  * 
  * @param playerId - ID do jogador
  * @param player - Dados do jogador
- * @param damage - Quantidade de dano a aplicar
+ * @param damage - Quantidade de dano base a aplicar
  * @param attackerId - ID do atacante (criatura ou outro jogador)
+ * @param attackerAttack - Ataque do atacante (opcional, para calcular dano com defesa)
+ * @param playerDefense - Defesa do jogador (opcional, se não fornecido usa player.defense)
  * @returns Resultado do dano aplicado
  * 
  * @example
  * ```ts
- * const result = applyDamageToPlayer("player-1", player, 15, "wild-3");
+ * const result = applyDamageToPlayer("player-1", player, 15, "wild-3", 50);
  * if (result.died) {
  *   console.log(`Jogador ${playerId} foi eliminado!`);
  *   // Broadcast PlayerDeathMessage
@@ -679,7 +917,9 @@ export function applyDamageToPlayer(
   playerId: string,
   player: CombatPlayer,
   damage: number,
-  attackerId: string
+  attackerId: string,
+  attackerAttack?: number,
+  playerDefense?: number
 ): DamageResult {
   // ✅ FASE 9: Verificar invulnerabilidade
   if (isPlayerInvulnerable(player)) {
@@ -693,8 +933,19 @@ export function applyDamageToPlayer(
     };
   }
   
+  // Calcular dano final considerando defesa se stats do atacante foram fornecidos
+  let finalDamage = damage;
+  if (attackerAttack !== undefined) {
+    const defenderDefense = playerDefense ?? player.defense ?? 10;
+    finalDamage = calculateDamageWithDefense(
+      damage,
+      attackerAttack,
+      defenderDefense
+    );
+  }
+  
   const oldHp = player.hp;
-  player.hp = Math.max(0, player.hp - damage);
+  player.hp = Math.max(0, player.hp - finalDamage);
 
   const died = player.hp === 0 && oldHp > 0;
 
@@ -705,7 +956,7 @@ export function applyDamageToPlayer(
   return {
     targetId: playerId,
     attackerId,
-    damage,
+    damage: finalDamage,
     currentHp: player.hp,
     maxHp: player.maxHp,
     died
@@ -899,10 +1150,65 @@ export function updateCreatureAI(
     const prevY = creature.y;
     const prevState = creature.aiState;
 
+    // ✅ Atualizar windup de skill de criaturas
+    if (creature.skillWindupTimer && creature.skillWindupTimer > 0) {
+      creature.skillWindupTimer = Math.max(0, creature.skillWindupTimer - deltaTime);
+      
+      // Se windup terminou, executar skill
+      if (creature.skillWindupTimer <= 0 && creature.pendingSkill) {
+        const { skillType, targetX, targetY } = creature.pendingSkill;
+        creature.pendingSkill = undefined;
+        
+        // Calcular stats escalados da skill
+        const level = creature.level ?? 1;
+        const rank = 1;
+        const effectiveStats = calculateEffectiveStats(
+          { definitionId: creature.creatureType, level, rank },
+          getCreatureById
+        );
+        
+        const skillRadius = effectiveStats.specialSkillRadius;
+        const skillDamagePerTick = effectiveStats.specialSkillDamagePerTick;
+        const skillLifetime = effectiveStats.specialSkillLifetime;
+        
+        const specialSkill = getSpecialSkillByCreatureId(creature.creatureType);
+        if (specialSkill) {
+          const skillZone = createSkillZone(
+            creature.id,
+            skillType as "fire_fog" | "root_trap" | "electric_surge",
+            targetX,
+            targetY,
+            skillRadius,
+            skillDamagePerTick,
+            specialSkill.tickInterval,
+            skillLifetime,
+            specialSkill.slowModifier,
+            attackDamage // ✅ Ataque do atacante para calcular dano com defesa
+          );
+          
+          room.skillZones.push(skillZone);
+          
+          // Atualizar cooldown da criatura
+          creature.lastSkillTime = Date.now();
+          
+          if (DEBUG_AI) {
+            console.log(
+              `[AI] ${creature.id} (${creature.creatureType}) executou skill ${skillType} ` +
+              `em (${targetX.toFixed(0)}, ${targetY.toFixed(0)}) ` +
+              `[radius=${skillRadius.toFixed(0)}, damage=${skillDamagePerTick.toFixed(0)}/tick, lifetime=${skillLifetime.toFixed(1)}s]`
+            );
+          }
+        }
+      }
+      
+      // Se está em windup, pular ataque normal neste tick
+      continue;
+    }
+
     // ✅ IA: Tentar usar skill especial antes de ataque normal
     const skillUsed = tryUseCreatureSkill(room, creature, closestPlayer, closestDistance, alivePlayers);
     if (skillUsed) {
-      // Skill foi usada, pular ataque normal neste tick
+      // Skill foi usada (windup iniciado), pular ataque normal neste tick
       continue;
     }
 
@@ -970,22 +1276,22 @@ function tryUseCreatureSkill(
     return false; // Criatura não tem skill
   }
 
-  // Verificar cooldown
-  const currentTime = Date.now();
-  const timeSinceLastSkill = currentTime - (creature.lastSkillTime || 0);
-  const skillCooldownMs = specialSkill.cooldown * 1000; // Converter para ms
-  
-  if (timeSinceLastSkill < skillCooldownMs) {
-    return false; // Skill em cooldown
-  }
-
-  // Calcular stats escalados da skill
+  // Calcular stats escalados da skill primeiro (para obter cooldown escalado)
   const level = creature.level ?? 1;
   const rank = 1; // Criaturas selvagens sempre rank 1
   const effectiveStats = calculateEffectiveStats(
     { definitionId: creature.creatureType, level, rank },
     getCreatureById
   );
+  
+  // ✅ Verificar cooldown usando valor escalado
+  const currentTime = Date.now();
+  const timeSinceLastSkill = currentTime - (creature.lastSkillTime || 0);
+  const skillCooldownMs = effectiveStats.specialSkillCooldown * 1000; // Converter para ms (escalado)
+  
+  if (timeSinceLastSkill < skillCooldownMs) {
+    return false; // Skill em cooldown
+  }
   
   const skillRange = effectiveStats.specialSkillRange;
   const skillRadius = effectiveStats.specialSkillRadius;
@@ -1027,12 +1333,44 @@ function tryUseCreatureSkill(
     return false; // Condições não atendidas
   }
 
-  // Usar skill: criar skill zone na posição do jogador mais próximo
+  // ✅ Verificar se criatura já está em windup de skill
+  if (creature.skillWindupTimer && creature.skillWindupTimer > 0) {
+    return false; // Já está em windup
+  }
+
+  // Usar skill: iniciar windup ao invés de criar skill zone imediatamente
   const skillType = getSkillTypeFromCreatureId(creature.creatureType);
   if (!skillType || skillType === "heal_wave") {
     return false; // Skill não mapeada ou é heal (não usado por IA)
   }
 
+  // ✅ Obter windup time da special skill (escalado)
+  const skillWindupTime = effectiveStats.specialSkillWindup;
+
+  // ✅ Se há windup, iniciar timer e armazenar dados da skill
+  if (skillWindupTime > 0) {
+    if (creature.skillWindupTimer === undefined) {
+      creature.skillWindupTimer = 0;
+    }
+    creature.skillWindupTimer = skillWindupTime;
+    creature.pendingSkill = {
+      skillType,
+      targetX: closestPlayer.player.x, // Posição do jogador alvo
+      targetY: closestPlayer.player.y
+    };
+    
+    if (DEBUG_AI) {
+      console.log(
+        `[AI] ${creature.id} (${creature.creatureType}) iniciou windup de skill ${skillType} ` +
+        `em (${closestPlayer.player.x.toFixed(0)}, ${closestPlayer.player.y.toFixed(0)}) ` +
+        `[windup=${skillWindupTime.toFixed(2)}s]`
+      );
+    }
+    
+    return true; // Windup iniciado
+  }
+
+  // Se não há windup, criar skill zone imediatamente (fallback)
   const skillZone = createSkillZone(
     creature.id, // ownerId = criatura
     skillType as "fire_fog" | "root_trap" | "electric_surge",
@@ -1042,7 +1380,8 @@ function tryUseCreatureSkill(
     skillDamagePerTick,
     specialSkill.tickInterval,
     skillLifetime,
-    specialSkill.slowModifier
+    specialSkill.slowModifier,
+    attackDamage // ✅ Ataque do atacante para calcular dano com defesa
   );
 
   room.skillZones.push(skillZone);
@@ -1385,7 +1724,8 @@ function updateRangedCreatureAI(
       attackDamage,
       ENEMY_VISUAL_CONFIG.enemyProjectileLifetime,
       effectiveAttackRange, // Usar alcance calculado (tier + level)
-      creature.creatureType // ✅ Tipo da criatura para type effectiveness
+      creature.creatureType, // ✅ Tipo da criatura para type effectiveness
+      attackDamage // ✅ Ataque do atacante para calcular dano com defesa
     );
 
     room.projectiles.push(projectile);
@@ -1464,7 +1804,8 @@ export function updateSkillZones(
           const damageResult = applyDamageToCreature(
             creature,
             zone.damagePerTick,
-            zone.ownerId
+            zone.ownerId,
+            zone.attackerAttack
           );
           damageResults.push(damageResult);
 

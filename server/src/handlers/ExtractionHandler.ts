@@ -8,6 +8,7 @@
  * @module server/handlers/ExtractionHandler
  */
 
+import { WebSocket } from "ws";
 import type { Room } from "../types/ServerTypes";
 import {
   updateExtractions,

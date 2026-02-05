@@ -18,10 +18,17 @@ export class StateBroadcaster {
 
     // Adicionar timestamp a cada jogador para sincronização
     const now = Date.now();
-    const playersWithTimestamp = Array.from(room.players.values()).map(p => ({
-      ...p,
-      lastUpdate: now
-    }));
+    const combatState = room.gameLoop?.getCombatState();
+    const playersWithTimestamp = Array.from(room.players.values()).map(p => {
+      // ✅ Sincronizar windup timers do CombatPlayer para PlayerPresence
+      const combatPlayer = combatState?.players.get(p.id);
+      return {
+        ...p,
+        lastUpdate: now,
+        windupTimer: combatPlayer?.windupTimer,
+        skillWindupTimer: combatPlayer?.skillWindupTimer
+      };
+    });
 
     const message: Record<string, unknown> = {
       type: "state",

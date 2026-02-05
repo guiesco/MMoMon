@@ -31,6 +31,9 @@ export class ProjectileManager {
   private createDeathEffect: (x: number, y: number, theme: any) => void;
   private createEnhancedFloatingText: (x: number, y: number, text: string, color: number, fontSize?: number) => void;
   private sendCaptureAttempt: (creatureId: string, ballType: string) => void;
+  // ✅ Rastrear projéteis locais recentes para remoção quando servidor confirmar hit
+  private recentLocalProjectiles: Projectile[] = [];
+  private readonly MAX_RECENT_PROJECTILES = 5; // Manter apenas os 5 mais recentes
 
   constructor(
     scene: Phaser.Scene,
@@ -67,6 +70,59 @@ export class ProjectileManager {
    */
   addProjectile(projectile: Projectile): void {
     this.projectiles.push(projectile);
+    // ✅ Rastrear projéteis locais recentes para remoção quando servidor confirmar
+    this.recentLocalProjectiles.push(projectile);
+    // Manter apenas os mais recentes
+    if (this.recentLocalProjectiles.length > this.MAX_RECENT_PROJECTILES) {
+      this.recentLocalProjectiles.shift();
+    }
+  }
+  
+  /**
+   * ✅ Remove projétil local quando servidor confirma hit.
+   * Procura o projétil mais próximo do alvo e o remove.
+   */
+  removeLocalProjectileForHit(targetId: string, targetX: number, targetY: number): boolean {
+    // Procurar projétil local que está mais próximo do alvo
+    let closestProjectile: Projectile | null = null;
+    let closestDistance = Infinity;
+    
+    for (const proj of this.recentLocalProjectiles) {
+      if (!proj.sprite || !proj.sprite.active) continue;
+      
+      const dx = proj.sprite.x - targetX;
+      const dy = proj.sprite.y - targetY;
+      const dist = Math.hypot(dx, dy);
+      
+      // Considerar projéteis que estão próximos do alvo (dentro de 100 pixels)
+      if (dist < closestDistance && dist < 100) {
+        closestDistance = dist;
+        closestProjectile = proj;
+      }
+    }
+    
+    if (closestProjectile) {
+      // Remover do array de projéteis ativos
+      const index = this.projectiles.indexOf(closestProjectile);
+      if (index !== -1) {
+        this.projectiles.splice(index, 1);
+      }
+      
+      // Remover do array de recentes
+      const recentIndex = this.recentLocalProjectiles.indexOf(closestProjectile);
+      if (recentIndex !== -1) {
+        this.recentLocalProjectiles.splice(recentIndex, 1);
+      }
+      
+      // Destruir sprite
+      if (closestProjectile.sprite) {
+        closestProjectile.sprite.destroy();
+      }
+      
+      return true;
+    }
+    
+    return false;
   }
 
   /**
@@ -117,6 +173,8 @@ export class ProjectileManager {
 
   /**
    * Atualiza todos os projéteis do jogador.
+   * ✅ Em modo multiplayer, não processa colisões localmente (servidor é autoritativo).
+   * ✅ Atualiza posição manualmente para sincronização com servidor.
    */
   updateProjectiles(dt: number, state: string): string {
     const remaining: Projectile[] = [];
@@ -125,9 +183,28 @@ export class ProjectileManager {
       proj.lifetime -= dt;
       if (proj.lifetime <= 0) {
         proj.sprite.destroy();
+        // Remover de recentes também
+        const recentIndex = this.recentLocalProjectiles.indexOf(proj);
+        if (recentIndex !== -1) {
+          this.recentLocalProjectiles.splice(recentIndex, 1);
+        }
         continue;
       }
 
+      // ✅ Atualizar posição manualmente usando velocidade (igual ao servidor)
+      if (proj.velocityX !== undefined && proj.velocityY !== undefined) {
+        proj.sprite.x += proj.velocityX * dt;
+        proj.sprite.y += proj.velocityY * dt;
+      }
+
+      // ✅ Em modo multiplayer, não processar colisões localmente
+      // O servidor é autoritativo e enviará attackResult quando houver hit
+      if (this.mpClient) {
+        remaining.push(proj);
+        continue;
+      }
+
+      // Comportamento single-player (fallback)
       const projBounds = proj.sprite.getBounds();
       let hit = false;
       
@@ -177,6 +254,11 @@ export class ProjectileManager {
         remaining.push(proj);
       } else {
         proj.sprite.destroy();
+        // Remover de recentes também
+        const recentIndex = this.recentLocalProjectiles.indexOf(proj);
+        if (recentIndex !== -1) {
+          this.recentLocalProjectiles.splice(recentIndex, 1);
+        }
       }
     }
 

@@ -12,6 +12,7 @@ import type {
 import type { GameWorldState } from "../../../game/worldState";
 import type { ExpeditionState } from "../types/ExpeditionTypes";
 import type { SpriteManager } from "../managers/SpriteManager";
+import type { ProjectileManager } from "../managers/ProjectileManager";
 import type { ExpeditionTelemetry } from "../types/ExpeditionTypes";
 import type { TeamSystem } from "../systems/TeamSystem";
 import type { FeedbackManager } from "../ui/FeedbackManager";
@@ -38,6 +39,7 @@ export class MultiplayerHandlers {
   private extractionSystem: ExtractionSystem | null = null;
   private progressionSystem: ProgressionSystem | null = null;
   private visualSystem: VisualSystem | null = null;
+  private projectileManager: ProjectileManager | null = null;
   private player: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody | null = null;
   private scene: Phaser.Scene | null = null;
   
@@ -76,6 +78,7 @@ export class MultiplayerHandlers {
     extractionSystem?: ExtractionSystem | null;
     progressionSystem?: ProgressionSystem | null;
     visualSystem?: VisualSystem | null;
+    projectileManager?: ProjectileManager | null;
     player?: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody | null;
     scene?: Phaser.Scene | null;
     setState?: (state: ExpeditionState) => void;
@@ -98,6 +101,7 @@ export class MultiplayerHandlers {
     if (config.extractionSystem !== undefined) this.extractionSystem = config.extractionSystem;
     if (config.progressionSystem !== undefined) this.progressionSystem = config.progressionSystem;
     if (config.visualSystem !== undefined) this.visualSystem = config.visualSystem;
+    if (config.projectileManager !== undefined) this.projectileManager = config.projectileManager;
     if (config.player !== undefined) this.player = config.player;
     if (config.scene !== undefined) this.scene = config.scene;
     if (config.setState !== undefined) this.setState = config.setState;
@@ -171,6 +175,7 @@ export class MultiplayerHandlers {
           },
           attackCooldownRemaining: remoteCreature.attackCooldownRemaining ?? 0,
           windupTimer: remoteCreature.windupTimer ?? 0,
+          skillWindupTimer: (remoteCreature as any).skillWindupTimer ?? 0, // ✅ Windup de skill de criaturas
           stunTimer: remoteCreature.stunTimer ?? 0,
           patrolOrigin: { 
             x: remoteCreature.patrolOriginX ?? remoteCreature.x, 
@@ -416,6 +421,19 @@ export class MultiplayerHandlers {
     const creature = this.spriteManager.getCreatureSprite(result.targetId);
     
     if (creature && this.teamSystem && this.feedbackManager && this.visualSystem) {
+      // ✅ CORREÇÃO DESYNC: Se o atacante é o jogador local, remover projétil local
+      const isLocalPlayerAttack = result.attackerId === this.mpClient?.getClientId();
+      if (isLocalPlayerAttack && this.projectileManager) {
+        const removed = this.projectileManager.removeLocalProjectileForHit(
+          result.targetId!,
+          creature.sprite.x,
+          creature.sprite.y
+        );
+        if (removed) {
+          console.log(`[MP] ✅ Projétil local removido para hit confirmado pelo servidor em ${result.targetId}`);
+        }
+      }
+      
       const newHp = Math.max(0, result.targetHp ?? creature.currentHp - result.damage);
       creature.currentHp = newHp;
       this.worldState.updateCreature(result.targetId, { currentHp: newHp });

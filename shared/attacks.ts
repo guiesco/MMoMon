@@ -23,9 +23,9 @@ export interface BasicAttack {
   cooldown: number; // Cooldown base do ataque (escala com nível e rank)
   isProjectile: boolean;
   // Valores de IA relacionados ao ataque (escalam com nível e rank)
-  attackWindup: number; // Tempo de preparação antes do ataque (não escala)
-  stunDuration: number; // Duração do stun causado (não escala)
-  projectileSpeed: number; // Velocidade do projétil (não escala, apenas para ranged)
+  attackWindup: number; // Tempo de preparação antes do ataque (escala com nível e rank)
+  stunDuration: number; // Duração do stun causado (escala com nível e rank)
+  projectileSpeed: number; // Velocidade do projétil (escala com nível e rank)
   // Progressões individuais por nível (valores percentuais)
   /** % de alcance de ataque adicional por nível */
   attackRangePerLevel: number;
@@ -35,6 +35,8 @@ export interface BasicAttack {
   attackWindupPerLevel: number;
   /** % de aumento de duração de stun por nível */
   stunDurationPerLevel: number;
+  /** % de aumento de velocidade de projétil por nível */
+  projectileSpeedPerLevel: number;
 }
 
 /**
@@ -46,11 +48,11 @@ export interface SpecialSkill {
   description: string;
   // Atributos de ataque básicos (escalam com nível e rank)
   range: number; // Alcance base da habilidade (escala com nível e rank)
-  damage: number; // Dano base (não escala diretamente, mas pode ser usado como referência)
+  damage: number; // Dano base (escala com nível e rank)
   cooldown: number; // Cooldown base da habilidade (escala com nível e rank)
   // Valores de IA relacionados à habilidade
-  attackWindup: number; // Tempo de preparação antes da habilidade (não escala)
-  stunDuration: number; // Duração do stun causado (não escala)
+  attackWindup: number; // Tempo de preparação antes da habilidade (escala com nível e rank)
+  stunDuration: number; // Duração do stun causado (escala com nível e rank)
   // Atributos específicos de habilidades especiais
   /** Raio da zona de efeito (em pixels) - pode escalar com nível */
   radius: number;
@@ -81,6 +83,8 @@ export interface SpecialSkill {
   damagePerTickPerLevel: number;
   /** % de aumento de tempo de vida por nível */
   lifetimePerLevel: number;
+  /** % de aumento de dano base por nível */
+  damagePerLevel: number;
 }
 
 // ============================================================================
@@ -103,7 +107,8 @@ export const ATTACK_CHAMA_RAPIDA: BasicAttack = {
   attackRangePerLevel: 0.002, // +0.2% por nível
   attackCooldownPerLevel: -0.01, // -1% por nível (cooldown reduz)
   attackWindupPerLevel: -0.005, // -0.5% por nível (windup reduz)
-  stunDurationPerLevel: 0.01 // +1% por nível (stun mais longo)
+  stunDurationPerLevel: 0.01, // +1% por nível (stun mais longo)
+  projectileSpeedPerLevel: 0.003 // +0.3% por nível
 };
 
 /**
@@ -122,7 +127,8 @@ export const ATTACK_JATO_AGUA: BasicAttack = {
   attackRangePerLevel: 0.002, // +0.2% por nível
   attackCooldownPerLevel: -0.01, // -1% por nível (cooldown reduz)
   attackWindupPerLevel: -0.005, // -0.5% por nível (windup reduz)
-  stunDurationPerLevel: 0.01 // +1% por nível (stun mais longo)
+  stunDurationPerLevel: 0.01, // +1% por nível (stun mais longo)
+  projectileSpeedPerLevel: 0.003 // +0.3% por nível
 };
 
 /**
@@ -141,7 +147,8 @@ export const ATTACK_CHICOTE_VINHA: BasicAttack = {
   attackRangePerLevel: 0.002, // +0.2% por nível
   attackCooldownPerLevel: -0.01, // -1% por nível (cooldown reduz)
   attackWindupPerLevel: -0.005, // -0.5% por nível (windup reduz)
-  stunDurationPerLevel: 0.01 // +1% por nível (stun mais longo)
+  stunDurationPerLevel: 0.01, // +1% por nível (stun mais longo)
+  projectileSpeedPerLevel: 0.003 // +0.3% por nível
 };
 
 /**
@@ -160,7 +167,8 @@ export const ATTACK_RAIO_CORTANTE: BasicAttack = {
   attackRangePerLevel: 0.002, // +0.2% por nível
   attackCooldownPerLevel: -0.01, // -1% por nível (cooldown reduz)
   attackWindupPerLevel: -0.005, // -0.5% por nível (windup reduz)
-  stunDurationPerLevel: 0.01 // +1% por nível (stun mais longo)
+  stunDurationPerLevel: 0.01, // +1% por nível (stun mais longo)
+  projectileSpeedPerLevel: 0.003 // +0.3% por nível
 };
 
 // ============================================================================
@@ -191,7 +199,8 @@ export const SKILL_NEVOEIRO_INCENDIARIO: SpecialSkill = {
   stunDurationPerLevel: 0,
   radiusPerLevel: 0.003, // +0.3% por nível
   damagePerTickPerLevel: 0.015, // +1.5% por nível
-  lifetimePerLevel: 0.01 // +1% por nível
+  lifetimePerLevel: 0.01, // +1% por nível
+  damagePerLevel: 0.015 // +1.5% por nível
 };
 
 /**
@@ -217,7 +226,8 @@ export const SKILL_MARE_CURATIVA: SpecialSkill = {
   stunDurationPerLevel: 0,
   radiusPerLevel: 0.003,
   damagePerTickPerLevel: -0.02, // Cura mais por nível (valores negativos)
-  lifetimePerLevel: 0.01
+  lifetimePerLevel: 0.01,
+  damagePerLevel: 0 // Cura não tem dano base para escalar
 };
 
 /**
@@ -244,7 +254,8 @@ export const SKILL_RAIZES_PRENDENTES: SpecialSkill = {
   stunDurationPerLevel: 0,
   radiusPerLevel: 0.003,
   damagePerTickPerLevel: 0.015,
-  lifetimePerLevel: 0.01
+  lifetimePerLevel: 0.01,
+  damagePerLevel: 0.015
 };
 
 /**
@@ -270,7 +281,8 @@ export const SKILL_SURTO_ELETRICO: SpecialSkill = {
   stunDurationPerLevel: 0.01,
   radiusPerLevel: 0.003,
   damagePerTickPerLevel: 0.015,
-  lifetimePerLevel: 0.01
+  lifetimePerLevel: 0.01,
+  damagePerLevel: 0.015
 };
 
 // ============================================================================

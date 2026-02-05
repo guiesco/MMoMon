@@ -273,6 +273,7 @@ export interface EffectiveCreatureStats {
   specialSkillWindup: number;
   specialSkillStunDuration: number;
   specialSkillRadius: number;
+  specialSkillDamage: number;
   specialSkillDamagePerTick: number;
   specialSkillLifetime: number;
 }
@@ -307,9 +308,11 @@ export type GetCreatureByIdFn = (id: string) => {
     attackCooldownPerLevel: number;
     attackWindupPerLevel: number;
     stunDurationPerLevel: number;
+    projectileSpeedPerLevel: number;
   };
   specialSkill: {
     range: number;
+    damage: number;
     cooldown: number;
     attackWindup: number;
     stunDuration: number;
@@ -323,6 +326,7 @@ export type GetCreatureByIdFn = (id: string) => {
     radiusPerLevel: number;
     damagePerTickPerLevel: number;
     lifetimePerLevel: number;
+    damagePerLevel: number;
   };
 } | undefined;
 
@@ -359,6 +363,7 @@ export function calculateEffectiveStats(
       specialSkillWindup: 0.5,
       specialSkillStunDuration: 0,
       specialSkillRadius: 70,
+      specialSkillDamage: 0,
       specialSkillDamagePerTick: 8,
       specialSkillLifetime: 4
     };
@@ -384,6 +389,7 @@ export function calculateEffectiveStats(
     const attackCooldownBonus = 1 + levelBonus * basicAttack.attackCooldownPerLevel;
     const attackWindupBonus = 1 + levelBonus * basicAttack.attackWindupPerLevel;
     const stunDurationBonus = 1 + levelBonus * basicAttack.stunDurationPerLevel;
+    const projectileSpeedBonus = 1 + levelBonus * basicAttack.projectileSpeedPerLevel;
 
     const attackRange = Math.floor(basicAttack.range * attackRangeBonus * rankMultiplier);
     const attackCooldown = Math.max(
@@ -395,7 +401,7 @@ export function calculateEffectiveStats(
       basicAttack.attackWindup * attackWindupBonus
     );
     const stunDuration = basicAttack.stunDuration * stunDurationBonus * rankMultiplier;
-    const projectileSpeed = basicAttack.projectileSpeed; // não escala
+    const projectileSpeed = Math.floor(basicAttack.projectileSpeed * projectileSpeedBonus * rankMultiplier);
 
     // Calcular stats de special skill escalados
     const specialSkillRangeBonus = 1 + levelBonus * specialSkill.attackRangePerLevel;
@@ -403,6 +409,7 @@ export function calculateEffectiveStats(
     const specialSkillWindupBonus = 1 + levelBonus * specialSkill.attackWindupPerLevel;
     const specialSkillStunDurationBonus = 1 + levelBonus * specialSkill.stunDurationPerLevel;
     const specialSkillRadiusBonus = 1 + levelBonus * specialSkill.radiusPerLevel;
+    const specialSkillDamageBonus = 1 + levelBonus * specialSkill.damagePerLevel;
     const specialSkillDamagePerTickBonus = 1 + levelBonus * specialSkill.damagePerTickPerLevel;
     const specialSkillLifetimeBonus = 1 + levelBonus * specialSkill.lifetimePerLevel;
 
@@ -417,6 +424,7 @@ export function calculateEffectiveStats(
     );
     const specialSkillStunDuration = specialSkill.stunDuration * specialSkillStunDurationBonus * rankMultiplier;
     const specialSkillRadius = Math.floor(specialSkill.radius * specialSkillRadiusBonus * rankMultiplier);
+    const specialSkillDamage = Math.floor(specialSkill.damage * specialSkillDamageBonus * rankMultiplier);
     const specialSkillDamagePerTick = Math.floor(specialSkill.damagePerTick * specialSkillDamagePerTickBonus * rankMultiplier);
     const specialSkillLifetime = specialSkill.lifetime * specialSkillLifetimeBonus * rankMultiplier;
 
@@ -425,7 +433,7 @@ export function calculateEffectiveStats(
       moveSpeed: Math.floor(baseStats.moveSpeed * speedBonus * rankMultiplier),
       defense: Math.floor(baseStats.defense * defenseBonus * rankMultiplier),
       attackDamage: Math.floor(baseStats.attackDamage * attackBonus * rankMultiplier),
-      skillCooldown: baseStats.skillCooldown, // cooldown não escala
+      skillCooldown: specialSkill.cooldown, // Usar cooldown da skill especial
       attackRange,
       attackCooldown,
       projectileSpeed,
@@ -436,6 +444,7 @@ export function calculateEffectiveStats(
       specialSkillWindup,
       specialSkillStunDuration,
       specialSkillRadius,
+      specialSkillDamage,
       specialSkillDamagePerTick,
       specialSkillLifetime
     };
@@ -466,7 +475,8 @@ export function calculateEffectiveStats(
     basicAttack.attackWindup * attackWindupBonus
   );
   const stunDuration = basicAttack.stunDuration * stunDurationBonus * rankMultiplier;
-  const projectileSpeed = basicAttack.projectileSpeed; // não escala
+  const projectileSpeedBonus = 1 + levelBonus * basicAttack.projectileSpeedPerLevel;
+  const projectileSpeed = Math.floor(basicAttack.projectileSpeed * projectileSpeedBonus * rankMultiplier);
 
   // Calcular stats de special skill escalados
   const specialSkillRangeBonus = 1 + levelBonus * specialSkill.attackRangePerLevel;
@@ -474,6 +484,7 @@ export function calculateEffectiveStats(
   const specialSkillWindupBonus = 1 + levelBonus * specialSkill.attackWindupPerLevel;
   const specialSkillStunDurationBonus = 1 + levelBonus * specialSkill.stunDurationPerLevel;
   const specialSkillRadiusBonus = 1 + levelBonus * specialSkill.radiusPerLevel;
+  const specialSkillDamageBonus = 1 + levelBonus * specialSkill.damagePerLevel;
   const specialSkillDamagePerTickBonus = 1 + levelBonus * specialSkill.damagePerTickPerLevel;
   const specialSkillLifetimeBonus = 1 + levelBonus * specialSkill.lifetimePerLevel;
 
@@ -488,6 +499,7 @@ export function calculateEffectiveStats(
   );
   const specialSkillStunDuration = specialSkill.stunDuration * specialSkillStunDurationBonus * rankMultiplier;
   const specialSkillRadius = Math.floor(specialSkill.radius * specialSkillRadiusBonus * rankMultiplier);
+  const specialSkillDamage = Math.floor(specialSkill.damage * specialSkillDamageBonus * rankMultiplier);
   const specialSkillDamagePerTick = Math.floor(specialSkill.damagePerTick * specialSkillDamagePerTickBonus * rankMultiplier);
   const specialSkillLifetime = specialSkill.lifetime * specialSkillLifetimeBonus * rankMultiplier;
 
@@ -496,7 +508,7 @@ export function calculateEffectiveStats(
     moveSpeed: Math.floor(baseStats.moveSpeed * speedBonus * rankMultiplier),
     defense: Math.floor(baseStats.defense * defenseBonus * rankMultiplier),
     attackDamage: Math.floor(baseStats.attackDamage * attackBonus * rankMultiplier),
-    skillCooldown: baseStats.skillCooldown, // cooldown não escala
+    skillCooldown: specialSkill.cooldown, // Usar cooldown da skill especial
     attackRange,
     attackCooldown,
     projectileSpeed,
@@ -507,6 +519,7 @@ export function calculateEffectiveStats(
     specialSkillWindup,
     specialSkillStunDuration,
     specialSkillRadius,
+    specialSkillDamage,
     specialSkillDamagePerTick,
     specialSkillLifetime
   };

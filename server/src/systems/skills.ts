@@ -97,6 +97,17 @@ export interface SkillPlayer {
   y: number;
   /** Timestamp da última skill usada (em ms) */
   lastSkillTime: number;
+  /** ✅ Tempo restante do windup de skill (em segundos) - bloqueia movimento */
+  skillWindupTimer?: number;
+  /** ✅ Dados da skill pendente durante windup */
+  pendingSkill?: {
+    skillType: string;
+    targetX: number;
+    targetY: number;
+    creatureId?: string;
+    creatureLevel?: number;
+    creatureRank?: number;
+  };
 }
 
 /**
@@ -235,7 +246,63 @@ export function processSkillIntent(
     };
   }
 
-  // Criar skill zone com valores escalados
+  // ✅ Validação: jogador não pode usar skill se já está em windup
+  if (player.skillWindupTimer && player.skillWindupTimer > 0) {
+    return {
+      success: false,
+      reason: "cooldown" // Usar cooldown como motivo genérico
+    };
+  }
+
+  // ✅ Obter windup time da special skill (escalado)
+  let skillWindupTime = 0.5; // Default
+  if (creatureId && creatureLevel !== undefined && creatureRank !== undefined) {
+    const effectiveStats = calculateEffectiveStats(
+      { definitionId: creatureId, level: creatureLevel, rank: creatureRank },
+      getCreatureById
+    );
+    // Usar windup escalado do effectiveStats
+    skillWindupTime = effectiveStats.specialSkillWindup;
+  } else if (creatureId) {
+    const specialSkill = getSpecialSkillByCreatureId(creatureId);
+    if (specialSkill) {
+      skillWindupTime = specialSkill.attackWindup;
+    }
+  }
+
+  // ✅ Se há windup, iniciar timer e armazenar dados da skill
+  if (skillWindupTime > 0) {
+    if (!player.skillWindupTimer) {
+      player.skillWindupTimer = 0;
+    }
+    player.skillWindupTimer = skillWindupTime;
+    player.pendingSkill = {
+      skillType,
+      targetX,
+      targetY,
+      creatureId,
+      creatureLevel,
+      creatureRank
+    };
+    
+    return {
+      success: true,
+      skillZoneId: undefined, // Skill zone será criada após windup
+      skillType: skillType as SkillType
+    };
+  }
+
+  // Se não há windup, criar skill zone imediatamente
+  // Obter attackDamage do effectiveStats se disponível
+  let attackerAttack: number | undefined;
+  if (creatureId && creatureLevel !== undefined && creatureRank !== undefined) {
+    const effectiveStats = calculateEffectiveStats(
+      { definitionId: creatureId, level: creatureLevel, rank: creatureRank },
+      getCreatureById
+    );
+    attackerAttack = effectiveStats.attackDamage;
+  }
+  
   const skillZone = createSkillZone(
     playerId,
     skillType as "fire_fog" | "root_trap" | "electric_surge",
@@ -245,7 +312,8 @@ export function processSkillIntent(
     damagePerTick,
     baseConfig.tickInterval, // tickInterval não escala
     lifetime,
-    baseConfig.slowModifier // slowModifier não escala
+    baseConfig.slowModifier, // slowModifier não escala
+    attackerAttack // ✅ Ataque do atacante para calcular dano com defesa
   );
 
   room.skillZones.push(skillZone);
@@ -316,7 +384,8 @@ export function updateSkillZones(
           const damageResult = applyDamageToCreature(
             creature,
             zone.damagePerTick,
-            zone.ownerId
+            zone.ownerId,
+            zone.attackerAttack
           );
           damageResults.push(damageResult);
 
@@ -407,4 +476,98 @@ export function isInSkillZone(
   const dy = y - zone.y;
   const distance = Math.hypot(dx, dy);
   return distance <= zone.radius;
+}
+
+/**
+ * ✅ Atualiza windup de skills de todos os jogadores e executa skills quando windup termina.
+ * Deve ser chamado a cada tick do game loop.
+ * 
+ * @param room - Estado da sala
+ * @param deltaTime - Tempo decorrido desde último tick (em segundos)
+ * @returns Lista de resultados de skills executadas
+ */
+export function updatePlayerSkillWindups(
+  room: SkillRoomState,
+  deltaTime: number
+): SkillResult[] {
+  const skillResults: SkillResult[] = [];
+  
+  for (const [playerId, player] of room.players) {
+    if (player.skillWindupTimer && player.skillWindupTimer > 0) {
+      // Reduzir windup timer
+      player.skillWindupTimer = Math.max(0, player.skillWindupTimer - deltaTime);
+      
+      // Se windup terminou, executar skill
+      if (player.skillWindupTimer <= 0 && player.pendingSkill) {
+        const { skillType, targetX, targetY, creatureId, creatureLevel, creatureRank } = player.pendingSkill;
+        player.pendingSkill = undefined;
+        
+        // Obter configuração base da skill
+        const baseConfig = SKILL_CONFIG[skillType as SkillType];
+        if (!baseConfig) {
+          continue; // Skill inválida, pular
+        }
+        
+        // Calcular valores escalados
+        let radius = baseConfig.radius;
+        let damagePerTick = baseConfig.damagePerTick;
+        let lifetime = baseConfig.lifetime;
+        
+        if (creatureId && creatureLevel !== undefined && creatureRank !== undefined) {
+          const effectiveStats = calculateEffectiveStats(
+            { definitionId: creatureId, level: creatureLevel, rank: creatureRank },
+            getCreatureById
+          );
+          
+          radius = effectiveStats.specialSkillRadius;
+          damagePerTick = effectiveStats.specialSkillDamagePerTick;
+          lifetime = effectiveStats.specialSkillLifetime;
+        } else if (creatureId) {
+          const specialSkill = getSpecialSkillByCreatureId(creatureId);
+          if (specialSkill) {
+            radius = specialSkill.radius;
+            damagePerTick = specialSkill.damagePerTick;
+            lifetime = specialSkill.lifetime;
+          }
+        }
+        
+        // Obter attackDamage do effectiveStats se disponível
+        let attackerAttack: number | undefined;
+        if (creatureId && creatureLevel !== undefined && creatureRank !== undefined) {
+          const effectiveStats = calculateEffectiveStats(
+            { definitionId: creatureId, level: creatureLevel, rank: creatureRank },
+            getCreatureById
+          );
+          attackerAttack = effectiveStats.attackDamage;
+        }
+        
+        // Criar skill zone com valores escalados
+        const skillZone = createSkillZone(
+          playerId,
+          skillType as "fire_fog" | "root_trap" | "electric_surge",
+          targetX,
+          targetY,
+          radius,
+          damagePerTick,
+          baseConfig.tickInterval,
+          lifetime,
+          baseConfig.slowModifier,
+          attackerAttack // ✅ Ataque do atacante para calcular dano com defesa
+        );
+        
+        room.skillZones.push(skillZone);
+        
+        // Atualizar cooldown do jogador
+        player.lastSkillTime = Date.now();
+        
+        skillResults.push({
+          success: true,
+          skillZoneId: skillZone.id,
+          skillType: skillType as SkillType
+        });
+      }
+    }
+  }
+  
+  return skillResults;
 }
