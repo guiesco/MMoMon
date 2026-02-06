@@ -40,6 +40,7 @@ export interface CreatureState {
   aiConfig: EnemyBehaviorConfig;
   attackCooldownRemaining: number;
   windupTimer: number;
+  skillWindupTimer?: number; // Windup de skill de criaturas (sincronizado com servidor)
   stunTimer: number;
   
   // Patrulha

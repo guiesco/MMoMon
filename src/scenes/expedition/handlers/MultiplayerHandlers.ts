@@ -140,7 +140,9 @@ export class MultiplayerHandlers {
           maxHp: remoteCreature.maxHp,
           aiState: (remoteCreature.aiState as any) ?? existingCreature.aiState,
           behaviorType: (remoteCreature.behaviorType as any) ?? existingCreature.behaviorType,
-          level: remoteCreature.level
+          level: remoteCreature.level,
+          windupTimer: remoteCreature.windupTimer ?? 0,
+          skillWindupTimer: (remoteCreature as any).skillWindupTimer ?? 0
         });
         this.spriteManager.updateCreatureSprite(remoteCreature.id);
       } else {
