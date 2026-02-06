@@ -1310,7 +1310,10 @@ export function updateCreatureAI(
       );
     } else if (creature.skillCooldownRemaining === undefined) {
       creature.skillCooldownRemaining = 0;
-      creature.lastSkillTime = 0;
+      // Não resetar lastSkillTime aqui - manter 0 para permitir uso imediato na primeira vez
+      if (creature.lastSkillTime === undefined) {
+        creature.lastSkillTime = 0;
+      }
     }
 
     // ✅ IA #6: Encontrar criaturas do mesmo tipo próximas para agrupamento
@@ -1507,7 +1510,9 @@ function tryUseCreatureSkill(
   
   // ✅ Verificar cooldown usando valor escalado
   const currentTime = Date.now();
-  const timeSinceLastSkill = currentTime - (creature.lastSkillTime || 0);
+  // Se lastSkillTime é 0 ou undefined, tratar como se nunca usou skill (permitir uso imediato)
+  const lastSkillTime = creature.lastSkillTime || 0;
+  const timeSinceLastSkill = lastSkillTime === 0 ? Infinity : (currentTime - lastSkillTime);
   const skillCooldownMs = effectiveStats.specialSkillCooldown * 1000; // Converter para ms (escalado)
   
   if (timeSinceLastSkill < skillCooldownMs) {

@@ -89,6 +89,22 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
           console.error(`[Room:${room.id}] Erro no sistema de extração:`, error);
         });
       
+      // ✅ Sincronizar skill zones do combatState para worldState
+      // (necessário porque criaturas inimigas adicionam skill zones apenas ao combatState)
+      if (room.gameLoop) {
+        const combatState = room.gameLoop.getCombatState();
+        // Sincronizar: adicionar skill zones do combatState que não existem no worldState
+        const worldSkillZoneIds = new Set(room.worldState.skillZones.map(z => z.id));
+        for (const skillZone of combatState.skillZones) {
+          if (!worldSkillZoneIds.has(skillZone.id)) {
+            room.worldState.skillZones.push(skillZone);
+          }
+        }
+        // Remover skill zones do worldState que não existem mais no combatState
+        const combatSkillZoneIds = new Set(combatState.skillZones.map(z => z.id));
+        room.worldState.skillZones = room.worldState.skillZones.filter(z => combatSkillZoneIds.has(z.id));
+      }
+      
       // Processar skill zones (dano por área)
       if (room.gameLoop && room.worldState.skillZones && room.worldState.skillZones.length > 0) {
         const combatState = room.gameLoop.getCombatState();
@@ -97,6 +113,18 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
           combatState.creatures,
           deltaMs / 1000 // Converter para segundos
         );
+        
+        // ✅ Sincronizar skill zones atualizadas de volta para combatState
+        // (updateSkillZones modifica o array diretamente, removendo zonas expiradas)
+        const worldSkillZoneIds = new Set(room.worldState.skillZones.map(z => z.id));
+        combatState.skillZones = combatState.skillZones.filter(z => worldSkillZoneIds.has(z.id));
+        // Adicionar novas skill zones do worldState que não existem no combatState
+        const combatSkillZoneIds = new Set(combatState.skillZones.map(z => z.id));
+        for (const skillZone of room.worldState.skillZones) {
+          if (!combatSkillZoneIds.has(skillZone.id)) {
+            combatState.skillZones.push(skillZone);
+          }
+        }
         
         // Broadcast resultados de dano das skill zones
         if (skillZoneDamageResults.length > 0) {
