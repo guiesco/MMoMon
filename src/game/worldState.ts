@@ -40,7 +40,6 @@ export interface CreatureState {
   aiConfig: EnemyBehaviorConfig;
   attackCooldownRemaining: number;
   windupTimer: number;
-  skillWindupTimer?: number; // ✅ Windup de skill de criaturas
   stunTimer: number;
   
   // Patrulha
@@ -113,10 +112,6 @@ export interface PlayerState {
   
   /** Se o jogador está visível (dentro do range de renderização) */
   isVisible: boolean;
-  
-  // ✅ Windup timers para efeitos visuais
-  windupTimer?: number;
-  skillWindupTimer?: number;
 }
 
 /**

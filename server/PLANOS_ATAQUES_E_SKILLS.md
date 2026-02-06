@@ -46,46 +46,73 @@ Este documento lista as implementações necessárias no servidor relacionadas a
 
 ### 1. Windup para Skills de Jogadores
 
-**Status:** ✅ Implementado
+**Status:** ❌ Não implementado
 
-**Implementação:**
-- ✅ `skillWindupTimer` e `pendingSkill` adicionados ao `CombatPlayer` e `SkillPlayer`
-- ✅ `processSkillIntent` inicia windup ao invés de criar skill zone imediatamente
-- ✅ `updatePlayerSkillWindups` criado e chamado no `gameLoop.ts`
-- ✅ Movimento bloqueado durante windup de skill (`canPlayerMove` verifica `skillWindupTimer`)
-- ✅ Efeito visual de windup adicionado no `VisualSystem` (círculo magenta pulsante)
-- ✅ `SkillSystem` gerencia windup local e sincroniza com servidor
-- ✅ `MovementSystem` bloqueia movimento durante windup de skill
+**Problema:**
+- Skills de jogadores não têm windup
+- Deveriam ter delay antes de criar skill zone (similar a ataques básicos)
 
-**Prioridade:** 🔴 Alta (consistência com ataques básicos) - ✅ CONCLUÍDO
+**O que falta:**
+- Adicionar `skillWindupTimer` ao `CombatPlayer`
+- Modificar `processSkillIntent` para iniciar windup ao invés de criar skill zone imediatamente
+- Criar `updatePlayerSkillWindups` similar a `updatePlayerWindups`
+- Bloquear movimento durante windup de skill
+- Adicionar efeito visual no cliente
+
+**Arquivos a modificar:**
+- `server/src/types.ts` - Adicionar `skillWindupTimer` e `pendingSkill` ao `CombatPlayer`
+- `server/src/systems/skills.ts` - Modificar `processSkillIntent` para iniciar windup
+- `server/src/systems/skills.ts` - Criar `updatePlayerSkillWindups`
+- `server/src/gameLoop.ts` - Chamar `updatePlayerSkillWindups` no `updateWorld`
+- `server/src/systems/buffs.ts` - Verificar `skillWindupTimer` em `canPlayerMove`
+- `src/scenes/expedition/systems/SkillSystem.ts` - Adicionar windup visual
+- `src/scenes/expedition/systems/MovementSystem.ts` - Já bloqueia (usa `isInWindup` do CombatSystem, precisa verificar skills também)
+
+**Prioridade:** 🔴 Alta (consistência com ataques básicos)
 
 ---
 
 ### 2. Windup para Skills de Criaturas (IA)
 
-**Status:** ✅ Implementado
+**Status:** ❌ Não implementado
 
-**Implementação:**
-- ✅ `skillWindupTimer` e `pendingSkill` adicionados ao `ServerCreature`
-- ✅ `tryUseCreatureSkill` inicia windup ao invés de criar skill zone imediatamente
-- ✅ Windup de skills atualizado no loop de IA (`updateCreatureAI`)
-- ✅ Movimento bloqueado durante windup de skill (`canCreatureMove` verifica `skillWindupTimer`)
-- ✅ Efeito visual de windup adicionado no `VisualSystem` (círculo magenta pulsante para criaturas)
+**Problema:**
+- Criaturas não têm windup para skills
+- Skills são criadas imediatamente quando condições são atendidas
 
-**Prioridade:** 🟡 Média (melhora gameplay, mas não crítico) - ✅ CONCLUÍDO
+**O que falta:**
+- Adicionar `skillWindupTimer` ao `ServerCreature`
+- Modificar `tryUseCreatureSkill` para iniciar windup ao invés de criar skill zone imediatamente
+- Atualizar windup de skills no loop de IA
+- Bloquear movimento durante windup de skill
+
+**Arquivos a modificar:**
+- `server/src/types.ts` - Adicionar `skillWindupTimer` e `pendingSkill` ao `ServerCreature`
+- `server/src/systems/combat.ts` - Modificar `tryUseCreatureSkill` para iniciar windup
+- `server/src/systems/combat.ts` - Atualizar `skillWindupTimer` no loop de IA
+- `server/src/systems/buffs.ts` - Verificar `skillWindupTimer` em `canCreatureMove`
+- `src/scenes/expedition/systems/VisualSystem.ts` - Adicionar efeito visual de windup de skill para criaturas
+
+**Prioridade:** 🟡 Média (melhora gameplay, mas não crítico)
 
 ---
 
 ### 3. Validação de Cooldown Escalado para Skills de IA
 
-**Status:** ✅ Implementado
+**Status:** ⚠️ Parcial
 
-**Implementação:**
-- ✅ `tryUseCreatureSkill` usa `effectiveStats.specialSkillCooldown` (valor escalado)
-- ✅ Cooldown é calculado corretamente baseado em level e rank da criatura
-- ✅ `creature.skillCooldownRemaining` é atualizado com valor escalado
+**Problema:**
+- `tryUseCreatureSkill` verifica cooldown usando `specialSkill.cooldown` (valor base)
+- Deveria usar `effectiveStats.specialSkillCooldown` (valor escalado)
 
-**Prioridade:** 🟡 Média (bug menor, mas afeta balanceamento) - ✅ CONCLUÍDO
+**O que falta:**
+- Modificar verificação de cooldown em `tryUseCreatureSkill` para usar valor escalado
+- Garantir que `creature.skillCooldownRemaining` seja atualizado com valor escalado
+
+**Arquivos a modificar:**
+- `server/src/systems/combat.ts` - Linha ~1156: usar `effectiveStats.specialSkillCooldown` ao invés de `specialSkill.cooldown`
+
+**Prioridade:** 🟡 Média (bug menor, mas afeta balanceamento)
 
 ---
 
@@ -130,15 +157,21 @@ Este documento lista as implementações necessárias no servidor relacionadas a
 
 ### 6. Validação de Alcance Escalado
 
-**Status:** ✅ Implementado
+**Status:** ⚠️ Parcial
 
-**Implementação:**
-- ✅ Validação de alcance de ataque usa `attackRange` escalado em `processAttackIntent`
-- ✅ Projéteis respeitam `maxDistance` escalado (usando `effectiveStats.attackRange`)
-- ✅ Validação de alcance de skill adicionada em `processSkillIntent` usando `specialSkillRange` escalado
-- ✅ Criaturas usam `effectiveStats.specialSkillRange` para validar alcance de skills
+**Problema:**
+- Alcance de ataque é validado usando `attackRange` escalado
+- Mas validação pode não estar em todos os lugares necessários
 
-**Prioridade:** 🟡 Média (pode causar bugs de alcance) - ✅ CONCLUÍDO
+**O que falta:**
+- Verificar se validação de alcance está usando valores escalados em todos os lugares
+- Garantir que projéteis param quando atingem `attackRange` escalado
+
+**Arquivos a verificar:**
+- `server/src/systems/combat.ts` - Verificar validação de alcance em `processAttackIntent`
+- `server/src/systems/combat.ts` - Verificar se projéteis respeitam `maxDistance` escalado
+
+**Prioridade:** 🟡 Média (pode causar bugs de alcance)
 
 ---
 
@@ -182,51 +215,37 @@ Este documento lista as implementações necessárias no servidor relacionadas a
 
 ### Prioridade Alta 🔴
 
-- [x] **1. Windup para Skills de Jogadores** ✅
-  - [x] Adicionar `skillWindupTimer` ao `CombatPlayer`
-  - [x] Modificar `processSkillIntent` para iniciar windup
-  - [x] Criar `updatePlayerSkillWindups`
-  - [x] Bloquear movimento durante windup de skill
-  - [x] Adicionar efeito visual no cliente
+- [ ] **1. Windup para Skills de Jogadores**
+  - [ ] Adicionar `skillWindupTimer` ao `CombatPlayer`
+  - [ ] Modificar `processSkillIntent` para iniciar windup
+  - [ ] Criar `updatePlayerSkillWindups`
+  - [ ] Bloquear movimento durante windup de skill
+  - [ ] Adicionar efeito visual no cliente
 
 ### Prioridade Média 🟡
 
-- [x] **2. Windup para Skills de Criaturas (IA)** ✅
-  - [x] Adicionar `skillWindupTimer` ao `ServerCreature`
-  - [x] Modificar `tryUseCreatureSkill` para iniciar windup
-  - [x] Atualizar windup no loop de IA
-  - [x] Bloquear movimento durante windup de skill
+- [ ] **2. Windup para Skills de Criaturas (IA)**
+  - [ ] Adicionar `skillWindupTimer` ao `ServerCreature`
+  - [ ] Modificar `tryUseCreatureSkill` para iniciar windup
+  - [ ] Atualizar windup no loop de IA
+  - [ ] Bloquear movimento durante windup de skill
 
-- [x] **3. Validação de Cooldown Escalado para Skills de IA** ✅
-  - [x] Usar `effectiveStats.specialSkillCooldown` em `tryUseCreatureSkill`
+- [ ] **3. Validação de Cooldown Escalado para Skills de IA**
+  - [ ] Usar `effectiveStats.specialSkillCooldown` em `tryUseCreatureSkill`
 
-- [x] **4. Sincronização de Windup entre Cliente e Servidor** ✅
-  - [x] Windup sincronizado via broadcast de estado (StateBroadcaster)
-  - [x] Cliente inicia windup local e sincroniza com servidor
+- [ ] **4. Sincronização de Windup entre Cliente e Servidor**
+  - [ ] Enviar confirmação de windup com timestamp
+  - [ ] Ajustar windup local baseado na resposta
 
-- [x] **6. Validação de Alcance Escalado** ✅
-  - [x] Verificar validação de alcance em todos os lugares
-  - [x] Garantir que projéteis respeitam `maxDistance` escalado
-  - [x] Adicionar validação de alcance escalado para skills
+- [ ] **6. Validação de Alcance Escalado**
+  - [ ] Verificar validação de alcance em todos os lugares
+  - [ ] Garantir que projéteis respeitam `maxDistance` escalado
 
 ### Prioridade Baixa 🟢
 
-- [x] **5. Type Effectiveness no Servidor** ✅
-  - [x] Verificado: Type effectiveness aplicado em ataques melee e ranged
-  - [x] Adicionado: Type effectiveness para skills (zones de skill)
-  - [x] `calculateTypeEffectiveness` usado em todos os lugares necessários
-
-- [x] **7. Broadcast de Windup para Clientes** ✅
-  - [x] `windupTimer` e `skillWindupTimer` adicionados ao `PlayerPresence`
-  - [x] `StateBroadcaster` envia windup timers no broadcast de estado
-  - [x] Cliente recebe e renderiza efeitos visuais de windup para jogadores remotos
-  - [x] `SpriteManager` cria e atualiza indicadores visuais de windup para jogadores remotos
-
-- [x] **8. Validação de Windup em Ataques de Criaturas** ✅
-  - [x] Verificado: Criaturas já têm `windupTimer` implementado
-  - [x] Criaturas ranged usam windup antes de criar projéteis (via `canCreatureAttack`)
-  - [x] Criaturas melee não precisam de windup (ataques instantâneos corpo-a-corpo)
-  - [x] Movimento bloqueado durante windup (`canCreatureMove` verifica `windupTimer`)
+- [ ] **5. Type Effectiveness no Servidor** (verificação)
+- [ ] **7. Broadcast de Windup para Clientes**
+- [ ] **8. Validação de Windup em Ataques de Criaturas** (verificação)
 
 ---
 
@@ -330,34 +349,5 @@ Sempre usar `calculateEffectiveStats()` para obter valores escalados:
 
 ---
 
-**Última atualização:** Após implementação completa de todas as mecânicas de ataque
-**Status:** ✅ TODAS AS MECÂNICAS IMPLEMENTADAS E TESTADAS
-
-## ✅ Resumo Final das Implementações
-
-Todas as mecânicas importantes de ataque foram implementadas:
-
-1. ✅ **Windup para Skills de Jogadores** - Completo
-2. ✅ **Windup para Skills de Criaturas (IA)** - Completo
-3. ✅ **Validação de Cooldown Escalado** - Completo
-4. ✅ **Sincronização de Windup** - Completo
-5. ✅ **Type Effectiveness** - Completo (aplicado em ataques e skills)
-6. ✅ **Validação de Alcance Escalado** - Completo
-7. ✅ **Broadcast de Windup para Clientes** - Completo
-8. ✅ **Efeitos Visuais de Windup** - Completo (jogador local, jogadores remotos e criaturas)
-
-### Efeitos Visuais Implementados
-
-- ✅ **Jogador Local:**
-  - Círculo amarelo pulsante durante windup de ataque
-  - Círculo magenta pulsante durante windup de skill
-  
-- ✅ **Jogadores Remotos:**
-  - Círculo amarelo pulsante durante windup de ataque
-  - Círculo magenta pulsante durante windup de skill
-  - Timers sincronizados via broadcast de estado
-  
-- ✅ **Criaturas:**
-  - Flash branco durante windup de ataque
-  - Círculo magenta pulsante durante windup de skill
-  - Timers atualizados do servidor e interpolados localmente
+**Última atualização:** Após implementação de windup de ataques básicos
+**Próxima revisão:** Após implementação de windup de skills

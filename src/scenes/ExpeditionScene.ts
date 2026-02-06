@@ -425,6 +425,7 @@ export class ExpeditionScene extends Phaser.Scene {
     // Inicializar VisualSystem
     this.visualSystem = new VisualSystem(this, this.player);
     this.visualSystem.setDangerRing(this.dangerRing);
+    // ✅ Conectar skillSystem ao visualSystem (será feito depois que skillSystem for criado)
     
     // Arquitetura multiplayer-first: servidor sempre inicializa o mundo
     // Não faz spawn local - aguarda sincronização do servidor
@@ -583,10 +584,6 @@ export class ExpeditionScene extends Phaser.Scene {
     // ✅ Conectar MovementSystem ao CombatSystem para bloquear movimento durante windup
     this.movementSystem.setCombatSystem(this.combatSystem);
     this.movementSystem.setSkillSystem(this.skillSystem); // ✅ Conectar skillSystem para bloquear movimento durante windup de skill
-    
-    // ✅ Conectar VisualSystem ao CombatSystem e SkillSystem para efeitos visuais de windup
-    this.visualSystem.setCombatSystem(this.combatSystem);
-    this.visualSystem.setSkillSystem(this.skillSystem);
     
     // Inicializar InteractionSystem
     this.interactionSystem = new InteractionSystem(

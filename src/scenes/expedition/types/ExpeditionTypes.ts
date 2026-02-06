@@ -145,12 +145,6 @@ export interface RemotePlayerSprite {
   actionType: "idle" | "attacking" | "extracting" | "capturing" | null;
   actionTimer: number;
   
-  // ✅ Indicadores visuais de windup
-  windupIndicator: Phaser.GameObjects.Arc | null;
-  skillWindupIndicator: Phaser.GameObjects.Arc | null;
-  windupTimer: number;
-  skillWindupTimer: number;
-  
   // Visibilidade (culling)
   isVisible: boolean;
 }

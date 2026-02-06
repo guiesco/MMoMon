@@ -189,10 +189,8 @@ export class VisualSystem {
       }
     }
 
-    // ✅ Tell de ataque (flash branco antes do golpe)
-    // Verificar windupTimer diretamente do sprite (atualizado do servidor)
-    const windupTimer = wc.windupTimer ?? 0;
-    if (wc.aiState === "attacking" && windupTimer > 0) {
+    // Tell de ataque (flash branco antes do golpe)
+    if (wc.aiState === "attacking" && wc.windupTimer > 0) {
       if (!wc.attackTellIndicator) {
         wc.attackTellIndicator = this.scene.add.circle(
           wc.sprite.x,
@@ -216,9 +214,7 @@ export class VisualSystem {
     }
     
     // ✅ Tell de skill (flash colorido antes da skill)
-    // Verificar skillWindupTimer diretamente do sprite (atualizado do servidor)
-    const skillWindupTimer = wc.skillWindupTimer ?? 0;
-    if (skillWindupTimer > 0) {
+    if (wc.skillWindupTimer && wc.skillWindupTimer > 0) {
       if (!wc.skillTellIndicator) {
         wc.skillTellIndicator = this.scene.add.circle(
           wc.sprite.x,
@@ -246,8 +242,8 @@ export class VisualSystem {
       wc.skillTellIndicator.setVisible(false);
     }
     
-    // ✅ Detecta execução de ataque melee em multiplayer
-    if (wc.aiState === "attacking" && windupTimer <= 0.05 && wc.behaviorType === "melee") {
+    // Detecta execução de ataque melee em multiplayer
+    if (wc.aiState === "attacking" && wc.windupTimer <= 0.05 && wc.behaviorType === "melee") {
       const dx = this.player.x - wc.sprite.x;
       const dy = this.player.y - wc.sprite.y;
       

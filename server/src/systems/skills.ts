@@ -18,7 +18,7 @@
  */
 
 import { ServerSkillZone, ServerCreature, createSkillZone } from "../types";
-import { applyDamageToCreature, DamageResult, calculateTypeEffectiveness } from "./combat";
+import { applyDamageToCreature, DamageResult } from "./combat";
 import { addBuffToCreature, BUFF_CONFIG } from "./buffs";
 
 // ✅ Importar do shared
@@ -214,7 +214,6 @@ export function processSkillIntent(
   let damagePerTick = baseConfig.damagePerTick;
   let lifetime = baseConfig.lifetime;
   let skillCooldown = SKILL_COOLDOWN_MS;
-  let skillRange = 300; // Alcance padrão
 
   if (creatureId && creatureLevel !== undefined && creatureRank !== undefined) {
     const effectiveStats = calculateEffectiveStats(
@@ -227,7 +226,6 @@ export function processSkillIntent(
     damagePerTick = effectiveStats.specialSkillDamagePerTick;
     lifetime = effectiveStats.specialSkillLifetime;
     skillCooldown = effectiveStats.specialSkillCooldown * 1000; // Converter para ms
-    skillRange = effectiveStats.specialSkillRange; // ✅ Alcance escalado
   } else if (creatureId) {
     // Se não tiver level/rank, usar valores base da special skill
     const specialSkill = getSpecialSkillByCreatureId(creatureId);
@@ -236,19 +234,7 @@ export function processSkillIntent(
       damagePerTick = specialSkill.damagePerTick;
       lifetime = specialSkill.lifetime;
       skillCooldown = specialSkill.cooldown * 1000;
-      skillRange = specialSkill.range; // ✅ Alcance base
     }
-  }
-
-  // ✅ Validação: alcance escalado
-  const dx = targetX - player.x;
-  const dy = targetY - player.y;
-  const distance = Math.hypot(dx, dy);
-  if (distance > skillRange) {
-    return {
-      success: false,
-      reason: "invalid_position" // Fora de alcance
-    };
   }
 
   // Validação: cooldown escalado
@@ -327,8 +313,7 @@ export function processSkillIntent(
     baseConfig.tickInterval, // tickInterval não escala
     lifetime,
     baseConfig.slowModifier, // slowModifier não escala
-    attackerAttack, // ✅ Ataque do atacante para calcular dano com defesa
-    creatureId // ✅ Tipo da criatura para type effectiveness
+    attackerAttack // ✅ Ataque do atacante para calcular dano com defesa
   );
 
   room.skillZones.push(skillZone);
@@ -395,16 +380,10 @@ export function updateSkillZones(
         const distance = Math.hypot(dx, dy);
 
         if (distance <= zone.radius) {
-          // ✅ Aplicar type effectiveness no dano da skill
-          const typeMultiplier = zone.creatureType
-            ? calculateTypeEffectiveness(zone.creatureType, creature.creatureType)
-            : 1.0;
-          let baseDamage = Math.floor(zone.damagePerTick * typeMultiplier);
-          
           // Criatura está dentro da zona - aplicar dano
           const damageResult = applyDamageToCreature(
             creature,
-            baseDamage,
+            zone.damagePerTick,
             zone.ownerId,
             zone.attackerAttack
           );
@@ -573,8 +552,7 @@ export function updatePlayerSkillWindups(
           baseConfig.tickInterval,
           lifetime,
           baseConfig.slowModifier,
-          attackerAttack, // ✅ Ataque do atacante para calcular dano com defesa
-          creatureId // ✅ Tipo da criatura para type effectiveness
+          attackerAttack // ✅ Ataque do atacante para calcular dano com defesa
         );
         
         room.skillZones.push(skillZone);

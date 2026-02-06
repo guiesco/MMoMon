@@ -1399,8 +1399,7 @@ export function updateCreatureAI(
             specialSkill.tickInterval,
             skillLifetime,
             specialSkill.slowModifier,
-            effectiveStats.attackDamage, // ✅ Ataque do atacante para calcular dano com defesa
-            creature.creatureType // ✅ Tipo da criatura para type effectiveness
+            effectiveStats.attackDamage // ✅ Ataque do atacante para calcular dano com defesa
           );
           
           room.skillZones.push(skillZone);
@@ -1600,8 +1599,7 @@ function tryUseCreatureSkill(
     specialSkill.tickInterval,
     skillLifetime,
     specialSkill.slowModifier,
-    effectiveStats.attackDamage, // ✅ Ataque do atacante para calcular dano com defesa
-    creature.creatureType // ✅ Tipo da criatura para type effectiveness
+    effectiveStats.attackDamage // ✅ Ataque do atacante para calcular dano com defesa
   );
 
   room.skillZones.push(skillZone);
@@ -2011,16 +2009,10 @@ export function updateSkillZones(
         const distance = Math.hypot(dx, dy);
 
         if (distance <= zone.radius) {
-          // ✅ Aplicar type effectiveness no dano da skill
-          const typeMultiplier = zone.creatureType
-            ? calculateTypeEffectiveness(zone.creatureType, creature.creatureType)
-            : 1.0;
-          let baseDamage = Math.floor(zone.damagePerTick * typeMultiplier);
-          
           // Criatura está dentro da zona - aplicar dano
           const damageResult = applyDamageToCreature(
             creature,
-            baseDamage,
+            zone.damagePerTick,
             zone.ownerId,
             zone.attackerAttack
           );
