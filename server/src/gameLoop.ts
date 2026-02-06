@@ -213,6 +213,15 @@ export interface GameLoopCallbacks {
   ) => void;
 
   /**
+   * ✅ Chamado quando um jogador faz dash (movimento instantâneo).
+   */
+  onPlayerDash?: (
+    playerId: string,
+    newX: number,
+    newY: number
+  ) => void;
+
+  /**
    * Chamado quando um intent de extração é processado (start/cancel).
    */
   onExtractionIntent?: (
@@ -832,9 +841,22 @@ export class GameLoop {
       deltaSeconds
     );
     // Processar resultados de skills que foram executadas após windup
-    if (windupSkillResults.length > 0 && this.callbacks.onSkillZoneCreated) {
+    if (windupSkillResults.length > 0) {
       for (const result of windupSkillResults) {
-        if (result.success && result.skillZoneId) {
+        // ✅ Processar movimento de dash
+        if (result.dashMovement) {
+          const { playerId, newX, newY } = result.dashMovement;
+          console.log(`[GameLoop] 🏃 Dash detectado para jogador ${playerId.slice(0, 8)}... para (${newX.toFixed(0)}, ${newY.toFixed(0)})`);
+          // Atualizar posição no combatState
+          this.updatePlayerPosition(playerId, newX, newY);
+          // Notificar callback se existir (para enviar mensagem de movimento)
+          if (this.callbacks.onPlayerDash) {
+            this.callbacks.onPlayerDash(playerId, newX, newY);
+          }
+        }
+
+        // Processar criação de skill zones
+        if (result.success && result.skillZoneId && this.callbacks.onSkillZoneCreated) {
           // Encontrar a skill zone criada
           const skillZone = this.combatState.skillZones.find(z => z.id === result.skillZoneId);
           if (skillZone) {

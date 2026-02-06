@@ -198,6 +198,17 @@ export interface RemoteCreatureSprite {
   patrolOrigin: { x: number; y: number };
   patrolTimer: number;
   
+  // ✅ Estado de dash (para Pyrognat)
+  dashState?: {
+    startX: number;
+    startY: number;
+    targetX: number;
+    targetY: number;
+    duration: number;
+    elapsed: number;
+    speedMultiplier: number;
+  };
+  
   // Estado geral
   state?: string;
 }

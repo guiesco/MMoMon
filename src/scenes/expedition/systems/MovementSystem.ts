@@ -12,7 +12,7 @@ export class MovementSystem {
   private speed: number;
   private state: ExpeditionState;
   private mpClient: MultiplayerClient | null;
-  private combatSystem: { 
+  private combatSystem: {
     isInWindup: () => boolean;
     isInSkillWindup: (skillSystem: any) => boolean;
   } | null = null; // ✅ Referência para verificar windup
@@ -33,17 +33,17 @@ export class MovementSystem {
     this.state = initialState;
     this.mpClient = mpClient;
   }
-  
+
   /**
    * ✅ Define referência ao CombatSystem para verificar windup.
    */
-  setCombatSystem(combatSystem: { 
+  setCombatSystem(combatSystem: {
     isInWindup: () => boolean;
     isInSkillWindup: (skillSystem: any) => boolean;
   } | null): void {
     this.combatSystem = combatSystem;
   }
-  
+
   /**
    * ✅ Define referência ao SkillSystem para verificar windup de skill.
    */
@@ -68,7 +68,7 @@ export class MovementSystem {
       this.player.setVelocity(0, 0);
       return;
     }
-    
+
     // ✅ Bloquear movimento durante windup de skill
     if (this.combatSystem?.isInSkillWindup(this.skillSystem)) {
       this.player.setVelocity(0, 0);

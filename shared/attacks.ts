@@ -103,18 +103,18 @@ export interface SpecialSkill {
 export const ATTACK_CHAMA_RAPIDA: BasicAttack = {
   name: "Chama Rápida",
   description: "Projétil de fogo de curto alcance.",
-  range: 220,
-  damage: 20,
-  cooldown: 2.5,
+  range: 240, // +20 (DPS Rápido: alcance médio)
+  damage: 24, // +4 (escala com ATK)
+  cooldown: 2.2, // -0.3s (DPS Rápido: cooldown menor)
   isProjectile: true,
   attackWindup: 0.5,
   stunDuration: 0.2,
-  projectileSpeed: 200,
-  attackRangePerLevel: 0.002, // +0.2% por nível
-  attackCooldownPerLevel: -0.01, // -1% por nível (cooldown reduz)
-  attackWindupPerLevel: -0.005, // -0.5% por nível (windup reduz)
-  stunDurationPerLevel: 0.01, // +1% por nível (stun mais longo)
-  projectileSpeedPerLevel: 0.003 // +0.3% por nível
+  projectileSpeed: 250, // +50 (DPS Rápido: projétil mais rápido)
+  attackRangePerLevel: 0.003, // +0.3% por nível (era 0.2%)
+  attackCooldownPerLevel: -0.01, // -1.0% por nível (reduzido para evitar cooldowns muito baixos)
+  attackWindupPerLevel: -0.005, // -0.5% por nível (mantém)
+  stunDurationPerLevel: 0.01, // +1% por nível (mantém)
+  projectileSpeedPerLevel: 0.005 // +0.5% por nível (era 0.3%)
 };
 
 /**
@@ -123,18 +123,18 @@ export const ATTACK_CHAMA_RAPIDA: BasicAttack = {
 export const ATTACK_JATO_AGUA: BasicAttack = {
   name: "Jato d'Água",
   description: "Projétil de água de médio alcance.",
-  range: 260,
-  damage: 18,
-  cooldown: 2.5,
+  range: 280, // +20 (Tank/Support: alcance maior)
+  damage: 18, // mantém (escala com ATK)
+  cooldown: 2.3, // -0.2s (Tank/Support: cooldown médio)
   isProjectile: true,
   attackWindup: 0.5,
   stunDuration: 0.2,
-  projectileSpeed: 220,
-  attackRangePerLevel: 0.002, // +0.2% por nível
-  attackCooldownPerLevel: -0.01, // -1% por nível (cooldown reduz)
-  attackWindupPerLevel: -0.005, // -0.5% por nível (windup reduz)
-  stunDurationPerLevel: 0.01, // +1% por nível (stun mais longo)
-  projectileSpeedPerLevel: 0.003 // +0.3% por nível
+  projectileSpeed: 240, // +20 (Tank/Support: velocidade média)
+  attackRangePerLevel: 0.003, // +0.3% por nível (era 0.2%)
+  attackCooldownPerLevel: -0.01, // -1.0% por nível (reduzido para evitar cooldowns muito baixos)
+  attackWindupPerLevel: -0.005, // -0.5% por nível (mantém)
+  stunDurationPerLevel: 0.01, // +1% por nível (mantém)
+  projectileSpeedPerLevel: 0.005 // +0.5% por nível (era 0.3%)
 };
 
 /**
@@ -143,18 +143,18 @@ export const ATTACK_JATO_AGUA: BasicAttack = {
 export const ATTACK_CHICOTE_VINHA: BasicAttack = {
   name: "Chicote de Vinha",
   description: "Ataque melee curto, rápido.",
-  range: 80,
-  damage: 16,
-  cooldown: 2.0,
+  range: 90, // +10 (Tank Melee: alcance curto)
+  damage: 16, // mantém (escala com ATK)
+  cooldown: 1.8, // -0.2s (Tank Melee: cooldown menor)
   isProjectile: false,
   attackWindup: 0.4,
   stunDuration: 0.15,
   projectileSpeed: 0,
-  attackRangePerLevel: 0.002, // +0.2% por nível
-  attackCooldownPerLevel: -0.01, // -1% por nível (cooldown reduz)
-  attackWindupPerLevel: -0.005, // -0.5% por nível (windup reduz)
-  stunDurationPerLevel: 0.01, // +1% por nível (stun mais longo)
-  projectileSpeedPerLevel: 0.003 // +0.3% por nível
+  attackRangePerLevel: 0.003, // +0.3% por nível (era 0.2%)
+  attackCooldownPerLevel: -0.01, // -1.0% por nível (reduzido para evitar cooldowns muito baixos)
+  attackWindupPerLevel: -0.005, // -0.5% por nível (mantém)
+  stunDurationPerLevel: 0.01, // +1% por nível (mantém)
+  projectileSpeedPerLevel: 0.003 // mantém (não aplicável para melee)
 };
 
 /**
@@ -163,18 +163,18 @@ export const ATTACK_CHICOTE_VINHA: BasicAttack = {
 export const ATTACK_RAIO_CORTANTE: BasicAttack = {
   name: "Raio Cortante",
   description: "Dispara um raio elétrico de alto dano em linha reta.",
-  range: 280,
-  damage: 24,
-  cooldown: 2.0,
+  range: 300, // +20 (Glass Cannon: alcance maior)
+  damage: 28, // +4 (Glass Cannon: muito mais dano)
+  cooldown: 2.0, // mantém
   isProjectile: true,
   attackWindup: 0.45,
   stunDuration: 0.15,
-  projectileSpeed: 300,
-  attackRangePerLevel: 0.002, // +0.2% por nível
-  attackCooldownPerLevel: -0.01, // -1% por nível (cooldown reduz)
-  attackWindupPerLevel: -0.005, // -0.5% por nível (windup reduz)
-  stunDurationPerLevel: 0.01, // +1% por nível (stun mais longo)
-  projectileSpeedPerLevel: 0.003 // +0.3% por nível
+  projectileSpeed: 350, // +50 (Glass Cannon: projétil muito rápido)
+  attackRangePerLevel: 0.003, // +0.3% por nível (era 0.2%)
+  attackCooldownPerLevel: -0.01, // -1.0% por nível (reduzido para evitar cooldowns muito baixos)
+  attackWindupPerLevel: -0.005, // -0.5% por nível (mantém)
+  stunDurationPerLevel: 0.01, // +1% por nível (mantém)
+  projectileSpeedPerLevel: 0.005 // +0.5% por nível (era 0.3%)
 };
 
 // ============================================================================
@@ -182,116 +182,122 @@ export const ATTACK_RAIO_CORTANTE: BasicAttack = {
 // ============================================================================
 
 /**
- * Nevoeiro Incendiário - Habilidade especial do Pyrognat
+ * Dash Explosivo - Habilidade especial do Pyrognat
+ * NOTA: Mecânica de dash precisa ser implementada no servidor/cliente
  */
 export const SKILL_NEVOEIRO_INCENDIARIO: SpecialSkill = {
-  name: "Nevoeiro Incendiário",
-  description: "Área no chão que causa dano por segundo e reduz velocidade de inimigos.",
-  range: 300, // Alcance para lançar a habilidade
-  damage: 0, // Dano não aplicado diretamente, mas por tick
+  name: "Dash Explosivo",
+  description: "Criatura se move rapidamente em direção ao cursor, deixando rastro de fogo que causa dano. Mobilidade + Dano em área.",
+  range: 300, // Alcance do dash
+  damage: 0, // Dano não aplicado diretamente, mas por tick no rastro
   cooldown: 12,
-  attackWindup: 0.6,
+  attackWindup: 0.5, // -0.1s (dash mais rápido)
   stunDuration: 0,
-  radius: 70,
-  damagePerTick: 8,
-  tickInterval: 0.5,
-  lifetime: 4,
-  slowModifier: 0.7, // 30% mais lento
-  slowDuration: 0.8, // Duração do slow em segundos
+  radius: 75, // +5 (rastro de 150px de largura = 75px de raio)
+  damagePerTick: 10, // +2 (rastro causa mais dano)
+  tickInterval: 0.4, // -0.1s (ticks mais frequentes)
+  lifetime: 3, // -1s (rastro mais curto mas mais intenso)
+  slowModifier: 0.7, // 30% mais lento (mantém)
+  slowDuration: 0.8, // Duração do slow em segundos (mantém)
   isProjectile: false,
   projectileSpeed: 0,
-  attackRangePerLevel: 0.002, // +0.2% por nível
-  attackCooldownPerLevel: -0.01, // -1% por nível (cooldown reduz)
-  attackWindupPerLevel: -0.005, // -0.5% por nível (windup reduz)
+  attackRangePerLevel: 0.003, // +0.3% por nível (era 0.2%)
+  attackCooldownPerLevel: -0.01, // -1.0% por nível (reduzido para evitar cooldowns muito baixos)
+  attackWindupPerLevel: -0.005, // -0.5% por nível (mantém)
   stunDurationPerLevel: 0,
-  radiusPerLevel: 0.003, // +0.3% por nível
-  damagePerTickPerLevel: 0.015, // +1.5% por nível
-  lifetimePerLevel: 0.01, // +1% por nível
-  damagePerLevel: 0.015 // +1.5% por nível
+  radiusPerLevel: 0.003, // +0.3% por nível (mantém)
+  damagePerTickPerLevel: 0.02, // +2% por nível (era 1.5%)
+  lifetimePerLevel: 0.01, // +1% por nível (mantém)
+  damagePerLevel: 0.02 // +2% por nível (era 1.5%)
 };
 
 /**
- * Maré Curativa - Habilidade especial do Aquaryl
+ * Maré Curativa (Melhorada) - Habilidade especial do Aquaryl
+ * NOTA: Deve ser castada na criatura (não no mouse) - precisa implementação no servidor/cliente
  */
 export const SKILL_MARE_CURATIVA: SpecialSkill = {
   name: "Maré Curativa",
-  description: "Área que regenera um pouco de HP do usuário.",
-  range: 250,
+  description: "Cria área de cura ao redor da criatura. Cura aliados e a própria criatura, reduz velocidade de inimigos. Tank/Support.",
+  range: 0, // Castada na criatura (range 0 = auto-cast)
   damage: 0, // Habilidade de cura, não causa dano
-  cooldown: 14,
-  attackWindup: 0.5,
+  cooldown: 12, // -2s (cooldown menor)
+  attackWindup: 0.4, // -0.1s (cast mais rápido)
   stunDuration: 0,
-  radius: 80,
-  damagePerTick: -12, // Negativo = cura
-  tickInterval: 0.3,
-  lifetime: 2,
+  radius: 100, // +20 (raio maior)
+  damagePerTick: -12, // -3 (cura ajustada para DPS mais balanceado)
+  tickInterval: 0.3, // +0.05s (ticks menos frequentes para reduzir DPS)
+  lifetime: 3, // +1s (dura mais tempo)
+  slowModifier: 0.8, // 20% mais lento em inimigos (novo)
+  slowDuration: 1.0, // Duração do slow em segundos (novo)
   isProjectile: false,
   projectileSpeed: 0,
-  attackRangePerLevel: 0.002,
-  attackCooldownPerLevel: -0.01,
-  attackWindupPerLevel: -0.005,
+  attackRangePerLevel: 0, // Não aplicável (castada na criatura)
+  attackCooldownPerLevel: -0.01, // -1.0% por nível (reduzido para evitar cooldowns muito baixos)
+  attackWindupPerLevel: -0.005, // -0.5% por nível (mantém)
   stunDurationPerLevel: 0,
-  radiusPerLevel: 0.003,
-  damagePerTickPerLevel: -0.02, // Cura mais por nível (valores negativos)
-  lifetimePerLevel: 0.01,
+  radiusPerLevel: 0.003, // +0.3% por nível (mantém)
+  damagePerTickPerLevel: -0.025, // Cura mais por nível (era -0.02)
+  lifetimePerLevel: 0.01, // +1% por nível (mantém)
   damagePerLevel: 0 // Cura não tem dano base para escalar
 };
 
 /**
- * Raízes Prendentes - Habilidade especial do Verdant
+ * Armadura de Raízes - Habilidade especial do Verdant
+ * NOTA: Deve ser castada na criatura (não no mouse) - precisa implementação no servidor/cliente
  */
 export const SKILL_RAIZES_PRENDENTES: SpecialSkill = {
-  name: "Raízes Prendentes",
-  description: "Enraíza inimigos em pequena área por pouco tempo.",
-  range: 280,
+  name: "Armadura de Raízes",
+  description: "Cria raízes ao redor da criatura que prendem inimigos e reduzem dano recebido. Tanking + Controle de área.",
+  range: 0, // Castada na criatura (range 0 = auto-cast)
   damage: 0,
-  cooldown: 13,
-  attackWindup: 0.55,
+  cooldown: 11, // -2s (cooldown menor)
+  attackWindup: 0.5, // -0.05s (cast mais rápido)
   stunDuration: 0,
-  radius: 60,
-  damagePerTick: 5,
-  tickInterval: 0.5,
-  lifetime: 5,
-  slowModifier: 0.3, // 70% mais lento (quase imobilizado)
-  freezeDuration: 1.0, // Duração do freeze em segundos
+  radius: 80, // +20 (raio maior)
+  damagePerTick: 6, // +1 (dano leve)
+  tickInterval: 0.4, // -0.1s (ticks mais frequentes)
+  lifetime: 4, // -1s (dura menos mas mais intenso)
+  slowModifier: 0.2, // 80% mais lento (era 0.3) - quase imobilizado
+  freezeDuration: 1.5, // +0.5s (freeze mais longo)
   isProjectile: false,
   projectileSpeed: 0,
-  attackRangePerLevel: 0.002,
-  attackCooldownPerLevel: -0.01,
-  attackWindupPerLevel: -0.005,
+  attackRangePerLevel: 0, // Não aplicável (castada na criatura)
+  attackCooldownPerLevel: -0.01, // -1.0% por nível (reduzido para evitar cooldowns muito baixos)
+  attackWindupPerLevel: -0.005, // -0.5% por nível (mantém)
   stunDurationPerLevel: 0,
-  radiusPerLevel: 0.003,
-  damagePerTickPerLevel: 0.015,
-  lifetimePerLevel: 0.01,
-  damagePerLevel: 0.015
+  radiusPerLevel: 0.003, // +0.3% por nível (mantém)
+  damagePerTickPerLevel: 0.02, // +2% por nível (era 1.5%)
+  lifetimePerLevel: 0.01, // +1% por nível (mantém)
+  damagePerLevel: 0.02 // +2% por nível (era 1.5%)
 };
 
 /**
- * Surto Elétrico - Habilidade especial do Voltiger
+ * Surto Elétrico (Melhorado) - Habilidade especial do Voltiger
+ * NOTA: Deve ser castada na criatura (não no mouse) - precisa implementação no servidor/cliente
  */
 export const SKILL_SURTO_ELETRICO: SpecialSkill = {
   name: "Surto Elétrico",
-  description: "Explosão curta ao redor do usuário que empurra inimigos próximos.",
-  range: 90, // Alcance curto (ao redor do usuário)
-  damage: 15,
-  cooldown: 11,
-  attackWindup: 0.4,
-  stunDuration: 0.2,
-  radius: 90,
-  damagePerTick: 15,
-  tickInterval: 0.4,
-  lifetime: 3,
-  knockbackDistance: 30, // Distância de knockback em pixels
+  description: "Explosão elétrica ao redor da criatura com alto dano e stun. Burst damage + Controle. Glass Cannon.",
+  range: 0, // Castada na criatura (range 0 = auto-cast)
+  damage: 20, // +5 (dano base maior)
+  cooldown: 9, // -2s (cooldown menor)
+  attackWindup: 0.3, // -0.1s (cast mais rápido)
+  stunDuration: 0.4, // +0.2s (stun significativo)
+  radius: 100, // +10 (raio maior)
+  damagePerTick: 14, // -6 (dano por tick reduzido para balancear DPS)
+  tickInterval: 0.4, // +0.1s (ticks menos frequentes para reduzir DPS)
+  lifetime: 2, // -1s (explosão mais rápida)
+  knockbackDistance: 40, // +10 (knockback maior)
   isProjectile: false,
   projectileSpeed: 0,
-  attackRangePerLevel: 0.002,
-  attackCooldownPerLevel: -0.01,
-  attackWindupPerLevel: -0.005,
-  stunDurationPerLevel: 0.01,
-  radiusPerLevel: 0.003,
-  damagePerTickPerLevel: 0.015,
-  lifetimePerLevel: 0.01,
-  damagePerLevel: 0.015
+  attackRangePerLevel: 0, // Não aplicável (castada na criatura)
+  attackCooldownPerLevel: -0.01, // -1.0% por nível (reduzido para evitar cooldowns muito baixos)
+  attackWindupPerLevel: -0.005, // -0.5% por nível (mantém)
+  stunDurationPerLevel: 0.015, // +1.5% por nível (era 1%)
+  radiusPerLevel: 0.003, // +0.3% por nível (mantém)
+  damagePerTickPerLevel: 0.02, // +2% por nível (era 1.5%)
+  lifetimePerLevel: 0.01, // +1% por nível (mantém)
+  damagePerLevel: 0.02 // +2% por nível (era 1.5%)
 };
 
 // ============================================================================

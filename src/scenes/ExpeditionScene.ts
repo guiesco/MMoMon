@@ -20,13 +20,13 @@ import {
 } from "../game/constants";
 import { type MapConfig } from "../game/maps";
 import { HPBarManager } from "../game/hpBars";
-import { 
-  type GameWorldState, 
+import {
+  type GameWorldState,
   RemoteWorldState,
 } from "../game/worldState";
 
-import type { 
-  ExpeditionState, 
+import type {
+  ExpeditionState,
   ExpeditionTelemetry,
   RemoteCreatureSprite,
   RemoteResourceSprite,
@@ -116,7 +116,7 @@ export class ExpeditionScene extends Phaser.Scene {
    * O depósito efetivo no inventário permanente só acontece na extração.
    */
   private expeditionResources: Map<string, number> = new Map();
-  
+
   // Telemetria e balanceamento
   /**
    * TODO(persistência-servidor):
@@ -158,17 +158,17 @@ export class ExpeditionScene extends Phaser.Scene {
 
   private mpClient: MultiplayerClient | null = null;
   private clientId: string | null = null; // ID do cliente local para filtrar da lista de remotos
-  
 
-  
+
+
   private teamSwitchKeys: Phaser.Input.Keyboard.Key[] = [];
-  
+
   // ============================================================================
   // SISTEMA DE PROGRESSÃO DE CRIATURAS
   // ============================================================================
-  
-  
-  
+
+
+
   // Sistema de barras de HP
   private hpBarManager!: HPBarManager;
   /** Flag para indicar que o jogador tomou dano recentemente (para efeito visual) */
@@ -177,7 +177,7 @@ export class ExpeditionScene extends Phaser.Scene {
   // ============================================================================
   // Sistemas Modulares
   // ============================================================================
-  
+
   private feedbackManager!: FeedbackManager;
   private loadingOverlay!: LoadingOverlay;
   private minimapManager!: MinimapManager;
@@ -222,10 +222,10 @@ export class ExpeditionScene extends Phaser.Scene {
     this.resourcesCollected = 0;
     this.creaturesCaptured = 0;
     this.expeditionResources = new Map();
-    
+
     // Itens selecionados para expedição (vindos da cena de seleção)
     const selectedItems = data?.selectedItems || {};
-    
+
     // Inicializar inventário de expedição com preparedExpeditionInventory
     this.expeditionInventory.clear();
     const playerProgress = LocalPlayerState.getProgress();
@@ -234,7 +234,7 @@ export class ExpeditionScene extends Phaser.Scene {
       this.expeditionInventory.set(entry.itemId, entry.quantity);
     }
     console.log(`[ExpeditionScene] 📦 Inventário de expedição inicializado:`, Array.from(this.expeditionInventory.entries()));
-    
+
     // Arquitetura multiplayer-first: sempre usa RemoteWorldState
     // O servidor é sempre a fonte de verdade para o estado do mundo
     this.worldState = new RemoteWorldState();
@@ -255,7 +255,7 @@ export class ExpeditionScene extends Phaser.Scene {
     // ============================================================================
     // Inicializar Sistemas Modulares
     // ============================================================================
-    
+
     // Inicializar sistemas de UI primeiro (precisam das dimensões da viewport)
     this.feedbackManager = new FeedbackManager(this);
     this.loadingOverlay = new LoadingOverlay(this);
@@ -263,20 +263,20 @@ export class ExpeditionScene extends Phaser.Scene {
     this.extractionUI = new ExtractionUI(this, viewportWidth, viewportHeight);
     this.skillCooldownUI = new SkillCooldownUI(this, viewportWidth, viewportHeight);
     this.debugPanel = new DebugPanel(this, viewportHeight);
-    
+
     // Inicializar SpriteManager (precisa do worldState)
     this.spriteManager = new SpriteManager(this, this.worldState);
-    
+
     // Inicializar telemetria usando SceneInitializer (ANTES de criar MultiplayerHandlers)
     this.telemetry = this.sceneInitializer.initializeTelemetry();
-    
+
     // Inicializar MultiplayerHandlers (DEPOIS de inicializar telemetria)
     this.multiplayerHandlers = new MultiplayerHandlers(
       this.worldState,
       this.spriteManager,
       this.telemetry
     );
-    
+
     // Inicializar sistemas de lógica
     this.extractionSystem = new ExtractionSystem(this.state, {
       sendExtractionRequest: (pointId, action) => {
@@ -297,7 +297,7 @@ export class ExpeditionScene extends Phaser.Scene {
     // Posicionado conforme configuração do mapa (normalizada)
     const playerStartX = worldWidth * this.mapConfig.world.playerSpawnX;
     const playerStartY = worldHeight * this.mapConfig.world.playerSpawnY;
-    
+
     this.player = this.physics.add
       .sprite(playerStartX, playerStartY, "")
       .setCircle(16)
@@ -396,9 +396,9 @@ export class ExpeditionScene extends Phaser.Scene {
     this.skillCooldownUI.create();
 
     this.extractionUI.create();
-    
+
     this.debugPanel.create();
-    
+
     this.minimapManager = new MinimapManager(this);
     this.minimapManager.create(viewportWidth, viewportHeight, worldWidth, worldHeight, zoneX, zoneY, this.mapConfig);
 
@@ -408,12 +408,12 @@ export class ExpeditionScene extends Phaser.Scene {
     // Inicializa criaturas da equipe usando TeamSystem
     const progress = LocalPlayerState.getProgress();
     const activeTeamIds = progress.activeTeamIds.slice(0, progress.teamSlots).slice(0, 3);
-    
+
     // Inicializar TeamSystem
     this.teamSystem = new TeamSystem();
     this.teamSystem.initialize(activeTeamIds);
     this.teamSystem.setUpdatePlayerVisual(() => this.visualSystem.updatePlayerVisual(this.teamSystem.activeTheme));
-    
+
     // Inicializar ProgressionSystem
     this.progressionSystem = new ProgressionSystem(this, this.telemetry, this.feedbackManager);
     this.progressionSystem.updateReferences(
@@ -421,20 +421,20 @@ export class ExpeditionScene extends Phaser.Scene {
       activeTeamIds,
       this.teamSystem.activeInstanceId
     );
-    
+
     // Inicializar VisualSystem
     this.visualSystem = new VisualSystem(this, this.player);
     this.visualSystem.setDangerRing(this.dangerRing);
-    
+
     // Arquitetura multiplayer-first: servidor sempre inicializa o mundo
     // Não faz spawn local - aguarda sincronização do servidor
-    
+
     // Inicializa sistema de barras de HP (após criaturas da equipe serem configuradas)
     this.initializeHPBars(progress);
-    
+
     // ============================================================================
     // ============================================================================
-    
+
     // MovementSystem (precisa do player e controles)
     this.movementSystem = new MovementSystem(
       this.player,
@@ -444,8 +444,8 @@ export class ExpeditionScene extends Phaser.Scene {
       this.state,
       this.mpClient
     );
-    
-    
+
+
     // SkillZoneManager (precisa ser inicializado antes do SkillSystem)
     this.skillZoneManager = new SkillZoneManager(this, {
       getAllCreatures: () => this.spriteManager.getAllCreatures(),
@@ -460,10 +460,10 @@ export class ExpeditionScene extends Phaser.Scene {
       worldState: this.worldState,
       telemetry: this.telemetry
     });
-    
+
     // SkillSystem (precisa do scene, mpClient e skillZoneManager)
     this.skillSystem = new SkillSystem(this, this.mpClient, {
-      createFloatingText: (x, y, text, color) => 
+      createFloatingText: (x, y, text, color) =>
         this.feedbackManager.createFloatingText(x, y, text, color),
       addSkillZone: (zone) => this.skillZoneManager.addSkillZone(zone),
       healCreature: (amount) => {
@@ -483,10 +483,10 @@ export class ExpeditionScene extends Phaser.Scene {
       createDeathEffect: (x, y, theme) => this.visualSystem.createDeathEffect(x, y, theme),
       createHealFeedback: (x, y) => this.feedbackManager.createHealFeedback(x, y)
     });
-    
+
     // Conectar TeamSystem com SkillSystem
     this.teamSystem.setSkillSystem(this.skillSystem);
-    
+
     // ProjectileManager (precisa de várias dependências)
     this.projectileManager = new ProjectileManager(this, this.player, {
       getAllCreatures: () => this.spriteManager.getAllCreatures(),
@@ -510,7 +510,7 @@ export class ExpeditionScene extends Phaser.Scene {
         // Mantido apenas para compatibilidade com ProjectileManager
       },
       createDeathEffect: (x, y, theme) => this.visualSystem.createDeathEffect(x, y, theme),
-      createEnhancedFloatingText: (x, y, text, color, fontSize) => 
+      createEnhancedFloatingText: (x, y, text, color, fontSize) =>
         this.feedbackManager.createEnhancedFloatingText(x, y, text, color, fontSize),
       sendCaptureAttempt: (creatureId: string, ballType: string) => {
         if (this.mpClient) {
@@ -528,7 +528,7 @@ export class ExpeditionScene extends Phaser.Scene {
         }
       }
     });
-    
+
     // Inicializar CaptureSystem
     this.captureSystem = new CaptureSystem(
       this,
@@ -539,7 +539,7 @@ export class ExpeditionScene extends Phaser.Scene {
       this.feedbackManager,
       this.telemetry
     );
-    
+
     // Inicializar ItemSystem
     this.itemSystem = new ItemSystem(
       this.feedbackManager,
@@ -561,7 +561,7 @@ export class ExpeditionScene extends Phaser.Scene {
       this.teamSystem.updateCreatureHp(instanceId, hp);
     });
     this.itemSystem.setActiveCreatureInstanceId(this.teamSystem.activeInstanceId);
-    
+
     // Inicializar CombatSystem
     this.combatSystem = new CombatSystem(
       this,
@@ -579,15 +579,15 @@ export class ExpeditionScene extends Phaser.Scene {
       this.teamSystem.activeInstanceId
     );
     this.combatSystem.setCooldownTime(this.teamSystem.attackCooldownTime);
-    
+
     // ✅ Conectar MovementSystem ao CombatSystem para bloquear movimento durante windup
     this.movementSystem.setCombatSystem(this.combatSystem);
     this.movementSystem.setSkillSystem(this.skillSystem); // ✅ Conectar skillSystem para bloquear movimento durante windup de skill
-    
+
     // ✅ Conectar VisualSystem ao CombatSystem e SkillSystem para efeitos visuais de windup do jogador local
     this.visualSystem.setCombatSystem(this.combatSystem);
     this.visualSystem.setSkillSystem(this.skillSystem);
-    
+
     // Inicializar InteractionSystem
     this.interactionSystem = new InteractionSystem(
       this,
@@ -602,7 +602,7 @@ export class ExpeditionScene extends Phaser.Scene {
       this.spriteManager,
       this.worldState
     );
-    
+
     // Configurar MultiplayerHandlers com todas as dependências
     this.multiplayerHandlers.setDependencies({
       mpClient: this.mpClient,
@@ -628,12 +628,12 @@ export class ExpeditionScene extends Phaser.Scene {
       getCreaturesCaptured: () => this.creaturesCaptured,
       disableControls: () => { this.input.keyboard?.disableGlobalCapture(); }
     });
-    
+
     // Atualizar extractionSystem com serverExtractionPointId quando disponível
     if (this.serverExtractionPointId) {
       this.extractionSystem.setServerExtractionPointId(this.serverExtractionPointId);
     }
-    
+
     // Log de início de expedição
     console.log("[TELEMETRIA] Expedição iniciada", {
       timestamp: new Date().toISOString(),
@@ -657,178 +657,178 @@ export class ExpeditionScene extends Phaser.Scene {
     const userId = getUserId();
     // Passa os itens selecionados para o MultiplayerClient
     this.mpClient = new MultiplayerClient(roomId, name, userId, selectedItems);
-      
-      // Captura o ID do cliente após conexão bem-sucedida
-      this.mpClient.on("joined", (data) => {
-        // ITEM 11: Remover loading após conexão bem-sucedida
-        this.loadingOverlay.hide();
-        this.clientId = data.clientId;
-        console.log("[MP] Conectado com ID:", this.clientId);
-        
-        // Atualizar referência do mpClient nos sistemas após conexão
-        if (this.movementSystem) {
-          this.movementSystem.setMpClient(this.mpClient);
-        }
-        if (this.skillSystem) {
-          this.skillSystem.setMpClient(this.mpClient);
-        }
-        if (this.projectileManager) {
-          this.projectileManager.setMpClient(this.mpClient);
-        }
-        if (this.combatSystem) {
-          this.combatSystem.setMpClient(this.mpClient);
-        }
-        if (this.captureSystem) {
-          this.captureSystem.setMpClient(this.mpClient);
-        }
-        if (this.teamSystem) {
-          this.teamSystem.setMpClient(this.mpClient);
-        }
-        if (this.interactionSystem) {
-          this.interactionSystem.setMpClient(this.mpClient);
-        }
-        // Atualizar MultiplayerHandlers com clientId e mpClient
-        this.multiplayerHandlers.setDependencies({
-          mpClient: this.mpClient,
-          clientId: this.clientId,
-          projectileManager: this.projectileManager
-        });
-        
-        // Usar posição inicial fornecida pelo servidor
-        if (data.initialPosition) {
-          this.player.setPosition(data.initialPosition.x, data.initialPosition.y);
-          console.log("[MP] Posição inicial do servidor:", data.initialPosition);
-        }
-        
-        // Enviar dados do time ao servidor
-        const teamIds = this.teamSystem.teamIds;
-        const teamData = teamIds.map(instanceId => {
-          const owned = progress.creatures.find(c => c.instanceId === instanceId);
-          const def = owned ? getCreatureById(owned.definitionId) : null;
-          if (!owned || !def) return null;
-          
-          const effectiveStats = getEffectiveStats(owned);
-          return {
-            instanceId: owned.instanceId,
-            definitionId: owned.definitionId,
-            level: owned.level,
-            currentHp: owned.currentHp,
-            maxHp: effectiveStats.hp,
-            rank: owned.rank
-          };
-        }).filter((c): c is NonNullable<typeof c> => c !== null);
-        
-        if (this.mpClient) {
-          this.mpClient.sendTeamData(teamData, this.teamSystem.activeInstanceId);
-          console.log("[MP] Dados do time enviados:", teamData);
-        }
-      });
-      
-      // Sincroniza jogadores remotos quando recebe atualizações de estado
-      this.mpClient.on("state", (players, match, world) => {
-        this.multiplayerHandlers.syncRemotePlayers(players, this.clientId);
 
-        // Processar worldState inicial (criaturas e recursos)
-        if (world) {
-          if (world.creatures && world.creatures.length > 0) {
-            console.log(`[MP] Recebendo ${world.creatures.length} criaturas do servidor`);
-            this.multiplayerHandlers.handleCreaturesUpdate(world.creatures);
-          }
-          
-          if (world.resources && world.resources.length > 0) {
-            console.log(`[MP] Recebendo ${world.resources.length} recursos do servidor`);
-            this.multiplayerHandlers.handleResourcesUpdate(world.resources);
-          }
-          
-          if (world.extractionPoints && world.extractionPoints.length > 0) {
-            console.log(`[MP] Recebendo ${world.extractionPoints.length} pontos de extração do servidor`);
-            // Armazenar ID do primeiro ponto de extração (assumindo 1 ponto por mapa)
-            if (world.extractionPoints[0]) {
-              this.serverExtractionPointId = world.extractionPoints[0].id;
-              console.log(`[MP] Ponto de extração registrado: ${this.serverExtractionPointId}`);
-              // Atualizar extractionSystem com o ID recebido do servidor
-              if (this.extractionSystem) {
-                this.extractionSystem.setServerExtractionPointId(this.serverExtractionPointId);
-              }
+    // Captura o ID do cliente após conexão bem-sucedida
+    this.mpClient.on("joined", (data) => {
+      // ITEM 11: Remover loading após conexão bem-sucedida
+      this.loadingOverlay.hide();
+      this.clientId = data.clientId;
+      console.log("[MP] Conectado com ID:", this.clientId);
+
+      // Atualizar referência do mpClient nos sistemas após conexão
+      if (this.movementSystem) {
+        this.movementSystem.setMpClient(this.mpClient);
+      }
+      if (this.skillSystem) {
+        this.skillSystem.setMpClient(this.mpClient);
+      }
+      if (this.projectileManager) {
+        this.projectileManager.setMpClient(this.mpClient);
+      }
+      if (this.combatSystem) {
+        this.combatSystem.setMpClient(this.mpClient);
+      }
+      if (this.captureSystem) {
+        this.captureSystem.setMpClient(this.mpClient);
+      }
+      if (this.teamSystem) {
+        this.teamSystem.setMpClient(this.mpClient);
+      }
+      if (this.interactionSystem) {
+        this.interactionSystem.setMpClient(this.mpClient);
+      }
+      // Atualizar MultiplayerHandlers com clientId e mpClient
+      this.multiplayerHandlers.setDependencies({
+        mpClient: this.mpClient,
+        clientId: this.clientId,
+        projectileManager: this.projectileManager
+      });
+
+      // Usar posição inicial fornecida pelo servidor
+      if (data.initialPosition) {
+        this.player.setPosition(data.initialPosition.x, data.initialPosition.y);
+        console.log("[MP] Posição inicial do servidor:", data.initialPosition);
+      }
+
+      // Enviar dados do time ao servidor
+      const teamIds = this.teamSystem.teamIds;
+      const teamData = teamIds.map(instanceId => {
+        const owned = progress.creatures.find(c => c.instanceId === instanceId);
+        const def = owned ? getCreatureById(owned.definitionId) : null;
+        if (!owned || !def) return null;
+
+        const effectiveStats = getEffectiveStats(owned);
+        return {
+          instanceId: owned.instanceId,
+          definitionId: owned.definitionId,
+          level: owned.level,
+          currentHp: owned.currentHp,
+          maxHp: effectiveStats.hp,
+          rank: owned.rank
+        };
+      }).filter((c): c is NonNullable<typeof c> => c !== null);
+
+      if (this.mpClient) {
+        this.mpClient.sendTeamData(teamData, this.teamSystem.activeInstanceId);
+        console.log("[MP] Dados do time enviados:", teamData);
+      }
+    });
+
+    // Sincroniza jogadores remotos quando recebe atualizações de estado
+    this.mpClient.on("state", (players, match, world) => {
+      this.multiplayerHandlers.syncRemotePlayers(players, this.clientId);
+
+      // Processar worldState inicial (criaturas e recursos)
+      if (world) {
+        if (world.creatures && world.creatures.length > 0) {
+          console.log(`[MP] Recebendo ${world.creatures.length} criaturas do servidor`);
+          this.multiplayerHandlers.handleCreaturesUpdate(world.creatures);
+        }
+
+        if (world.resources && world.resources.length > 0) {
+          console.log(`[MP] Recebendo ${world.resources.length} recursos do servidor`);
+          this.multiplayerHandlers.handleResourcesUpdate(world.resources);
+        }
+
+        if (world.extractionPoints && world.extractionPoints.length > 0) {
+          console.log(`[MP] Recebendo ${world.extractionPoints.length} pontos de extração do servidor`);
+          // Armazenar ID do primeiro ponto de extração (assumindo 1 ponto por mapa)
+          if (world.extractionPoints[0]) {
+            this.serverExtractionPointId = world.extractionPoints[0].id;
+            console.log(`[MP] Ponto de extração registrado: ${this.serverExtractionPointId}`);
+            // Atualizar extractionSystem com o ID recebido do servidor
+            if (this.extractionSystem) {
+              this.extractionSystem.setServerExtractionPointId(this.serverExtractionPointId);
             }
           }
         }
+      }
 
-        // Sincronizar timer com o servidor em modo multiplayer
-        if (match) {
-          this.useServerTimer = true;
-          this.expeditionDuration = match.durationSeconds;
-          // Calcular expeditionTime a partir do timeLeft
-          this.expeditionTime = match.durationSeconds - match.timeLeft;
-          // Armazenar último estado do match para usar em telemetria
-          this.lastMatchState = match;
-          
-          console.debug("[MP] Timer sincronizado:", {
-            elapsed: match.elapsedSeconds,
-            timeLeft: match.timeLeft,
-            state: match.state
-          });
-        }
-      });
-      
-      // attackResult processado via MultiplayerHandlers
-      this.mpClient.on("attackResult", (result) => {
-        this.multiplayerHandlers.handleAttackResult(result);
-      });
-      this.mpClient.on("captureResult", (result) => {
-        console.log("[MP] 🎯 Evento captureResult recebido no handler:", result);
-        this.multiplayerHandlers.handleCaptureResult(result);
-      });
-      this.mpClient.on("creaturesUpdate", (creatures) => this.multiplayerHandlers.handleCreaturesUpdate(creatures));
-      this.mpClient.on("resourcesUpdate", (resources) => this.multiplayerHandlers.handleResourcesUpdate(resources));
-      this.mpClient.on("projectilesUpdate", (projectiles) => {
-        // Processar atualização via ProjectileManager
-        this.projectileManager.handleProjectilesUpdate(
-          projectiles,
-          this.clientId,
-          (id) => this.spriteManager.getCreatureSprite(id)
-        );
-      });
-      this.mpClient.on("skillZonesUpdate", (skillZones) => {
-        // Processar atualização via SkillZoneManager
-        this.skillZoneManager.handleSkillZonesUpdate(skillZones);
-      });
-      this.mpClient.on("extractionState", (state) => {
-        // Processar via MultiplayerHandlers (inclui atualização de estado e recompensas)
-        this.multiplayerHandlers.handleExtractionState(state);
-      });
-      this.mpClient.on("matchEvent", (event) => {
-        this.multiplayerHandlers.handleMatchEvent(event);
-      });
-      this.mpClient.on("playerDeath", (death) => {
-        this.multiplayerHandlers.handlePlayerDeath(death);
-      });
-      this.mpClient.on("playerMove", (move) => this.multiplayerHandlers.handlePlayerMove(move));
-      
-      // Handlers para erros e conexão
-      this.mpClient.on("error", (reason, details) => {
-        // ITEM 11: Remover loading em caso de erro
-        this.loadingOverlay.hide();
-        console.error("[MP] Erro do servidor:", reason, details);
-        
-        // Tratar erros específicos
-        if (reason === "room_full") {
-          alert("Sala cheia! Tente novamente mais tarde.");
-          this.scene.start("BaseHubScene");
-        } else if (reason === "match_finished") {
-          alert("Esta partida já terminou.");
-          this.scene.start("BaseHubScene");
-        } else {
-          // Erro genérico - mostrar aviso mas continuar em modo local
-          console.warn("[MP] Erro multiplayer - continuando em modo local");
-        }
-      });
-      
-      this.mpClient.on("disconnected", () => {
-        console.warn("[MP] Desconectado do servidor - tentando reconectar...");
-        // MultiplayerClient já tem lógica de reconexão automática
-      });
-    
+      // Sincronizar timer com o servidor em modo multiplayer
+      if (match) {
+        this.useServerTimer = true;
+        this.expeditionDuration = match.durationSeconds;
+        // Calcular expeditionTime a partir do timeLeft
+        this.expeditionTime = match.durationSeconds - match.timeLeft;
+        // Armazenar último estado do match para usar em telemetria
+        this.lastMatchState = match;
+
+        console.debug("[MP] Timer sincronizado:", {
+          elapsed: match.elapsedSeconds,
+          timeLeft: match.timeLeft,
+          state: match.state
+        });
+      }
+    });
+
+    // attackResult processado via MultiplayerHandlers
+    this.mpClient.on("attackResult", (result) => {
+      this.multiplayerHandlers.handleAttackResult(result);
+    });
+    this.mpClient.on("captureResult", (result) => {
+      console.log("[MP] 🎯 Evento captureResult recebido no handler:", result);
+      this.multiplayerHandlers.handleCaptureResult(result);
+    });
+    this.mpClient.on("creaturesUpdate", (creatures) => this.multiplayerHandlers.handleCreaturesUpdate(creatures));
+    this.mpClient.on("resourcesUpdate", (resources) => this.multiplayerHandlers.handleResourcesUpdate(resources));
+    this.mpClient.on("projectilesUpdate", (projectiles) => {
+      // Processar atualização via ProjectileManager
+      this.projectileManager.handleProjectilesUpdate(
+        projectiles,
+        this.clientId,
+        (id) => this.spriteManager.getCreatureSprite(id)
+      );
+    });
+    this.mpClient.on("skillZonesUpdate", (skillZones) => {
+      // Processar atualização via SkillZoneManager
+      this.skillZoneManager.handleSkillZonesUpdate(skillZones);
+    });
+    this.mpClient.on("extractionState", (state) => {
+      // Processar via MultiplayerHandlers (inclui atualização de estado e recompensas)
+      this.multiplayerHandlers.handleExtractionState(state);
+    });
+    this.mpClient.on("matchEvent", (event) => {
+      this.multiplayerHandlers.handleMatchEvent(event);
+    });
+    this.mpClient.on("playerDeath", (death) => {
+      this.multiplayerHandlers.handlePlayerDeath(death);
+    });
+    this.mpClient.on("playerMove", (move) => this.multiplayerHandlers.handlePlayerMove(move));
+
+    // Handlers para erros e conexão
+    this.mpClient.on("error", (reason, details) => {
+      // ITEM 11: Remover loading em caso de erro
+      this.loadingOverlay.hide();
+      console.error("[MP] Erro do servidor:", reason, details);
+
+      // Tratar erros específicos
+      if (reason === "room_full") {
+        alert("Sala cheia! Tente novamente mais tarde.");
+        this.scene.start("BaseHubScene");
+      } else if (reason === "match_finished") {
+        alert("Esta partida já terminou.");
+        this.scene.start("BaseHubScene");
+      } else {
+        // Erro genérico - mostrar aviso mas continuar em modo local
+        console.warn("[MP] Erro multiplayer - continuando em modo local");
+      }
+    });
+
+    this.mpClient.on("disconnected", () => {
+      console.warn("[MP] Desconectado do servidor - tentando reconectar...");
+      // MultiplayerClient já tem lógica de reconexão automática
+    });
+
     this.mpClient.connect();
   }
 
@@ -840,10 +840,10 @@ export class ExpeditionScene extends Phaser.Scene {
    * Obtém todas as criaturas do worldState.
    * Usa SpriteManager como fonte de verdade.
    */
-    /**
-   * Inicializa o sistema de barras de HP.
-   * Cria a barra principal do jogador e barras para cada criatura da equipe.
-   */
+  /**
+ * Inicializa o sistema de barras de HP.
+ * Cria a barra principal do jogador e barras para cada criatura da equipe.
+ */
   private initializeHPBars(
     progress: ReturnType<typeof LocalPlayerState.getProgress>
   ) {
@@ -855,7 +855,7 @@ export class ExpeditionScene extends Phaser.Scene {
 
     // Cria barra de HP do jogador/criatura ativa
     this.hpBarManager.createPlayerBar(hudX, hudY, this.teamSystem.activeDef);
-    
+
     // Conectar TeamSystem com HPBarManager
     this.teamSystem.setHpBarManager(this.hpBarManager);
 
@@ -949,10 +949,10 @@ export class ExpeditionScene extends Phaser.Scene {
           // Usar tempo do servidor se disponível, senão usar tempo local
           const finalTime = this.lastMatchState?.elapsedSeconds ?? this.expeditionTime;
           this.telemetry.timeSpent = finalTime;
-          
+
           // Servidor já salva recompensas automaticamente quando extração completa
           // Não é mais necessário sync manual do cliente
-          
+
           // Calcula métricas finais
           const timeMinutes = finalTime / 60;
           this.telemetry.resourcesPerMinute = this.telemetry.resourcesCollected / Math.max(0.1, timeMinutes);
@@ -960,7 +960,7 @@ export class ExpeditionScene extends Phaser.Scene {
           this.telemetry.averageCaptureChance = this.telemetry.captureAttempts > 0
             ? this.telemetry.totalCaptureChanceSum / this.telemetry.captureAttempts
             : 0;
-          
+
           // Log estruturado de falha
           const telemetryData = {
             "Tempo Total (s)": Math.floor(this.telemetry.timeSpent),
@@ -979,10 +979,10 @@ export class ExpeditionScene extends Phaser.Scene {
             "Projéteis Disparados": this.telemetry.projectilesFired,
             "Status": "FALHA (TEMPO ESGOTADO)"
           };
-          
+
           console.log("[TELEMETRIA] Expedição falhou - tempo esgotado");
           console.table(telemetryData);
-          
+
           // Mesmo em falha, criaturas ganham XP (sem bônus de extração)
           this.processCreatureXp(false);
         }
@@ -992,7 +992,7 @@ export class ExpeditionScene extends Phaser.Scene {
     if (this.state === "extracted" || this.state === "failed") {
       this.endSceneTimer += dt;
       // HUD já é atualizado no update() principal
-      
+
       // Retorna à base após delay
       if (this.endSceneTimer >= this.endSceneDelay) {
         // Limpa conexão multiplayer se existir
@@ -1005,7 +1005,7 @@ export class ExpeditionScene extends Phaser.Scene {
         for (const playerId of playerIds) {
           this.spriteManager?.destroyPlayerSprite(playerId);
         }
-        
+
         // Limpa o sistema de barras de HP antes de trocar de cena
         if (this.hpBarManager) {
           this.hpBarManager.destroy();
@@ -1014,7 +1014,7 @@ export class ExpeditionScene extends Phaser.Scene {
       }
       return;
     }
-    
+
     // Atualiza cooldowns de ataque básico e habilidade especial
     this.combatSystem.update(dt);
 
@@ -1049,7 +1049,7 @@ export class ExpeditionScene extends Phaser.Scene {
         this.itemSystem.setActiveCreatureInstanceId(this.teamSystem.activeInstanceId);
       }
     );
-    
+
     // Bloquear movimento durante loading
     if (!this.loadingOverlay.visible) {
       this.movementSystem.update(dt, this.state);
@@ -1070,11 +1070,11 @@ export class ExpeditionScene extends Phaser.Scene {
         this.player.setVelocity(0, 0);
       }
     }
-    
+
     this.state = this.projectileManager.update(dt, this.state) as ExpeditionState;
-    
+
     this.skillZoneManager.update(dt);
-    
+
     // Atualizar referências do VisualSystem para cálculo de perigo
     this.visualSystem.updateDangerReferences(
       this.teamSystem.activeHp,
@@ -1083,7 +1083,7 @@ export class ExpeditionScene extends Phaser.Scene {
       this.damageTakenRecently,
       this.damageTakenDecayTimer
     );
-    
+
     // ✅ Atualizar efeito visual de windup do jogador
     this.visualSystem.updatePlayerWindupVisual();
     // Atualizar decay do dano recebido
@@ -1095,7 +1095,7 @@ export class ExpeditionScene extends Phaser.Scene {
     }
     this.visualSystem.updateDangerRing(timeRatio, this.state);
     this.updateEnemyAI(dt);
-    
+
     // Atualiza VisualSystem com tempo da expedição
     this.visualSystem.updateExpeditionTime(this.expeditionTime);
 
@@ -1121,7 +1121,7 @@ export class ExpeditionScene extends Phaser.Scene {
       this.damageTakenRecently,
       this.expeditionInventory // Passar inventário de expedição atualizado
     );
-    
+
     this.debugPanel.update(
       this.expeditionTime,
       this.expeditionDuration,
@@ -1132,27 +1132,27 @@ export class ExpeditionScene extends Phaser.Scene {
       this.worldState,
       this.spriteManager.creatureSpritesMap
     );
-    
+
     this.skillCooldownUI.update(
       this.skillSystem.cooldown,
       this.skillSystem.cooldownTime,
       this.skillSystem.activeSkillKind,
       this.skillSystem.activeSkillName
     );
-    
+
     // Atualiza renderização de jogadores remotos (interpolação suave)
     this.spriteManager.updateCreatureSprites(dt, this.player.x, this.player.y);
     this.spriteManager.updateResourceSprites(dt);
     this.spriteManager.updatePlayerSprites(dt, this.player.x, this.player.y);
-    
+
     // Atualiza barras de HP (jogador, aliados e inimigos)
     this.updateHPBars();
-    
+
     this.minimapManager.update(this.player.x, this.player.y);
-    
+
     // Registra tempo ativo da criatura atual
     this.progressionSystem.trackActiveCreatureTime(this.teamSystem.activeInstanceId, dt);
-    
+
     // Atualizar SkillSystem cooldown
     this.skillSystem.update(dt);
   }
@@ -1170,7 +1170,7 @@ export class ExpeditionScene extends Phaser.Scene {
    */
   private updateEnemyAI(dt: number) {
     if (this.state === "extracted" || this.state === "failed") return;
-    
+
     // IA é processada no servidor e recebida via creaturesUpdate
     // Cliente apenas atualiza visuais usando VisualSystem
     const creaturesInRange = this.spriteManager.getAllCreatures();
@@ -1212,11 +1212,11 @@ export class ExpeditionScene extends Phaser.Scene {
     for (const playerId of playerIds) {
       this.spriteManager?.destroyPlayerSprite(playerId);
     }
-    
+
     // Limpa projéteis remotos
     // FASE 4: ProjectileManager gerencia a limpeza de projéteis remotos
     // Não precisa limpar manualmente aqui, o ProjectileManager.clear() já faz isso
-    
+
     // FASE 5: Limpa worldState (unificado)
     if (this.worldState) {
       this.worldState.players.clear();

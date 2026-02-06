@@ -32,8 +32,8 @@ export class ItemSystem {
     const potionPriority = ["potion-basic"];
     const progress = LocalPlayerState.getProgress();
 
-    // Verifica se a criatura precisa de cura
-    if (this.activeCreatureHp >= this.activeCreatureMaxHp) {
+    // ✅ Verifica se a criatura precisa de cura (com margem de erro para evitar problemas de precisão)
+    if (this.activeCreatureHp >= this.activeCreatureMaxHp - 0.1) {
       this.feedbackManager.createFloatingText(
         playerX,
         playerY - 30,
@@ -66,7 +66,7 @@ export class ItemSystem {
       "potion-basic": 30
     };
     const healAmount = healAmounts[availablePotion] ?? 25;
-    
+
     // Aplica a cura
     const oldHp = this.activeCreatureHp;
     this.activeCreatureHp = Math.min(

@@ -109,7 +109,8 @@ import {
   canCreatureAttack,
   isPlayerInvulnerable,
   isCreatureInvulnerable,
-  addBuffToCreature
+  addBuffToCreature,
+  addBuffToPlayer
 } from "./buffs";
 
 // ✅ Importar do shared
@@ -245,6 +246,18 @@ export interface CombatPlayer {
     creatureId?: string;
     creatureLevel?: number;
     creatureRank?: number;
+  };
+
+  /** ✅ Estado de dash ativo (para Pyrognat) */
+  dashState?: {
+    startX: number;
+    startY: number;
+    targetX: number;
+    targetY: number;
+    distance: number;
+    duration: number;
+    elapsed: number;
+    speedMultiplier: number;
   };
 
   /** ✅ FASE 9: Buffs e debuffs ativos no jogador */
@@ -948,7 +961,15 @@ function checkProjectilePlayerCollision(
 /**
  * Calcula o dano final considerando ataque do atacante e defesa do defensor.
  * 
- * Fórmula: damage * attackerAttack / defenderDefense
+ * Fórmula: damage * attackerAttack / (defenderDefense^2 * DEFENSE_SCALING_FACTOR)
+ * 
+ * Usa defesa ao quadrado para reduzir significativamente o dano, mas com um fator
+ * de escala para evitar que tanks fiquem quase invencíveis.
+ * 
+ * Exemplos com DEFENSE_SCALING_FACTOR = 0.5:
+ * - Pyrognat (ATK 24) vs Pyrognat (DEF 6): 24 * 24 / (6^2 * 0.5) = 576 / 18 = 32 dano
+ * - Pyrognat (ATK 24) vs Verdant (DEF 16): 24 * 24 / (16^2 * 0.5) = 576 / 128 = 4.5 dano
+ * - Voltiger (ATK 28) vs Pyrognat (DEF 6): 28 * 28 / (6^2 * 0.5) = 784 / 18 = 43 dano
  * 
  * Garantias:
  * - Dano mínimo: MIN_DAMAGE (1)
@@ -961,6 +982,8 @@ function checkProjectilePlayerCollision(
  * @param defenderDefense - Defesa do defensor
  * @returns Dano final calculado (sempre >= MIN_DAMAGE)
  */
+const DEFENSE_SCALING_FACTOR = 0.19; // Fator para suavizar o efeito da defesa ao quadrado (otimizado via testes: melhor balanceamento de TTK)
+
 function calculateDamageWithDefense(
   baseDamage: number,
   attackerAttack: number,
@@ -982,8 +1005,11 @@ function calculateDamageWithDefense(
   const safeAttack = Math.max(attackerAttack, MIN_ATTACK);
   const safeBaseDamage = Math.max(baseDamage, 0);
 
-  // Fórmula: damage * attackerAttack / defenderDefense
-  const calculatedDamage = safeBaseDamage * safeAttack / safeDefense;
+  // Fórmula: damage * attackerAttack / (defense^2 * DEFENSE_SCALING_FACTOR)
+  // Defesa ao quadrado reduz drasticamente o dano, mas o fator evita que tanks fiquem invencíveis
+  const defenseSquared = safeDefense * safeDefense;
+  const scaledDefense = defenseSquared * DEFENSE_SCALING_FACTOR;
+  const calculatedDamage = safeBaseDamage * safeAttack / scaledDefense;
   return Math.max(MIN_DAMAGE, Math.floor(calculatedDamage));
 }
 
@@ -1067,6 +1093,16 @@ export function applyDamageToCreature(
       attackerAttack,
       creature.effectiveStats.defense
     );
+  }
+
+  // ✅ Aplicar redução de dano de shield se criatura tiver buff de shield
+  if (creature.buffs) {
+    const shieldBuffs = creature.buffs.filter(b => b.type === 'shield' && b.duration > 0);
+    if (shieldBuffs.length > 0) {
+      // Reduzir dano pela soma dos valores de shield (ex: 0.3 = 30% de redução)
+      const totalShieldReduction = shieldBuffs.reduce((sum, b) => sum + (b.value ?? 0), 0);
+      finalDamage = Math.max(MIN_DAMAGE, Math.floor(finalDamage * (1 - totalShieldReduction)));
+    }
   }
 
   const oldHp = creature.currentHp;
@@ -1161,6 +1197,16 @@ export function applyDamageToPlayer(
       attackerAttack,
       defenderDefense
     );
+  }
+
+  // ✅ Aplicar redução de dano de shield se jogador tiver buff de shield
+  if (player.buffs) {
+    const shieldBuffs = player.buffs.filter(b => b.type === 'shield' && b.duration > 0);
+    if (shieldBuffs.length > 0) {
+      // Reduzir dano pela soma dos valores de shield (ex: 0.3 = 30% de redução)
+      const totalShieldReduction = shieldBuffs.reduce((sum, b) => sum + (b.value ?? 0), 0);
+      finalDamage = Math.max(MIN_DAMAGE, Math.floor(finalDamage * (1 - totalShieldReduction)));
+    }
   }
 
   const oldHp = player.hp;
@@ -2112,32 +2158,99 @@ export function updateSkillZones(
           }
         }
       } else if (!isCreatureSkill) {
-        // Skill zone de player - aplicar dano nas criaturas (comportamento original)
-        for (const creature of creatures) {
-          const dx = creature.x - zone.x;
-          const dy = creature.y - zone.y;
-          const distance = Math.hypot(dx, dy);
+        // Skill zone de player - aplicar dano/cura
+        // ✅ Se damagePerTick é negativo, é cura (heal_wave)
+        if (zone.damagePerTick < 0 && players) {
+          // Aplicar cura em players (aliados) dentro da zona
+          const healAmount = Math.abs(zone.damagePerTick);
+          const skillDef = getSpecialSkillByType(zone.skillType);
 
-          if (distance <= zone.radius) {
-            // Criatura está dentro da zona - aplicar dano
-            const damageResult = applyDamageToCreature(
-              creature,
-              zone.damagePerTick,
-              zone.ownerId,
-              zone.attackerAttack
-            );
-            damageResults.push(damageResult);
+          for (const [playerId, player] of players) {
+            const dx = player.x - zone.x;
+            const dy = player.y - zone.y;
+            const distance = Math.hypot(dx, dy);
 
-            // ✅ Aplicar efeitos usando valores programáticos da definição da skill
-            applySkillZoneEffects(
-              zone.skillType,
-              creature,
-              distance,
-              dx,
-              dy,
-              zone.ownerId,
-              damageResult
-            );
+            if (distance <= zone.radius) {
+              // Player está dentro da zona - aplicar cura
+              const oldHp = player.hp;
+              player.hp = Math.min(player.maxHp, player.hp + healAmount);
+              const actualHeal = player.hp - oldHp;
+
+              if (actualHeal > 0) {
+                damageResults.push({
+                  targetId: playerId,
+                  attackerId: zone.ownerId,
+                  damage: -actualHeal, // Negativo indica cura
+                  currentHp: player.hp,
+                  maxHp: player.maxHp,
+                  died: false
+                });
+              }
+            }
+          }
+
+          // ✅ Aplicar slow em criaturas inimigas dentro da zona (efeito da Maré Curativa)
+          if (skillDef && skillDef.slowModifier !== undefined && skillDef.slowDuration !== undefined) {
+            for (const creature of creatures) {
+              const creatureDx = creature.x - zone.x;
+              const creatureDy = creature.y - zone.y;
+              const creatureDistance = Math.hypot(creatureDx, creatureDy);
+              if (creatureDistance <= zone.radius) {
+                addBuffToCreature(creature, 'slow', skillDef.slowDuration, skillDef.slowModifier, zone.ownerId);
+              }
+            }
+          }
+        } else {
+          // Aplicar dano nas criaturas (comportamento original)
+          // ✅ Verificar se é skill castada na criatura (root_trap, electric_surge) para aplicar buffs defensivos
+          const skillDef = getSpecialSkillByType(zone.skillType);
+          const isSelfCastSkill = skillDef && skillDef.range === 0;
+
+          // Se é skill auto-cast (range 0), aplicar buffs defensivos no jogador que a castou
+          if (isSelfCastSkill && players) {
+            const owner = players.get(zone.ownerId);
+            if (owner) {
+              const dx = owner.x - zone.x;
+              const dy = owner.y - zone.y;
+              const distance = Math.hypot(dx, dy);
+
+              // Se jogador está dentro da zona (deve estar, pois é auto-cast)
+              if (distance <= zone.radius) {
+                // ✅ Aplicar buff defensivo (shield) para Verdant (root_trap)
+                if (zone.skillType === "root_trap") {
+                  // Redução de dano de 30% por 4 segundos (valor da skill)
+                  addBuffToPlayer(owner, 'shield', skillDef.lifetime || 4, 0.3, zone.ownerId);
+                }
+              }
+            }
+          }
+
+          for (const creature of creatures) {
+            const dx = creature.x - zone.x;
+            const dy = creature.y - zone.y;
+            const distance = Math.hypot(dx, dy);
+
+            if (distance <= zone.radius) {
+              // Criatura está dentro da zona - aplicar dano
+              const damageResult = applyDamageToCreature(
+                creature,
+                zone.damagePerTick,
+                zone.ownerId,
+                zone.attackerAttack
+              );
+              damageResults.push(damageResult);
+
+              // ✅ Aplicar efeitos usando valores programáticos da definição da skill
+              applySkillZoneEffects(
+                zone.skillType,
+                creature,
+                distance,
+                dx,
+                dy,
+                zone.ownerId,
+                damageResult
+              );
+            }
           }
         }
       }

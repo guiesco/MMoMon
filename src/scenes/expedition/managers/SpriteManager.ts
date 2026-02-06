@@ -1,14 +1,14 @@
 import Phaser from "phaser";
-import type { 
-  RemoteCreatureSprite, 
-  RemoteResourceSprite, 
-  RemotePlayerSprite 
+import type {
+  RemoteCreatureSprite,
+  RemoteResourceSprite,
+  RemotePlayerSprite
 } from "../types/ExpeditionTypes";
-import type { 
-  GameWorldState, 
-  CreatureState, 
-  ResourceState, 
-  PlayerState 
+import type {
+  GameWorldState,
+  CreatureState,
+  ResourceState,
+  PlayerState
 } from "../../../game/worldState";
 import { getCreatureById } from "../../../../shared/creatures";
 import { getCreatureTheme } from "../../../game/creatureThemes";
@@ -61,12 +61,12 @@ export class SpriteManager {
     hpBarBg.setOrigin(0.5, 0.5);
     hpBarBg.setDepth(3);
     hpBarBg.setVisible(false); // Oculto - HPBarManager gerencia a barra real
-    
+
     const hpBar = this.scene.add.rectangle(creature.x, creature.y - 20, 40, 4, 0x00ff00, 0);
     hpBar.setOrigin(0, 0.5);
     hpBar.setDepth(3);
     hpBar.setVisible(false); // Oculto - HPBarManager gerencia a barra real
-    
+
     const hpBarText = this.scene.add.text(creature.x, creature.y - 24, "", {
       fontSize: "10px",
       color: "#ffffff"
@@ -123,7 +123,8 @@ export class SpriteManager {
       patrolOrigin: creature.patrolOrigin,
       patrolTimer: creature.patrolTimer,
       state: creature.state,
-      skipFirstInterpolation: true
+      skipFirstInterpolation: true,
+      dashState: undefined // ✅ Inicializar dashState como undefined
     };
 
     this.creatureSprites.set(creature.id, creatureSprite);
@@ -239,45 +240,92 @@ export class SpriteManager {
   updateCreatureSprite(creatureId: string): void {
     const sprite = this.creatureSprites.get(creatureId);
     const state = this.worldState.getCreature(creatureId);
-    
+
     if (!sprite || !state) return;
 
-    // Atualiza posição alvo para interpolação
+    // Atualiza posição alvo para interpolação (ANTES de detectar dash)
+    const previousTargetX = sprite.targetX;
+    const previousTargetY = sprite.targetY;
     sprite.targetX = state.x;
     sprite.targetY = state.y;
-    
+
+    // ✅ DETECÇÃO DE DASH: Verificar se criatura Pyrognat fez dash
+    const isPyrognat = (state.creatureType === "pyrognat" || state.speciesId === "pyrognat");
+    const previousSkillWindup = sprite.skillWindupTimer ?? 0;
+
     // ✅ BUG #2 FIX: Verifica se HP mudou antes de atualizar
     const hpChanged = sprite.currentHp !== state.currentHp || sprite.maxHp !== state.maxHp;
-    
+
     // Atualiza HP
     sprite.currentHp = state.currentHp;
     sprite.maxHp = state.maxHp;
-    
+
     // Atualiza timers de IA
     sprite.attackCooldownRemaining = state.attackCooldownRemaining;
     sprite.windupTimer = state.windupTimer;
     sprite.skillWindupTimer = (state as any).skillWindupTimer ?? 0; // ✅ Windup de skill
     sprite.stunTimer = state.stunTimer;
     sprite.aiState = state.aiState;
-    
+
+    // ✅ DETECÇÃO DE DASH: Se é Pyrognat e houve mudança grande de posição
+    // Apenas detectar dash se não está já em dash e é Pyrognat
+    if (isPyrognat && !sprite.dashState) {
+      const distanceChange = Math.hypot(
+        sprite.targetX - previousTargetX,
+        sprite.targetY - previousTargetY
+      );
+      const DASH_DETECTION_THRESHOLD = 50; // Mínimo de 50px de movimento para considerar dash
+
+      // Detectar dash: mudança grande de posição + relacionado a skill
+      // Condição simplificada: se houve mudança grande E (estava em windup OU acabou de sair do windup)
+      const wasInSkillWindup = previousSkillWindup > 0.01;
+      const isNowOutOfWindup = (sprite.skillWindupTimer ?? 0) <= 0.01;
+      const skillRelated = wasInSkillWindup || isNowOutOfWindup;
+
+      const shouldDetectDash =
+        distanceChange >= DASH_DETECTION_THRESHOLD &&
+        skillRelated;
+
+      if (shouldDetectDash) {
+        // Iniciar animação de dash
+        const dashDuration = 0.3; // Duração do dash em segundos (igual ao servidor)
+        sprite.dashState = {
+          startX: sprite.currentX || previousTargetX || sprite.targetX,
+          startY: sprite.currentY || previousTargetY || sprite.targetY,
+          targetX: sprite.targetX,
+          targetY: sprite.targetY,
+          duration: dashDuration,
+          elapsed: 0,
+          speedMultiplier: 3.0 // 3x mais rápido durante dash
+        };
+
+        console.log(
+          `[SpriteManager] ✅ Dash detectado para ${creatureId.slice(0, 8)}... ` +
+          `(${previousTargetX.toFixed(0)}, ${previousTargetY.toFixed(0)}) -> ` +
+          `(${sprite.targetX.toFixed(0)}, ${sprite.targetY.toFixed(0)}) ` +
+          `[distância: ${distanceChange.toFixed(0)}px, windup: ${previousSkillWindup.toFixed(2)}s -> ${(sprite.skillWindupTimer ?? 0).toFixed(2)}s]`
+        );
+      }
+    }
+
     // Atualiza nome e nível se mudaram
     const levelChanged = sprite.level !== state.level;
     const speciesChanged = sprite.speciesId !== state.speciesId || sprite.creatureType !== state.creatureType;
-    
+
     if (levelChanged || speciesChanged) {
       sprite.level = state.level;
       sprite.speciesId = state.speciesId;
       sprite.creatureType = state.creatureType;
-      
+
       const creatureName = getCreatureById(state.speciesId ?? state.creatureType ?? "")?.name ?? "Desconhecido";
       const levelText = state.level ? ` Lv.${state.level}` : "";
       sprite.nameText.setText(`${creatureName}${levelText}`);
     }
-    
+
     // ✅ BUG FIX: HPBarManager gerencia barras de HP de inimigos
     // Não atualizamos as barras aqui - elas são invisíveis
     // O HPBarManager atualiza as barras reais via updateEnemyBars()
-    
+
     // ✅ BUG #2 FIX: Log de debug quando HP muda (apenas a cada 10 updates para não poluir)
     if (hpChanged && Math.random() < 0.1) {
       const hpPercent = state.maxHp > 0 ? Math.max(0, state.currentHp / state.maxHp) : 0;
@@ -294,13 +342,13 @@ export class SpriteManager {
   updateResourceSprite(resourceId: string): void {
     const sprite = this.resourceSprites.get(resourceId);
     const state = this.worldState.getResource(resourceId);
-    
+
     if (!sprite || !state) return;
 
     // Atualiza posição alvo para interpolação
     sprite.targetX = state.x;
     sprite.targetY = state.y;
-    
+
     // Atualiza quantidade
     sprite.amount = state.amount;
   }
@@ -365,7 +413,7 @@ export class SpriteManager {
           this.destroyCreatureSprite(creatureId);
           continue;
         }
-        
+
         if (creatureState.currentHp <= 0) {
           console.warn(`[SpriteManager] Criatura morta detectada: ${creatureId.slice(0, 8)}... - Removendo`);
           this.destroyCreatureSprite(creatureId);
@@ -381,7 +429,70 @@ export class SpriteManager {
           continue;
         }
 
-        // Interpolação híbrida
+        // ✅ ANIMAÇÃO DE DASH: Se criatura está em dash, usar interpolação rápida
+        if (sprite.dashState) {
+          try {
+            sprite.dashState.elapsed += dt;
+            const progress = Math.min(1, sprite.dashState.elapsed / sprite.dashState.duration);
+
+            // Interpolação suave durante dash (ease-out)
+            const easeOut = 1 - Math.pow(1 - progress, 3);
+
+            sprite.currentX = sprite.dashState.startX +
+              (sprite.dashState.targetX - sprite.dashState.startX) * easeOut;
+            sprite.currentY = sprite.dashState.startY +
+              (sprite.dashState.targetY - sprite.dashState.startY) * easeOut;
+
+            // Efeito visual: aumentar escala ligeiramente durante dash
+            const dashScale = 1.0 + (0.2 * (1 - progress)); // Começa 20% maior, volta ao normal
+            if (sprite.sprite && sprite.sprite.setScale) {
+              sprite.sprite.setScale(dashScale);
+            }
+
+            // ✅ Efeito visual de brilho laranja/vermelho durante dash (tema de fogo)
+            const intensity = 1 - progress; // Mais intenso no início
+            // Interpolação manual de cor: branco (0xffffff) -> laranja (0xff6b35)
+            const r1 = 0xff, g1 = 0xff, b1 = 0xff; // Branco
+            const r2 = 0xff, g2 = 0x6b, b2 = 0x35; // Laranja avermelhado
+            const r = Math.floor(r1 + (r2 - r1) * intensity);
+            const g = Math.floor(g1 + (g2 - g1) * intensity);
+            const b = Math.floor(b1 + (b2 - b1) * intensity);
+            const tintColor = (r << 16) | (g << 8) | b;
+            if (sprite.sprite && 'setTint' in sprite.sprite) {
+              (sprite.sprite as unknown as Phaser.GameObjects.Components.Tint).setTint(tintColor);
+            }
+
+            // Se dash terminou, remover estado e resetar escala/tint
+            if (progress >= 1) {
+              sprite.dashState = undefined;
+              if (sprite.sprite) {
+                if ('setScale' in sprite.sprite) (sprite.sprite as unknown as Phaser.GameObjects.Components.Transform).setScale(1.0);
+                if ('clearTint' in sprite.sprite) (sprite.sprite as unknown as Phaser.GameObjects.Components.Tint).clearTint();
+              }
+              // Snap para posição final
+              sprite.currentX = sprite.targetX;
+              sprite.currentY = sprite.targetY;
+            }
+
+            this.updateCreatureSpritePosition(sprite);
+            continue;
+          } catch (dashError) {
+            console.error(`[SpriteManager] Erro durante dash de ${creatureId.slice(0, 8)}...:`, dashError);
+            // Limpar estado de dash em caso de erro
+            sprite.dashState = undefined;
+            if (sprite.sprite) {
+              try {
+                if ('setScale' in sprite.sprite) (sprite.sprite as unknown as Phaser.GameObjects.Components.Transform).setScale(1.0);
+                if ('clearTint' in sprite.sprite) (sprite.sprite as unknown as Phaser.GameObjects.Components.Tint).clearTint();
+              } catch (e) {
+                // Ignorar erros de reset
+              }
+            }
+            // Continuar com interpolação normal
+          }
+        }
+
+        // Interpolação híbrida normal
         const dx = sprite.targetX - sprite.currentX;
         const dy = sprite.targetY - sprite.currentY;
         const distance = Math.sqrt(dx * dx + dy * dy);
@@ -389,18 +500,18 @@ export class SpriteManager {
         if (distance > 0.5) {
           let newX = sprite.currentX + dx * lerpFactor;
           let newY = sprite.currentY + dy * lerpFactor;
-          
+
           const movedX = newX - sprite.currentX;
           const movedY = newY - sprite.currentY;
           const movedDist = Math.sqrt(movedX * movedX + movedY * movedY);
-          
+
           const maxMove = maxSpeed * dt;
           if (movedDist > maxMove && distance > maxMove) {
             const scale = maxMove / movedDist;
             newX = sprite.currentX + movedX * scale;
             newY = sprite.currentY + movedY * scale;
           }
-          
+
           sprite.currentX = newX;
           sprite.currentY = newY;
         } else {
@@ -489,18 +600,18 @@ export class SpriteManager {
       if (distance > 0.5) {
         let newX = sprite.currentX + dx * lerpFactor;
         let newY = sprite.currentY + dy * lerpFactor;
-        
+
         const movedX = newX - sprite.currentX;
         const movedY = newY - sprite.currentY;
         const movedDist = Math.sqrt(movedX * movedX + movedY * movedY);
-        
+
         const maxMove = maxSpeed * dt;
         if (movedDist > maxMove && distance > maxMove) {
           const scale = maxMove / movedDist;
           newX = sprite.currentX + movedX * scale;
           newY = sprite.currentY + movedY * scale;
         }
-        
+
         sprite.currentX = newX;
         sprite.currentY = newY;
       } else {
@@ -518,14 +629,14 @@ export class SpriteManager {
 
   private updateCreatureSpritePosition(sprite: RemoteCreatureSprite): void {
     sprite.sprite.setPosition(sprite.currentX, sprite.currentY);
-    
+
     // ✅ BUG FIX: Barras de HP de inimigos são gerenciadas pelo HPBarManager
     // Não precisamos atualizar posição das barras aqui (elas estão invisíveis)
     // O HPBarManager atualiza as barras reais via updateEnemyBars()
-    
+
     // Atualiza posição do texto de nome e nível
     sprite.nameText.setPosition(sprite.currentX, sprite.currentY - 35);
-    
+
     sprite.aggroIndicator?.setPosition(sprite.currentX, sprite.currentY);
     sprite.attackTellIndicator?.setPosition(sprite.currentX, sprite.currentY);
   }

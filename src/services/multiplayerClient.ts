@@ -213,6 +213,7 @@ export interface PlayerMove {
   x: number;
   y: number;
   timestamp: number;
+  isDash?: boolean; // ✅ Flag para indicar que é um movimento de dash
 }
 
 /**
@@ -674,7 +675,8 @@ export class MultiplayerClient {
             playerId: msg.playerId,
             x: msg.x,
             y: msg.y,
-            timestamp: msg.timestamp
+            timestamp: msg.timestamp,
+            isDash: msg.isDash // ✅ Passar flag de dash
           });
           break;
 

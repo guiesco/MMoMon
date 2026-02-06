@@ -370,6 +370,7 @@ export interface PlayerMoveMessage extends BaseMessage {
   x: number;
   y: number;
   timestamp: number;
+  isDash?: boolean; // ✅ Flag para indicar que é um movimento de dash
 }
 
 /** Resposta ao ping */
@@ -589,14 +590,16 @@ export function createPlayerDeathMessage(
 export function createPlayerMoveMessage(
   playerId: ClientId,
   x: number,
-  y: number
+  y: number,
+  isDash?: boolean // ✅ Parâmetro opcional para indicar dash
 ): PlayerMoveMessage {
   return {
     type: "player_move",
     playerId,
     x,
     y,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    isDash
   };
 }
 

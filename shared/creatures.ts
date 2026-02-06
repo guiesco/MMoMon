@@ -96,10 +96,10 @@ export const CREATURES: CreatureDefinition[] = [
     primaryType: "Fogo",
     secondaryType: "Voador",
     stats: {
-      hp: 80,
-      moveSpeed: 260,
-      defense: 8,
-      attackDamage: 20,
+      hp: 70, // -10 (DPS Rápido: menos HP)
+      moveSpeed: 280, // +20 (DPS Rápido: mais velocidade)
+      defense: 6, // -2 (DPS Rápido: menos defesa)
+      attackDamage: 24, // +4 (DPS Rápido: mais dano)
       skillCooldown: 12,
       ai: {
         detectionRange: 180,
@@ -109,11 +109,11 @@ export const CREATURES: CreatureDefinition[] = [
     basicAttack: ATTACK_CHAMA_RAPIDA,
     specialSkill: SKILL_NEVOEIRO_INCENDIARIO,
     statProgression: {
-      hpPerLevel: 0.02, // +2% por nível
-      attackDamagePerLevel: 0.018, // +1.8% por nível (ligeiramente acima da média)
-      defensePerLevel: 0.01, // +1% por nível
-      moveSpeedPerLevel: 0.006, // +0.6% por nível (voador, mais rápido)
-      detectionRangePerLevel: 0.004 // +0.4% por nível
+      hpPerLevel: 0.025, // +2.5% por nível (era 2%) - DPS Rápido: menos HP
+      attackDamagePerLevel: 0.035, // +3.5% por nível (era 1.8%) - DPS Rápido: foco em ATK
+      defensePerLevel: 0.015, // +1.5% por nível (era 1%) - DPS Rápido: menos DEF
+      moveSpeedPerLevel: 0.01, // +1.0% por nível (era 0.6%) - DPS Rápido: foco em SPD
+      detectionRangePerLevel: 0.005 // +0.5% por nível (era 0.4%)
     },
     evolutionChain: ["Pyrognat", "Pyrodactyl", "Solaraptor"]
   },
@@ -122,10 +122,10 @@ export const CREATURES: CreatureDefinition[] = [
     name: "Aquaryl",
     primaryType: "Água",
     stats: {
-      hp: 90,
-      moveSpeed: 240,
-      defense: 10,
-      attackDamage: 16,
+      hp: 110, // +20 (Tank/Support: mais HP)
+      moveSpeed: 220, // -20 (Tank/Support: menos velocidade)
+      defense: 12, // -2 (Tank/Support: defesa reduzida para melhorar TTK)
+      attackDamage: 15, // +1 (Tank/Support: dano ligeiramente aumentado)
       skillCooldown: 10,
       ai: {
         detectionRange: 200,
@@ -135,11 +135,11 @@ export const CREATURES: CreatureDefinition[] = [
     basicAttack: ATTACK_JATO_AGUA,
     specialSkill: SKILL_MARE_CURATIVA,
     statProgression: {
-      hpPerLevel: 0.022, // +2.2% por nível (tanque, mais HP)
-      attackDamagePerLevel: 0.015, // +1.5% por nível
-      defensePerLevel: 0.012, // +1.2% por nível (mais defesa)
-      moveSpeedPerLevel: 0.005, // +0.5% por nível
-      detectionRangePerLevel: 0.004 // +0.4% por nível
+      hpPerLevel: 0.035, // +3.5% por nível (era 2.2%) - Tank/Support: foco em HP
+      attackDamagePerLevel: 0.022, // +2.2% por nível (aumentado para melhorar TTK) - Tank/Support: menos ATK
+      defensePerLevel: 0.02, // +2.0% por nível (reduzido para melhorar TTK) - Tank/Support: foco em DEF
+      moveSpeedPerLevel: 0.008, // +0.8% por nível (era 0.5%) - Tank/Support: menos SPD
+      detectionRangePerLevel: 0.004 // +0.4% por nível (mantém)
     }
   },
   {
@@ -147,10 +147,10 @@ export const CREATURES: CreatureDefinition[] = [
     name: "Verdant",
     primaryType: "Planta",
     stats: {
-      hp: 100,
-      moveSpeed: 220,
-      defense: 12,
-      attackDamage: 14,
+      hp: 120, // +20 (Tank Melee: mais HP)
+      moveSpeed: 200, // -20 (Tank Melee: menos velocidade)
+      defense: 14, // -2 (Tank Melee: defesa reduzida para melhorar TTK)
+      attackDamage: 13, // +1 (Tank Melee: dano ligeiramente aumentado)
       skillCooldown: 11,
       ai: {
         detectionRange: 150,
@@ -160,11 +160,11 @@ export const CREATURES: CreatureDefinition[] = [
     basicAttack: ATTACK_CHICOTE_VINHA,
     specialSkill: SKILL_RAIZES_PRENDENTES,
     statProgression: {
-      hpPerLevel: 0.021, // +2.1% por nível (tanque)
-      attackDamagePerLevel: 0.014, // +1.4% por nível
-      defensePerLevel: 0.013, // +1.3% por nível (mais defesa)
-      moveSpeedPerLevel: 0.004, // +0.4% por nível (mais lento)
-      detectionRangePerLevel: 0.003 // +0.3% por nível (melee, menos range)
+      hpPerLevel: 0.038, // +3.8% por nível (era 2.1%) - Tank Melee: foco em HP
+      attackDamagePerLevel: 0.02, // +2.0% por nível (aumentado para melhorar TTK) - Tank Melee: menos ATK
+      defensePerLevel: 0.025, // +2.5% por nível (reduzido para melhorar TTK) - Tank Melee: foco em DEF
+      moveSpeedPerLevel: 0.005, // +0.5% por nível (era 0.4%) - Tank Melee: menos SPD
+      detectionRangePerLevel: 0.003 // +0.3% por nível (mantém)
     }
   },
   {
@@ -173,10 +173,10 @@ export const CREATURES: CreatureDefinition[] = [
     primaryType: "Elétrico",
     secondaryType: "Lutador",
     stats: {
-      hp: 70,
-      moveSpeed: 280,
-      defense: 6,
-      attackDamage: 22,
+      hp: 65, // +5 (Glass Cannon: HP ligeiramente aumentado para não morrer tão rápido)
+      moveSpeed: 300, // +20 (Glass Cannon: mais velocidade)
+      defense: 5, // -1 (Glass Cannon: menos defesa)
+      attackDamage: 26, // -2 (Glass Cannon: dano ligeiramente reduzido)
       skillCooldown: 9,
       ai: {
         detectionRange: 220,
@@ -186,11 +186,11 @@ export const CREATURES: CreatureDefinition[] = [
     basicAttack: ATTACK_RAIO_CORTANTE,
     specialSkill: SKILL_SURTO_ELETRICO,
     statProgression: {
-      hpPerLevel: 0.018, // +1.8% por nível (glass cannon, menos HP)
-      attackDamagePerLevel: 0.02, // +2% por nível (mais dano)
-      defensePerLevel: 0.008, // +0.8% por nível (menos defesa)
-      moveSpeedPerLevel: 0.007, // +0.7% por nível (mais rápido)
-      detectionRangePerLevel: 0.005 // +0.5% por nível (mais range)
+      hpPerLevel: 0.02, // +2.0% por nível (era 1.8%) - Glass Cannon: menos HP
+      attackDamagePerLevel: 0.045, // +4.5% por nível (era 2.0%) - Glass Cannon: foco extremo em ATK
+      defensePerLevel: 0.01, // +1.0% por nível (era 0.8%) - Glass Cannon: menos DEF
+      moveSpeedPerLevel: 0.012, // +1.2% por nível (era 0.7%) - Glass Cannon: foco em SPD
+      detectionRangePerLevel: 0.006 // +0.6% por nível (era 0.5%) - Glass Cannon: mais range
     }
   }
 ];
@@ -234,9 +234,9 @@ export function getCreatureAttackStats(
 ): { damage: number; speed: number; range: number; isProjectile: boolean } | undefined {
   const creature = getCreatureById(id);
   if (!creature) return undefined;
-  
+
   const basicAttack = creature.basicAttack;
-  
+
   // Se level e rank foram fornecidos, escalar valores
   if (level !== undefined && rank !== undefined) {
     const rankConfig = RANK_CONFIG[rank];
@@ -244,12 +244,12 @@ export function getCreatureAttackStats(
       const rankMultiplier = rankConfig.statMultiplier;
       const levelBonus = level - 1;
       const attackRangeBonus = 1 + levelBonus * basicAttack.attackRangePerLevel;
-      
+
       // Range escala com nível e rank
       const attackRange = Math.floor(basicAttack.range * attackRangeBonus * rankMultiplier);
       // ProjectileSpeed não escala (vem direto do basicAttack)
       const finalProjectileSpeed = basicAttack.projectileSpeed;
-      
+
       return {
         damage: basicAttack.damage,
         speed: basicAttack.isProjectile ? finalProjectileSpeed : 0,
@@ -258,7 +258,7 @@ export function getCreatureAttackStats(
       };
     }
   }
-  
+
   // Fallback: usar valores base de BasicAttack
   return {
     damage: basicAttack.damage,

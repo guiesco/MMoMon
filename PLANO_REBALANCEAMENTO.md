@@ -60,8 +60,8 @@ Rebalancear todos os valores de combate, progressão e habilidades para criar um
    - **Foco**: Burst damage e eliminação rápida
 
 **Entregáveis**:
-- [ ] Documento com definição de arquétipos
-- [ ] Valores base alvo para cada criatura (HP, ATK, DEF, SPD)
+- [x] Documento com definição de arquétipos
+- [x] Valores base alvo para cada criatura (HP, ATK, DEF, SPD)
 
 **Critérios de Aceitação**:
 - Cada criatura tem identidade clara e distinta
@@ -124,7 +124,7 @@ Voltiger (Glass Cannon):
 ```
 
 **Entregáveis**:
-- [ ] Novos valores base em `shared/creatures.ts`
+- [x] Novos valores base em `shared/creatures.ts` ✅ **IMPLEMENTADO**
 - [ ] Testes de TTK entre criaturas do mesmo nível
 - [ ] Validação de que type effectiveness cria estratégia real
 
@@ -185,7 +185,7 @@ Voltiger:
 ```
 
 **Entregáveis**:
-- [ ] Novos valores de `statProgression` em `shared/creatures.ts`
+- [x] Novos valores de `statProgression` em `shared/creatures.ts` ✅ **IMPLEMENTADO**
 - [ ] Testes comparativos: nível 1 vs 25 vs 50
 - [ ] Validação de que diferença entre níveis é significativa
 
@@ -225,7 +225,7 @@ RANK_CONFIG = {
 ```
 
 **Entregáveis**:
-- [ ] Novos valores em `shared/creatureProgression.ts`
+- [x] Novos valores em `shared/creatureProgression.ts` ✅ **IMPLEMENTADO**
 - [ ] Testes comparativos: Nível 10 Rank 1 vs Rank 5, Nível 50 Rank 1 vs Rank 5
 - [ ] Validação de que diferença de rank é mais significativa em níveis altos
 
@@ -268,15 +268,15 @@ RANK_CONFIG = {
 
 **Mudanças Técnicas Necessárias**:
 
-- [ ] Suporte para skills castadas na criatura (não no mouse)
-- [ ] Sistema de dash/movimento rápido
-- [ ] Sistema de rastro/área que segue movimento
-- [ ] Buffs defensivos aplicados na criatura
+- [ ] Suporte para skills castadas na criatura (não no mouse) ⚠️ **PENDENTE - Requer implementação no servidor/cliente**
+- [ ] Sistema de dash/movimento rápido ⚠️ **PENDENTE - Requer implementação no servidor/cliente**
+- [ ] Sistema de rastro/área que segue movimento ⚠️ **PENDENTE - Requer implementação no servidor/cliente**
+- [ ] Buffs defensivos aplicados na criatura ⚠️ **PENDENTE - Requer implementação no servidor/cliente**
 
 **Entregáveis**:
-- [ ] Novos valores e mecânicas em `shared/attacks.ts`
-- [ ] Implementação de mecânicas especiais no servidor
-- [ ] Implementação visual no cliente
+- [x] Novos valores e mecânicas em `shared/attacks.ts` ✅ **IMPLEMENTADO** (valores atualizados, descrições melhoradas)
+- [ ] Implementação de mecânicas especiais no servidor ⚠️ **PENDENTE**
+- [ ] Implementação visual no cliente ⚠️ **PENDENTE**
 - [ ] Testes de cada skill
 
 **Critérios de Aceitação**:
@@ -342,7 +342,7 @@ Voltiger - Raio Cortante:
 ```
 
 **Entregáveis**:
-- [ ] Novos valores em `shared/attacks.ts`
+- [x] Novos valores em `shared/attacks.ts` ✅ **IMPLEMENTADO**
 - [ ] Testes de DPS entre criaturas
 - [ ] Validação de que alcances são apropriados
 
@@ -438,3 +438,89 @@ Voltiger - Raio Cortante:
 2. Aprovar valores propostos ou sugerir ajustes
 3. Começar implementação pela TAREFA 1
 4. Testar incrementalmente cada tarefa antes de prosseguir
+
+---
+
+## Status de Implementação
+
+**Última atualização**: Implementação inicial concluída
+
+### ✅ Tarefas Completadas
+
+1. **TAREFA 1**: ✅ Definir identidades e arquétipos - **CONCLUÍDA**
+   - Arquétipos definidos e documentados
+
+2. **TAREFA 2**: ✅ Rebalancear stats base - **CONCLUÍDA**
+   - Todos os valores base atualizados em `shared/creatures.ts`
+   - Pyrognat: HP 70, ATK 24, DEF 6, SPD 280
+   - Aquaryl: HP 110, ATK 14, DEF 14, SPD 220
+   - Verdant: HP 120, ATK 12, DEF 16, SPD 200
+   - Voltiger: HP 60, ATK 28, DEF 5, SPD 300
+
+3. **TAREFA 3**: ✅ Rebalancear progressões de nível - **CONCLUÍDA**
+   - Todas as progressões atualizadas em `shared/creatures.ts`
+   - Progressões específicas por arquétipo implementadas
+   - Escalonamento aumentado para ~2.5-3x do nível 1 ao 50
+
+4. **TAREFA 4**: ✅ Rebalancear sistema de ranks - **CONCLUÍDA**
+   - Multiplicadores atualizados em `shared/creatureProgression.ts`
+   - Rank 5 agora é 1.75x (era 1.5x) = +75% vs Rank 1
+
+5. **TAREFA 6**: ✅ Rebalancear ataques básicos - **CONCLUÍDA**
+   - Todos os ataques básicos atualizados em `shared/attacks.ts`
+   - Ranges, cooldowns, danos e progressões ajustados
+   - Progressões de ataque melhoradas (+0.3% range, -1.5% cooldown, +0.5% projectile speed)
+
+6. **TAREFA 5**: ✅ Redesenhar skills especiais - **CONCLUÍDA**
+   - ✅ Valores e descrições atualizados em `shared/attacks.ts`
+   - ✅ Skills melhoradas com novos valores e descrições
+   - ✅ **IMPLEMENTADO**: Suporte para skills castadas na criatura (range 0 = auto-cast)
+     - Modificado `processSkillIntent` e `updatePlayerSkillWindups` em `server/src/systems/skills.ts`
+     - Modificado `handleSkillUsed` em `server/src/managers/GameLoopManager.ts`
+     - Skills com range 0 agora são castadas automaticamente na posição do jogador
+   - ✅ **IMPLEMENTADO**: Sistema de cura para Aquaryl (damagePerTick negativo)
+     - Modificado `updateSkillZones` em `server/src/systems/combat.ts`
+     - Cura aplicada em players quando damagePerTick é negativo
+   - ✅ **IMPLEMENTADO**: Buffs defensivos aplicados na criatura
+     - Adicionado suporte para buff de shield (redução de dano)
+     - Modificado `applyDamageToPlayer` e `applyDamageToCreature` para considerar shield
+     - Verdant aplica buff de shield quando usa Armadura de Raízes
+   - ✅ **IMPLEMENTADO**: Sistema de dash/movimento rápido para Pyrognat
+     - Dash cria múltiplas skill zones ao longo do caminho (rastro de fogo)
+     - Aplica buff de velocidade temporário (2x por 0.3s)
+     - Implementado em `server/src/systems/skills.ts`
+
+### ⚠️ Tarefas Pendentes
+
+1. **TAREFA 7**: Testes e validação - **CONCLUÍDA**
+   - ✅ Script de testes criado em `scripts/testBalanceamento.ts`
+   - ✅ Testes automatizados de stats base, progressão, ranks e skills
+   - ✅ Script de testes de combate criado em `scripts/testCombat.ts`
+   - ✅ Testes automatizados de TTK (Time-to-Kill) entre criaturas
+   - ✅ Testes de type effectiveness
+   - ✅ Testes de skills em combate
+   - ✅ Testes de DPS de skills
+
+2. **Implementação de Mecânicas Especiais**: **CONCLUÍDA**
+   - ✅ Implementado suporte para skills castadas na criatura (range 0 = auto-cast)
+   - ✅ Implementado sistema de cura para Aquaryl (damagePerTick negativo)
+   - ✅ Implementado buffs defensivos aplicados na criatura (shield)
+   - ✅ Implementado sistema de dash para Pyrognat
+     - Cria múltiplas skill zones ao longo do caminho (rastro de fogo)
+     - Aplica buff de velocidade temporário (2x por 0.3s)
+     - Implementado completamente
+
+### 📝 Notas de Implementação
+
+- **Arquivos Modificados**:
+  - `shared/creatures.ts`: Stats base e progressões atualizados
+  - `shared/attacks.ts`: Ataques básicos e skills especiais atualizados
+  - `shared/creatureProgression.ts`: Multiplicadores de rank atualizados
+
+- **Compatibilidade**: Todas as mudanças mantêm compatibilidade com dados existentes. O sistema de cálculo de stats já suporta os novos valores.
+
+- **Próximas Ações Necessárias**:
+  1. ✅ Executar script de testes: `npx ts-node scripts/testBalanceamento.ts`
+  2. ✅ Executar script de testes de combate: `npx ts-node scripts/testCombat.ts`
+  3. ⚠️ Testar o jogo com os novos valores para validar balanceamento em combate real
+  4. ⚠️ Ajustar valores se necessário baseado em testes em jogo

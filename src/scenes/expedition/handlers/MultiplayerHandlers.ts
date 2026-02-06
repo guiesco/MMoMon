@@ -315,20 +315,37 @@ export class MultiplayerHandlers {
           this.setPlayerTookDamageThisFrame(true);
         }
 
-        // Efeito visual de dano no jogador
-        const originalTint = this.player.tintTopLeft;
-        this.player.setTint(0xef4444);
-        this.scene.time.delayedCall(100, () => {
-          this.player?.setTint(originalTint);
-        });
-
-        // Feedback de dano
-        this.feedbackManager.createFloatingText(
-          this.player.x,
-          this.player.y - 30,
-          `-${result.damage} HP`,
-          0xef4444
-        );
+        // Feedback de dano/cura
+        // ✅ Se damage é negativo, é cura - mostrar positivo
+        if (result.damage < 0) {
+          // Cura: mostrar positivo com cor verde
+          this.feedbackManager.createFloatingText(
+            this.player.x,
+            this.player.y - 30,
+            `+${Math.abs(result.damage)} HP`,
+            0x22c55e
+          );
+          // Efeito visual de cura (verde)
+          const originalTint = this.player.tintTopLeft;
+          this.player.setTint(0x22c55e);
+          this.scene.time.delayedCall(100, () => {
+            this.player?.setTint(originalTint);
+          });
+        } else {
+          // Dano: mostrar negativo com cor vermelha
+          this.feedbackManager.createFloatingText(
+            this.player.x,
+            this.player.y - 30,
+            `-${result.damage} HP`,
+            0xef4444
+          );
+          // Efeito visual de dano (vermelho)
+          const originalTint = this.player.tintTopLeft;
+          this.player.setTint(0xef4444);
+          this.scene.time.delayedCall(100, () => {
+            this.player?.setTint(originalTint);
+          });
+        }
 
         // CORREÇÃO MULTIPLAYER: Aplicar knockback quando atacado por criatura
         if (result.attackerId && result.attackerId.startsWith("wild-")) {
@@ -849,9 +866,28 @@ export class MultiplayerHandlers {
   }
 
   /**
-   * Handler para movimento de jogador remoto.
+   * Handler para movimento de jogador remoto ou dash.
+   * 
+   * ⚠️ IMPORTANTE: 
+   * - Movimento normal do jogador local é ignorado (gerenciado por MovementSystem)
+   * - Dash do jogador local é aplicado (movimento especial de skills)
+   * - Jogadores remotos são sempre atualizados
    */
-  handlePlayerMove(move: { playerId: string; x: number; y: number; timestamp?: number }): void {
+  handlePlayerMove(move: { playerId: string; x: number; y: number; timestamp?: number; isDash?: boolean }): void {
+    const isLocalPlayer = move.playerId === this.clientId;
+
+    if (isLocalPlayer) {
+      // Se for dash, aplicar ao jogador local
+      if (move.isDash && this.player) {
+        console.log(`[MP] ✅ Aplicando dash do jogador local: (${move.x.toFixed(0)}, ${move.y.toFixed(0)})`);
+        this.player.x = move.x;
+        this.player.y = move.y;
+      }
+      // Ignorar movimentos normais do jogador local (gerenciado localmente)
+      return;
+    }
+
+    // Jogador remoto - processar normalmente
     const player = this.worldState.getPlayer(move.playerId);
     if (player) {
       // Atualiza o estado do jogador no worldState

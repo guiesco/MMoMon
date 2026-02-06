@@ -27,7 +27,8 @@ import {
   createCreaturesUpdateMessage,
   createResourcesUpdateMessage,
   createProjectilesUpdateMessage,
-  createSkillZonesUpdateMessage
+  createSkillZonesUpdateMessage,
+  createPlayerMoveMessage
 } from "../messages";
 import { StateBroadcaster } from "../broadcast/StateBroadcaster";
 import { DEBUG_GAME_LOOP } from "../constants";
@@ -56,7 +57,7 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
 
     onMatchStateChange: (newState: MatchState, oldState: MatchState) => {
       room.matchState = newState;
-      
+
       if (DEBUG_GAME_LOOP) {
         console.log(`[Room:${room.id}] Estado da partida: ${oldState} -> ${newState}`);
       }
@@ -88,7 +89,7 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
         .catch(error => {
           console.error(`[Room:${room.id}] Erro no sistema de extração:`, error);
         });
-      
+
       // ✅ Sincronizar skill zones do combatState para worldState
       // (necessário porque criaturas inimigas adicionam skill zones apenas ao combatState)
       if (room.gameLoop) {
@@ -104,7 +105,7 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
         const combatSkillZoneIds = new Set(combatState.skillZones.map(z => z.id));
         room.worldState.skillZones = room.worldState.skillZones.filter(z => combatSkillZoneIds.has(z.id));
       }
-      
+
       // Processar skill zones (dano por área)
       if (room.gameLoop && room.worldState.skillZones && room.worldState.skillZones.length > 0) {
         const combatState = room.gameLoop.getCombatState();
@@ -114,7 +115,7 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
           deltaMs / 1000, // Converter para segundos
           combatState.players // ✅ Passar players para aplicar dano de skill zones de criaturas
         );
-        
+
         // ✅ Sincronizar skill zones atualizadas de volta para combatState
         // (updateSkillZones modifica o array diretamente, removendo zonas expiradas)
         const worldSkillZoneIds = new Set(room.worldState.skillZones.map(z => z.id));
@@ -126,7 +127,7 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
             combatState.skillZones.push(skillZone);
           }
         }
-        
+
         // Broadcast resultados de dano das skill zones
         if (skillZoneDamageResults.length > 0) {
           for (const result of skillZoneDamageResults) {
@@ -145,12 +146,12 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
           }
         }
       }
-      
+
       // Broadcast periódico de criaturas (a cada 2 ticks = 100ms para melhor sincronização)
       if (tickNumber % 2 === 0 && room.gameLoop) {
         broadcastGameStateUpdates(room);
       }
-      
+
       // Debug periódico
       if (DEBUG_GAME_LOOP && tickNumber % 100 === 0) {
         console.log(`[Room:${room.id}] Tick ${tickNumber}, ${room.players.size} jogadores`);
@@ -204,6 +205,10 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
       handleSkillZoneCreated(room, playerId, skillZoneId, skillType, x, y);
     },
 
+    onPlayerDash: (playerId: string, newX: number, newY: number) => {
+      handlePlayerDash(room, playerId, newX, newY);
+    },
+
     onExtractionIntent: (playerId: string, pointId: string, action: "start" | "cancel") => {
       handleExtractionIntent(room, playerId, pointId, action);
     }
@@ -222,23 +227,23 @@ async function handleMatchFinished(room: Room): Promise<void> {
   // Isso garante que recursos coletados sejam salvos e criaturas sejam curadas
   const duration = Date.now() - room.startedAt;
   const startedAt = new Date(room.startedAt);
-  
+
   for (const [playerId, player] of room.players.entries()) {
     // Se o jogador já extraiu, os dados já foram salvos em handleExtractionCompleted
     if (player.extractedAt !== null) {
       continue;
     }
-    
+
     // Se o jogador tem userId, salvar dados mesmo em falha (recursos e cura de HP)
     if (player.userId && isFirebaseAvailable()) {
       try {
         const resourcesCollected = player.resourcesCollected || new Map<string, number>();
         const creaturesCaptured = player.creaturesCaptured || 0;
-        
+
         console.log(`[Room:${room.id}] Salvando dados de expedição por tempo esgotado para jogador ${playerId} (userId: ${player.userId})`);
         console.log(`[Room:${room.id}] Recursos coletados: ${Array.from(resourcesCollected.entries()).map(([id, qty]) => `${id}:${qty}`).join(', ') || 'nenhum'}`);
         console.log(`[Room:${room.id}] Criaturas capturadas: ${creaturesCaptured}`);
-        
+
         await saveExpeditionTimeout(
           player.userId,
           room.id,
@@ -252,7 +257,7 @@ async function handleMatchFinished(room: Room): Promise<void> {
       }
     }
   }
-  
+
   // O broadcast do evento "finished" já notifica os clientes sobre o fim da partida
   // (feito em onMatchStateChange acima). Os clientes têm tempo para processar antes
   // da sala ser limpa (gerenciado pelo RoomManager).
@@ -265,7 +270,7 @@ function broadcastGameStateUpdates(room: Room): void {
   if (!room.gameLoop) return;
 
   const combatState = room.gameLoop.getCombatState();
-  
+
   // Broadcast de criaturas
   if (combatState.creatures.length > 0) {
     const creaturesUpdateMsg = createCreaturesUpdateMessage(
@@ -296,7 +301,7 @@ function broadcastGameStateUpdates(room: Room): void {
     );
     StateBroadcaster.broadcastMessage(room, creaturesUpdateMsg);
   }
-  
+
   // Broadcast de projéteis ativos
   if (combatState.projectiles.length > 0) {
     const projectilesUpdateMsg = createProjectilesUpdateMessage(
@@ -317,7 +322,7 @@ function broadcastGameStateUpdates(room: Room): void {
     );
     StateBroadcaster.broadcastMessage(room, projectilesUpdateMsg);
   }
-  
+
   // Broadcast de skill zones ativas
   if (room.worldState.skillZones && room.worldState.skillZones.length > 0) {
     const skillZonesUpdateMsg = createSkillZonesUpdateMessage(
@@ -365,7 +370,7 @@ function handleAttackAccepted(
       (message as any).projectileId = projectileId;
     }
     (message as any).accepted = true;
-    
+
     if (DEBUG_GAME_LOOP) {
       console.log(`[Room:${room.id}] Ataque aceito de ${playerId} (projétil: ${projectileId ?? "melee"})`);
     }
@@ -373,12 +378,12 @@ function handleAttackAccepted(
     // Ataque rejeitado
     (message as any).accepted = false;
     (message as any).failReason = failReason;
-    
+
     if (DEBUG_GAME_LOOP) {
       console.log(`[Room:${room.id}] Ataque rejeitado de ${playerId}: ${failReason}`);
     }
   }
-  
+
   // Enviar apenas para o jogador que atacou
   const playerWs = room.clients.get(playerId);
   if (playerWs && playerWs.readyState === WebSocket.OPEN) {
@@ -391,10 +396,10 @@ function handleAttackAccepted(
  */
 function handleDamageApplied(room: Room, results: DamageResult[]): void {
   let anyCreatureDied = false;
-  
+
   for (const result of results) {
     const isPlayerTarget = room.players.has(result.targetId);
-    
+
     const message = createAttackResultMessage(
       result.attackerId,
       result.damage,
@@ -415,12 +420,12 @@ function handleDamageApplied(room: Room, results: DamageResult[]): void {
         `(HP: ${result.currentHp}/${result.maxHp}${result.died ? " - MORTO" : ""})`
       );
     }
-    
+
     if (!isPlayerTarget && result.died) {
       anyCreatureDied = true;
     }
   }
-  
+
   // Se alguma criatura morreu, enviar update de criaturas
   if (anyCreatureDied && room.gameLoop) {
     const combatState = room.gameLoop.getCombatState();
@@ -498,7 +503,7 @@ function handleCaptureResult(room: Room, playerId: string, targetId: string, bal
   // Se sucesso, remover criatura do mundo
   if (result.success) {
     gameLoop.removeCreature(targetId);
-    
+
     // Broadcast atualização de criaturas
     const creaturesUpdateMsg = createCreaturesUpdateMessage(
       combatState.creatures.map(c => ({
@@ -592,20 +597,13 @@ function handleSkillUsed(
   creatureLevel?: number,
   creatureRank?: number
 ): void {
-  // Heal não cria zona de skill no servidor
-  if (skillType === "heal_wave") {
-    if (DEBUG_GAME_LOOP) {
-      console.log(`[Room:${room.id}] Jogador ${playerId} usou Maré Curativa (heal)`);
-    }
-    return;
-  }
-
   // Se não tiver creatureId, tentar inferir do skillType
   if (!creatureId) {
     const creatureIdMap: Record<string, string> = {
       "fire_fog": "pyrognat",
       "root_trap": "verdant",
-      "electric_surge": "voltiger"
+      "electric_surge": "voltiger",
+      "heal_wave": "aquaryl"
     };
     creatureId = creatureIdMap[skillType];
   }
@@ -616,6 +614,7 @@ function handleSkillUsed(
   let lifetime = 4;
   let tickInterval = 0.5;
   let slowModifier = 0.3;
+  let skillRange = 0;
 
   if (creatureId) {
     if (creatureLevel !== undefined && creatureRank !== undefined) {
@@ -627,6 +626,7 @@ function handleSkillUsed(
       radius = effectiveStats.specialSkillRadius;
       damagePerTick = effectiveStats.specialSkillDamagePerTick;
       lifetime = effectiveStats.specialSkillLifetime;
+      skillRange = effectiveStats.specialSkillRange;
     } else {
       // Usar valores base
       const specialSkill = getSpecialSkillByCreatureId(creatureId);
@@ -636,9 +636,25 @@ function handleSkillUsed(
         lifetime = specialSkill.lifetime;
         tickInterval = specialSkill.tickInterval;
         slowModifier = specialSkill.slowModifier ?? 0.3;
+        skillRange = specialSkill.range;
       }
     }
   }
+
+  // ✅ Se skill tem range 0, castar na posição do jogador (auto-cast)
+  let finalTargetX = targetX;
+  let finalTargetY = targetY;
+  if (skillRange === 0 && room.gameLoop) {
+    const combatState = room.gameLoop.getCombatState();
+    const player = combatState.players.get(playerId);
+    if (player) {
+      finalTargetX = player.x;
+      finalTargetY = player.y;
+    }
+  }
+
+  // Heal não cria zona de skill no servidor (mas agora cria para suportar cura)
+  // Removido: if (skillType === "heal_wave") return;
 
   // Ajustar valores específicos por tipo de skill (tickInterval e slowModifier)
   switch (skillType) {
@@ -654,21 +670,24 @@ function handleSkillUsed(
       tickInterval = 0.4;
       slowModifier = 0; // sem slow
       break;
+    case "heal_wave":
+      // Usar valores da skill (já calculados acima)
+      break;
   }
 
   // Criar skill zone com valores escalados
   const zone = createSkillZone(
     playerId,
     skillType as "fire_fog" | "root_trap" | "electric_surge",
-    targetX,
-    targetY,
+    finalTargetX,
+    finalTargetY,
     radius,
     damagePerTick,
     tickInterval,
     lifetime,
     slowModifier
   );
-  
+
   if (zone) {
     // Adicionar zona ao worldState e combatState (sincronização)
     room.worldState.skillZones.push(zone);
@@ -676,7 +695,7 @@ function handleSkillUsed(
       const combatState = room.gameLoop.getCombatState();
       combatState.skillZones.push(zone);
     }
-    
+
     if (DEBUG_GAME_LOOP) {
       console.log(
         `[Room:${room.id}] Skill ${skillType} criada por ${playerId} em (${targetX.toFixed(0)}, ${targetY.toFixed(0)}) ` +
@@ -725,7 +744,7 @@ function handleResourceCollected(
   // ✅ Atualizar resourcesCollected INDIVIDUAL do jogador
   const currentQuantity = playerInRoom.resourcesCollected.get(resourceType) ?? 0;
   playerInRoom.resourcesCollected.set(resourceType, currentQuantity + quantity);
-  
+
   if (DEBUG_GAME_LOOP) {
     const totalCollected = Array.from(playerInRoom.resourcesCollected.values()).reduce((a, b) => a + b, 0);
     console.log(
@@ -746,6 +765,40 @@ function handleResourceCollected(
     }))
   );
   StateBroadcaster.broadcastMessage(room, resourcesUpdateMsg);
+}
+
+/**
+ * Handler para quando um jogador faz dash (movimento instantâneo).
+ */
+function handlePlayerDash(
+  room: Room,
+  playerId: string,
+  newX: number,
+  newY: number
+): void {
+  console.log(`[GameLoopManager] 📤 Enviando movimento de dash para jogador ${playerId.slice(0, 8)}... para (${newX.toFixed(0)}, ${newY.toFixed(0)})`);
+
+  // Atualizar posição do jogador na Room
+  const player = room.players.get(playerId);
+  if (player) {
+    player.x = newX;
+    player.y = newY;
+  }
+
+  // Atualizar posição no gameLoop
+  if (room.gameLoop) {
+    room.gameLoop.updatePlayerPosition(playerId, newX, newY);
+  }
+
+  // Enviar mensagem de movimento para todos os clientes (com flag isDash)
+  const moveMsg = createPlayerMoveMessage(playerId, newX, newY, true); // ✅ true = é dash
+  StateBroadcaster.broadcastMessage(room, moveMsg);
+
+  if (DEBUG_GAME_LOOP) {
+    console.log(
+      `[Room:${room.id}] Jogador ${playerId.slice(0, 8)}... fez dash para (${newX.toFixed(0)}, ${newY.toFixed(0)})`
+    );
+  }
 }
 
 /**
@@ -853,11 +906,11 @@ async function handlePlayerDeath(room: Room, playerId: string): Promise<void> {
     // Buscar mochila atual uma única vez antes do loop
     const userDoc = await userRef.get();
     const currentBackpack = userDoc.data()?.preparedExpeditionInventory || {};
-    
+
     for (const [itemId, quantity] of itemsConsumed.entries()) {
       const currentQuantity = currentBackpack[itemId] || 0;
       const newQuantity = Math.max(0, currentQuantity - quantity);
-      
+
       if (newQuantity > 0) {
         batch.update(userRef, {
           [`preparedExpeditionInventory.${itemId}`]: newQuantity
@@ -868,7 +921,7 @@ async function handlePlayerDeath(room: Room, playerId: string): Promise<void> {
           [`preparedExpeditionInventory.${itemId}`]: FieldValue.delete()
         });
       }
-      
+
       console.log(`[GameLoopManager] 📦 Decrementando ${quantity}x ${itemId} da mochila (de ${currentQuantity} para ${newQuantity})`);
     }
 

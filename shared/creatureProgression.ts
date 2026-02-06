@@ -58,10 +58,10 @@ export const RANK_CONFIG: Record<
   }
 > = {
   1: { name: "Comum", copiesRequired: 0, statMultiplier: 1.0, color: 0x9ca3af },
-  2: { name: "Incomum", copiesRequired: 2, statMultiplier: 1.1, color: 0x22c55e },
-  3: { name: "Raro", copiesRequired: 5, statMultiplier: 1.2, color: 0x3b82f6 },
-  4: { name: "Épico", copiesRequired: 10, statMultiplier: 1.35, color: 0xa855f7 },
-  5: { name: "Lendário", copiesRequired: 20, statMultiplier: 1.5, color: 0xf59e0b },
+  2: { name: "Incomum", copiesRequired: 2, statMultiplier: 1.15, color: 0x22c55e }, // +15% (era 1.1x)
+  3: { name: "Raro", copiesRequired: 5, statMultiplier: 1.3, color: 0x3b82f6 },    // +30% (era 1.2x)
+  4: { name: "Épico", copiesRequired: 10, statMultiplier: 1.5, color: 0xa855f7 },  // +50% (era 1.35x)
+  5: { name: "Lendário", copiesRequired: 20, statMultiplier: 1.75, color: 0xf59e0b } // +75% (era 1.5x)
 };
 
 // ============================================================================
