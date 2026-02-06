@@ -43,6 +43,7 @@ import {
 // ✅ Importar do shared
 import { COMBAT_CONFIG, ENEMY_VISUAL_CONFIG } from "../../../shared/gameConstants";
 import type { EnemyBehaviorType } from "../../../shared/enums";
+import { getSpecialSkillByType } from "../../../shared/attacks";
 
 // ============================================================================
 // Constantes de Combate
@@ -58,7 +59,7 @@ const PROJECTILE_KNOCKBACK_DISTANCE = 6; // pixels (menor que melee)
 
 // Constantes de knockback
 const MELEE_KNOCKBACK_DISTANCE = 12; // pixels
-const SKILL_KNOCKBACK_DISTANCE = 30; // pixels (electric_surge)
+// ✅ SKILL_KNOCKBACK_DISTANCE removida - agora usa valores de shared/attacks.ts
 
 // Constantes de IA
 const FLEE_HP_THRESHOLD = 0.3; // 30% HP para iniciar fuga
@@ -124,11 +125,11 @@ import { getSpecialSkillByCreatureId } from "../../../shared/attacks";
  * Stats padrão caso a criatura não seja encontrada no lookup.
  * Equivale a um ataque básico sem criatura.
  */
-const DEFAULT_ATTACK_STATS = { 
-  damage: 15, 
-  speed: 400, 
-  range: 200, 
-  isProjectile: true 
+const DEFAULT_ATTACK_STATS = {
+  damage: 15,
+  speed: 400,
+  range: 200,
+  isProjectile: true
 };
 
 /**
@@ -139,13 +140,13 @@ const DEFAULT_ATTACK_STATS = {
  */
 export function getCreatureBehaviorType(creatureType: string): EnemyBehaviorType {
   const attackStats = getCreatureAttackStats(creatureType);
-  
+
   if (!attackStats) {
     // Fallback: se criatura não encontrada, assume ranged como padrão
     console.warn(`[Combat] Criatura ${creatureType} não encontrada, usando ranged como padrão`);
     return "ranged";
   }
-  
+
   // Se o ataque é projétil, é ranged; caso contrário, é melee
   return attackStats.isProjectile ? "ranged" : "melee";
 }
@@ -220,10 +221,10 @@ export interface CombatPlayer {
   maxHp: number;
   lastAttackTime: number;
   isDead: boolean;
-  
+
   /** ✅ Tempo restante do windup de ataque (em segundos) - bloqueia movimento e ataque */
   windupTimer: number;
-  
+
   /** ✅ Dados do ataque pendente durante windup */
   pendingAttack?: {
     targetX: number;
@@ -232,10 +233,10 @@ export interface CombatPlayer {
     creatureLevel?: number;
     creatureRank?: number;
   };
-  
+
   /** ✅ Tempo restante do windup de skill (em segundos) - bloqueia movimento */
   skillWindupTimer: number;
-  
+
   /** ✅ Dados da skill pendente durante windup */
   pendingSkill?: {
     skillType: string;
@@ -245,7 +246,7 @@ export interface CombatPlayer {
     creatureLevel?: number;
     creatureRank?: number;
   };
-  
+
   /** ✅ FASE 9: Buffs e debuffs ativos no jogador */
   buffs?: Array<{
     type: 'speed' | 'slow' | 'freeze' | 'stun' | 'poison' | 'shield' | 'invulnerable' | 'regen';
@@ -254,7 +255,7 @@ export interface CombatPlayer {
     sourceId?: string;
     appliedAt: number;
   }>;
-  
+
   // Propriedades adicionais para compatibilidade com outros sistemas
   currentHp?: number; // Alias para hp
 }
@@ -325,7 +326,7 @@ export function processAttackIntent(
       failReason: "dead"
     };
   }
-  
+
   // ✅ FASE 9: Validação - jogador pode atacar (não está stunned)
   if (!canPlayerAttack(player)) {
     return {
@@ -336,11 +337,11 @@ export function processAttackIntent(
 
   // Validação: coordenadas válidas (com limites)
   if (
-    !isFinite(targetX) || 
+    !isFinite(targetX) ||
     !isFinite(targetY) ||
-    targetX < MIN_COORDINATE || 
+    targetX < MIN_COORDINATE ||
     targetX > MAX_COORDINATE ||
-    targetY < MIN_COORDINATE || 
+    targetY < MIN_COORDINATE ||
     targetY > MAX_COORDINATE
   ) {
     if (DEBUG_COMBAT) {
@@ -359,14 +360,14 @@ export function processAttackIntent(
   let effectiveStats: ReturnType<typeof calculateEffectiveStats> | null = null;
   let creatureStats = DEFAULT_ATTACK_STATS;
   let effectiveAttackCooldown = 500; // Cooldown padrão em ms
-  
+
   if (creatureId && creatureLevel !== undefined && creatureRank !== undefined) {
     // Calcular stats efetivos usando shared (inclui projectileSpeed, attackRange, etc)
     effectiveStats = calculateEffectiveStats(
       { definitionId: creatureId, level: creatureLevel, rank: creatureRank },
       getCreatureById
     );
-    
+
     // Usar valores do effectiveStats
     const creatureDef = getCreatureById(creatureId);
     if (creatureDef) {
@@ -384,7 +385,7 @@ export function processAttackIntent(
     const creatureDef = getCreatureById(creatureId);
     if (creatureDef) {
       creatureStats = getCreatureAttackStats(
-        creatureId, 
+        creatureId,
         COMBAT_CONFIG.projectileSpeed
       ) ?? DEFAULT_ATTACK_STATS;
       effectiveAttackCooldown = creatureDef.basicAttack.cooldown * 1000;
@@ -408,7 +409,7 @@ export function processAttackIntent(
   }
 
   // ✅ Obter windup time do effectiveStats (escalado)
-  const windupTime = effectiveStats?.attackWindup ?? 
+  const windupTime = effectiveStats?.attackWindup ??
     (creatureId ? getCreatureById(creatureId)?.basicAttack.attackWindup ?? 0.4 : 0.4);
 
   // ✅ Se há windup, iniciar timer e armazenar dados do ataque
@@ -421,7 +422,7 @@ export function processAttackIntent(
       creatureLevel,
       creatureRank
     };
-    
+
     return {
       success: true,
       projectileId: undefined, // Projétil será criado após windup
@@ -475,13 +476,13 @@ function processAttackExecution(
   if (!creatureStats || !effectiveStats) {
     let recalculatedStats: ReturnType<typeof calculateEffectiveStats> | null = null;
     let recalculatedCreatureStats = DEFAULT_ATTACK_STATS;
-    
+
     if (creatureId && creatureLevel !== undefined && creatureRank !== undefined) {
       recalculatedStats = calculateEffectiveStats(
         { definitionId: creatureId, level: creatureLevel, rank: creatureRank },
         getCreatureById
       );
-      
+
       const creatureDef = getCreatureById(creatureId);
       if (creatureDef) {
         recalculatedCreatureStats = {
@@ -495,12 +496,12 @@ function processAttackExecution(
       const creatureDef = getCreatureById(creatureId);
       if (creatureDef) {
         recalculatedCreatureStats = getCreatureAttackStats(
-          creatureId, 
+          creatureId,
           COMBAT_CONFIG.projectileSpeed
         ) ?? DEFAULT_ATTACK_STATS;
       }
     }
-    
+
     effectiveStats = recalculatedStats;
     creatureStats = recalculatedCreatureStats;
   }
@@ -513,38 +514,38 @@ function processAttackExecution(
     const dy = targetY - player.y;
     const distance = Math.hypot(dx, dy);
     const angle = Math.atan2(dy, dx);
-    
+
     let hitCount = 0;
-    
+
     // Otimização: filtrar criaturas mortas antes do loop
     const aliveCreaturesForMelee = room.creatures.filter(c => c.currentHp > 0);
-    
+
     for (const creature of aliveCreaturesForMelee) {
       const creatureDx = creature.x - player.x;
       const creatureDy = creature.y - player.y;
       const creatureDist = Math.hypot(creatureDx, creatureDy);
-      
+
       // Verificar se está em alcance
       if (creatureDist <= creatureStats.range) {
         // Verificar se está no arco de ataque (45° para cada lado)
         const creatureAngle = Math.atan2(creatureDy, creatureDx);
         const angleDiff = Math.abs(creatureAngle - angle);
         const normalizedAngleDiff = Math.min(angleDiff, 2 * Math.PI - angleDiff);
-        
+
         if (normalizedAngleDiff <= Math.PI / 4) { // 45° = π/4
           // ✅ Aplicar type effectiveness no dano
-          const typeMultiplier = creatureId 
+          const typeMultiplier = creatureId
             ? calculateTypeEffectiveness(creatureId, creature.creatureType)
             : 1.0;
           let baseDamage = Math.floor(creatureStats.damage * typeMultiplier);
-          
+
           // ✅ Aplicar crítico
           const critMultiplier = calculateCriticalHit();
           if (critMultiplier > 1.0 && DEBUG_COMBAT) {
             console.log(`[Combat] Crítico! Multiplicador: ${critMultiplier}x`);
           }
           baseDamage = Math.floor(baseDamage * critMultiplier);
-          
+
           // Aplicar dano considerando defesa (se effectiveStats disponível)
           const attackerAttack = effectiveStats?.attackDamage;
           const damageResult = applyDamageToCreature(
@@ -554,29 +555,29 @@ function processAttackExecution(
             attackerAttack
           );
           hitCount++;
-          
+
           // ✅ Aplicar stun após ataque melee (usando valor escalado)
           if (!damageResult.died && effectiveStats?.stunDuration && effectiveStats.stunDuration > 0) {
             addBuffToCreature(creature, 'stun', effectiveStats.stunDuration, undefined, playerId);
           }
-          
+
           // ✅ Aplicar knockback se criatura sobreviveu
           if (!damageResult.died && creatureDist > 0) {
             const knockbackNx = creatureDx / creatureDist;
             const knockbackNy = creatureDy / creatureDist;
-            
+
             creature.x += knockbackNx * MELEE_KNOCKBACK_DISTANCE;
             creature.y += knockbackNy * MELEE_KNOCKBACK_DISTANCE;
           }
-          
+
           // Broadcast de damageResult é feito através do callback onDamageApplied no gameLoop
         }
       }
     }
-    
+
     // Atualizar cooldown do jogador
     player.lastAttackTime = currentTime;
-    
+
     return {
       success: true,
       projectileId: undefined // Ataques melee não criam projéteis
@@ -642,17 +643,17 @@ export function updatePlayerWindups(
   deltaTime: number
 ): AttackResult[] {
   const attackResults: AttackResult[] = [];
-  
+
   for (const [playerId, player] of room.players) {
     if (player.windupTimer > 0) {
       // Reduzir windup timer
       player.windupTimer = Math.max(0, player.windupTimer - deltaTime);
-      
+
       // Se windup terminou, executar ataque
       if (player.windupTimer <= 0 && player.pendingAttack) {
         const { targetX, targetY, creatureId, creatureLevel, creatureRank } = player.pendingAttack;
         player.pendingAttack = undefined;
-        
+
         // Executar ataque
         const result = processAttackExecution(
           room,
@@ -664,19 +665,19 @@ export function updatePlayerWindups(
           creatureLevel,
           creatureRank
         );
-        
+
         // Adicionar informações do atacante para broadcast
         result.attackerId = playerId;
         result.targetX = targetX;
         result.targetY = targetY;
-        
+
         if (result.success) {
           attackResults.push(result);
         }
       }
     }
   }
-  
+
   return attackResults;
 }
 
@@ -718,24 +719,24 @@ export function updateProjectiles(
 
   // Filtrar criaturas mortas antes de processar colisões (evita processar criaturas já mortas)
   const aliveCreatures = room.creatures.filter(c => c.currentHp > 0);
-  
+
   // Early exit: se não há projéteis, retornar vazio
   if (room.projectiles.length === 0) {
     return damageResults;
   }
-  
+
   const initialProjectileCount = room.projectiles.length;
 
   for (const proj of room.projectiles) {
     // Validação: projétil deve ter velocidade válida e posição válida
     if (
-      !isFinite(proj.velocityX) || 
+      !isFinite(proj.velocityX) ||
       !isFinite(proj.velocityY) ||
-      !isFinite(proj.x) || 
+      !isFinite(proj.x) ||
       !isFinite(proj.y) ||
-      proj.x < MIN_COORDINATE || 
+      proj.x < MIN_COORDINATE ||
       proj.x > MAX_COORDINATE ||
-      proj.y < MIN_COORDINATE || 
+      proj.y < MIN_COORDINATE ||
       proj.y > MAX_COORDINATE
     ) {
       if (DEBUG_PROJECTILES) {
@@ -787,13 +788,13 @@ export function updateProjectiles(
               `em (${proj.x.toFixed(1)}, ${proj.y.toFixed(1)})`
             );
           }
-          
+
           // ✅ Aplicar type effectiveness no dano
           const typeMultiplier = proj.creatureType
             ? calculateTypeEffectiveness(proj.creatureType, creature.creatureType)
             : 1.0;
           let baseDamage = Math.floor(proj.damage * typeMultiplier);
-          
+
           // ✅ Aplicar crítico (chance base de 5%)
           const critMultiplier = calculateCriticalHit();
           if (critMultiplier > 1.0 && DEBUG_COMBAT) {
@@ -803,7 +804,7 @@ export function updateProjectiles(
             );
           }
           baseDamage = Math.floor(baseDamage * critMultiplier);
-          
+
           // Obter stats do atacante do projétil (se disponível)
           const attackerAttack = proj.attackerAttack;
           const damageResult = applyDamageToCreature(
@@ -813,25 +814,25 @@ export function updateProjectiles(
             attackerAttack
           );
           damageResults.push(damageResult);
-          
+
           // ✅ Aplicar stun após projétil acertar (usando valor escalado do projétil)
           if (!damageResult.died && proj.stunDuration && proj.stunDuration > 0) {
             addBuffToCreature(creature, 'stun', proj.stunDuration, undefined, proj.ownerId);
           }
-          
+
           // Aplicar knockback leve em projéteis
           if (!damageResult.died && creature.currentHp > 0) {
             const speed = Math.hypot(proj.velocityX, proj.velocityY);
-            
+
             if (speed > 0) {
               const knockbackNx = proj.velocityX / speed;
               const knockbackNy = proj.velocityY / speed;
-              
+
               creature.x += knockbackNx * PROJECTILE_KNOCKBACK_DISTANCE;
               creature.y += knockbackNy * PROJECTILE_KNOCKBACK_DISTANCE;
             }
           }
-          
+
           hit = true;
           break; // Projétil colidiu, não precisa verificar outras criaturas
         }
@@ -847,7 +848,7 @@ export function updateProjectiles(
               `em (${proj.x.toFixed(1)}, ${proj.y.toFixed(1)})`
             );
           }
-          
+
           // Obter stats do atacante do projétil (se disponível)
           const attackerAttack = proj.attackerAttack;
           const damageResult = applyDamageToPlayer(
@@ -903,7 +904,7 @@ function checkProjectileCreatureCollision(
   if (creature.currentHp <= 0) {
     return false;
   }
-  
+
   const CREATURE_RADIUS = 12; // pixels (aproximado)
   const collisionDistance = PROJECTILE_RADIUS + CREATURE_RADIUS;
 
@@ -929,7 +930,7 @@ function checkProjectilePlayerCollision(
   if (player.isDead || player.hp <= 0) {
     return false;
   }
-  
+
   const PLAYER_RADIUS = 8; // pixels (aproximado)
   const collisionDistance = PROJECTILE_RADIUS + PLAYER_RADIUS;
 
@@ -975,12 +976,12 @@ function calculateDamageWithDefense(
     }
     return MIN_DAMAGE;
   }
-  
+
   // Evitar divisão por zero e garantir valores mínimos
   const safeDefense = Math.max(defenderDefense, MIN_DEFENSE);
   const safeAttack = Math.max(attackerAttack, MIN_ATTACK);
   const safeBaseDamage = Math.max(baseDamage, 0);
-  
+
   // Fórmula: damage * attackerAttack / defenderDefense
   const calculatedDamage = safeBaseDamage * safeAttack / safeDefense;
   return Math.max(MIN_DAMAGE, Math.floor(calculatedDamage));
@@ -1040,7 +1041,7 @@ export function applyDamageToCreature(
       died: false
     };
   }
-  
+
   // Validação: verificar se dano é válido
   if (!isFinite(damage) || damage < 0) {
     if (DEBUG_COMBAT) {
@@ -1057,7 +1058,7 @@ export function applyDamageToCreature(
       died: false
     };
   }
-  
+
   // Calcular dano final considerando defesa se stats do atacante foram fornecidos
   let finalDamage = damage;
   if (attackerAttack !== undefined && creature.effectiveStats) {
@@ -1067,7 +1068,7 @@ export function applyDamageToCreature(
       creature.effectiveStats.defense
     );
   }
-  
+
   const oldHp = creature.currentHp;
   creature.currentHp = Math.max(0, creature.currentHp - finalDamage);
 
@@ -1133,7 +1134,7 @@ export function applyDamageToPlayer(
       died: false
     };
   }
-  
+
   // Validação: verificar se dano é válido
   if (!isFinite(damage) || damage < 0) {
     if (DEBUG_COMBAT) {
@@ -1150,7 +1151,7 @@ export function applyDamageToPlayer(
       died: false
     };
   }
-  
+
   // Calcular dano final considerando defesa se stats do atacante foram fornecidos
   let finalDamage = damage;
   if (attackerAttack !== undefined) {
@@ -1161,7 +1162,7 @@ export function applyDamageToPlayer(
       defenderDefense
     );
   }
-  
+
   const oldHp = player.hp;
   player.hp = Math.max(0, player.hp - finalDamage);
 
@@ -1230,7 +1231,7 @@ export function updateCreatureAI(
   const attackResults: AIAttackResult[] = [];
   aiLogCounter++;
   const shouldLog = DEBUG_AI && aiLogCounter % 100 === 0; // Log a cada 100 ticks (~5 segundos)
-  
+
   // Encontrar jogadores vivos
   const alivePlayers: Array<{ id: string; player: CombatPlayer }> = [];
   for (const [id, player] of room.players) {
@@ -1251,7 +1252,7 @@ export function updateCreatureAI(
     for (const creature of room.creatures) {
       creature.aiState = "idle";
       creature.targetPlayerId = null;
-      
+
       // ✅ Roaming: Sistema de patrulha aleatória quando não há jogadores
       // ✅ Calcular config de IA baseado em tier e level
       const level = creature.level ?? 1;
@@ -1259,10 +1260,10 @@ export function updateCreatureAI(
       // ✅ Usar stats calculados (nível + rank) se disponíveis, senão usar config
       const effectiveMoveSpeed = creature.effectiveStats?.moveSpeed;
       const speedMultiplier = getCreatureSpeedMultiplier(creature);
-      
+
       // Atualizar timer de patrulha
       creature.patrolTimer -= deltaTime;
-      
+
       // Se não tem destino ou chegou ao destino ou timer expirou, escolher novo destino
       if (!creature.roamingTarget || creature.patrolTimer <= 0) {
         const angle = Math.random() * Math.PI * 2;
@@ -1273,13 +1274,13 @@ export function updateCreatureAI(
         };
         creature.patrolTimer = ROAMING_NEW_DESTINATION_INTERVAL;
       }
-      
+
       // Mover em direção ao destino de roaming
       if (creature.roamingTarget && canCreatureMove(creature)) {
         const dx = creature.roamingTarget.x - creature.x;
         const dy = creature.roamingTarget.y - creature.y;
         const distToTarget = Math.hypot(dx, dy);
-        
+
         if (distToTarget > ROAMING_DESTINATION_REACHED_DISTANCE && effectiveMoveSpeed) {
           const roamingSpeed = effectiveMoveSpeed * ROAMING_SPEED_MULTIPLIER * speedMultiplier;
           creature.x += (dx / distToTarget) * roamingSpeed * deltaTime;
@@ -1301,7 +1302,7 @@ export function updateCreatureAI(
         creature.attackCooldownRemaining - deltaTime
       );
     }
-    
+
     // ✅ Atualizar cooldown de skill
     if (creature.skillCooldownRemaining !== undefined && creature.skillCooldownRemaining > 0) {
       creature.skillCooldownRemaining = Math.max(
@@ -1320,15 +1321,15 @@ export function updateCreatureAI(
     let groupingDx = 0;
     let groupingDy = 0;
     let groupingCount = 0;
-    
+
     for (const otherCreature of room.creatures) {
       if (otherCreature.id === creature.id) continue;
       if (otherCreature.creatureType !== creature.creatureType) continue;
-      
+
       const dx = otherCreature.x - creature.x;
       const dy = otherCreature.y - creature.y;
       const dist = Math.hypot(dx, dy);
-      
+
       if (dist <= GROUPING_DETECTION_RANGE && dist > 0) {
         // Normalizar e adicionar direção de agrupamento
         groupingDx += (dx / dist) * GROUPING_STRENGTH;
@@ -1353,14 +1354,14 @@ export function updateCreatureAI(
     }
 
     if (!closestPlayer) continue;
-    
+
     // ✅ IA #6: Aplicar movimento de agrupamento se houver criaturas do mesmo tipo próximas
     if (groupingCount > 0 && canCreatureMove(creature) && creature.aiState !== "attacking") {
       const speedMultiplier = getCreatureSpeedMultiplier(creature);
       const effectiveMoveSpeed = creature.effectiveStats?.moveSpeed;
       if (!effectiveMoveSpeed) continue;
       const groupingSpeed = effectiveMoveSpeed * GROUPING_SPEED_MULTIPLIER * speedMultiplier;
-      
+
       creature.x += groupingDx * groupingSpeed * deltaTime;
       creature.y += groupingDy * groupingSpeed * deltaTime;
     }
@@ -1372,12 +1373,12 @@ export function updateCreatureAI(
     // ✅ Atualizar windup de skill de criaturas
     if (creature.skillWindupTimer && creature.skillWindupTimer > 0) {
       creature.skillWindupTimer = Math.max(0, creature.skillWindupTimer - deltaTime);
-      
+
       // Se windup terminou, executar skill
       if (creature.skillWindupTimer <= 0 && creature.pendingSkill) {
         const { skillType, targetX, targetY } = creature.pendingSkill;
         creature.pendingSkill = undefined;
-        
+
         // Calcular stats escalados da skill
         const level = creature.level ?? 1;
         const rank = 1;
@@ -1385,11 +1386,11 @@ export function updateCreatureAI(
           { definitionId: creature.creatureType, level, rank },
           getCreatureById
         );
-        
+
         const skillRadius = effectiveStats.specialSkillRadius;
         const skillDamagePerTick = effectiveStats.specialSkillDamagePerTick;
         const skillLifetime = effectiveStats.specialSkillLifetime;
-        
+
         const specialSkill = getSpecialSkillByCreatureId(creature.creatureType);
         if (specialSkill) {
           const skillZone = createSkillZone(
@@ -1404,12 +1405,12 @@ export function updateCreatureAI(
             specialSkill.slowModifier,
             effectiveStats.attackDamage // ✅ Ataque do atacante para calcular dano com defesa
           );
-          
+
           room.skillZones.push(skillZone);
-          
+
           // Atualizar cooldown da criatura
           creature.lastSkillTime = Date.now();
-          
+
           if (DEBUG_AI) {
             console.log(
               `[AI] ${creature.id} (${creature.creatureType}) executou skill ${skillType} ` +
@@ -1419,7 +1420,7 @@ export function updateCreatureAI(
           }
         }
       }
-      
+
       // Se está em windup, pular ataque normal neste tick
       continue;
     }
@@ -1433,7 +1434,7 @@ export function updateCreatureAI(
 
     // Atualizar comportamento baseado no tipo e coletar resultados de ataque
     let attackResult: AIAttackResult | null = null;
-    
+
     if (creature.behaviorType === "melee") {
       attackResult = updateMeleeCreatureAI(
         creature,
@@ -1450,7 +1451,7 @@ export function updateCreatureAI(
         deltaTime
       );
     }
-    
+
     // Adicionar resultado de ataque se houver
     if (attackResult) {
       attackResults.push(attackResult);
@@ -1468,7 +1469,7 @@ export function updateCreatureAI(
       );
     }
   }
-  
+
   return attackResults;
 }
 
@@ -1507,14 +1508,14 @@ function tryUseCreatureSkill(
     { definitionId: creature.creatureType, level, rank },
     getCreatureById
   );
-  
+
   // ✅ Verificar cooldown usando valor escalado
   const currentTime = Date.now();
   // Se lastSkillTime é 0 ou undefined, tratar como se nunca usou skill (permitir uso imediato)
   const lastSkillTime = creature.lastSkillTime || 0;
   const timeSinceLastSkill = lastSkillTime === 0 ? Infinity : (currentTime - lastSkillTime);
   const skillCooldownMs = effectiveStats.specialSkillCooldown * 1000; // Converter para ms (escalado)
-  
+
   if (timeSinceLastSkill < skillCooldownMs) {
     if (DEBUG_SKILLS) {
       console.log(
@@ -1524,7 +1525,7 @@ function tryUseCreatureSkill(
     }
     return false; // Skill em cooldown
   }
-  
+
   const skillRange = effectiveStats.specialSkillRange;
   const skillRadius = effectiveStats.specialSkillRadius;
   const skillDamagePerTick = effectiveStats.specialSkillDamagePerTick;
@@ -1581,7 +1582,7 @@ function tryUseCreatureSkill(
       targetX: closestPlayer.player.x, // Posição do jogador alvo
       targetY: closestPlayer.player.y
     };
-    
+
     if (DEBUG_SKILLS) {
       console.log(
         `[AI-SKILL] ✅ ${creature.id} (${creature.creatureType}) iniciou windup de skill ${skillType} ` +
@@ -1589,7 +1590,7 @@ function tryUseCreatureSkill(
         `[windup=${skillWindupTime.toFixed(2)}s, range=${skillRange.toFixed(0)}px, cooldown=${(skillCooldownMs / 1000).toFixed(2)}s]`
       );
     }
-    
+
     return true; // Windup iniciado
   }
 
@@ -1608,7 +1609,7 @@ function tryUseCreatureSkill(
   );
 
   room.skillZones.push(skillZone);
-  
+
   // Atualizar cooldown
   creature.lastSkillTime = currentTime;
   creature.skillCooldownRemaining = effectiveStats.specialSkillCooldown;
@@ -1661,43 +1662,43 @@ function updateMeleeCreatureAI(
 
   // ✅ FASE 9: Aplicar modificador de velocidade dos buffs
   const speedMultiplier = getCreatureSpeedMultiplier(creature);
-  
+
   // ✅ Usar stats calculados (nível + rank) - obrigatório agora
   const effectiveMoveSpeed = creature.effectiveStats?.moveSpeed;
   const detectionRange = creature.effectiveStats?.detectionRange;
   const attackRange = creature.effectiveStats?.attackRange;
   const attackCooldown = creature.effectiveStats?.attackCooldown;
-  
+
   if (!effectiveMoveSpeed || !detectionRange || !attackRange || !attackCooldown) {
     console.warn(`[Combat] Criatura ${creature.id} sem effectiveStats completo, pulando IA`);
     return null;
   }
-  
+
   // ✅ Cancelar roaming quando detecta jogador
   if (distance <= detectionRange) {
     creature.roamingTarget = null;
   }
-  
+
   // ✅ IA #5: Verificar se criatura está com pouca vida (< 30% HP)
   const hpPercent = creature.maxHp > 0 ? creature.currentHp / creature.maxHp : 1;
   const FLEE_HP_THRESHOLD = 0.3; // 30% HP
   const shouldFlee = hpPercent < FLEE_HP_THRESHOLD;
-  
+
   // ✅ IA #5: Se com pouca vida, tentar fugir do jogador
   if (shouldFlee && distance <= detectionRange && canCreatureMove(creature)) {
     creature.aiState = "retreating";
     creature.targetPlayerId = closestPlayer.id;
-    
+
     // Mover para longe do jogador
     const dx = player.x - creature.x;
     const dy = player.y - creature.y;
     const fleeSpeed = effectiveMoveSpeed * 1.2 * speedMultiplier; // 20% mais rápido ao fugir
-    
+
     creature.x -= (dx / distance) * fleeSpeed * deltaTime;
     creature.y -= (dy / distance) * fleeSpeed * deltaTime;
     return null;
   }
-  
+
   // Fora de detecção: idle/roaming
   if (distance > detectionRange) {
     creature.aiState = "idle";
@@ -1706,7 +1707,7 @@ function updateMeleeCreatureAI(
     // ✅ Roaming: Sistema de patrulha aleatória
     // Atualizar timer de patrulha
     creature.patrolTimer -= deltaTime;
-    
+
     // Se não tem destino ou chegou ao destino ou timer expirou, escolher novo destino
     if (!creature.roamingTarget || creature.patrolTimer <= 0) {
       // Escolher ponto aleatório dentro do raio de roaming
@@ -1718,13 +1719,13 @@ function updateMeleeCreatureAI(
       };
       creature.patrolTimer = ROAMING_NEW_DESTINATION_INTERVAL;
     }
-    
+
     // Mover em direção ao destino de roaming
     if (creature.roamingTarget && canCreatureMove(creature)) {
       const dx = creature.roamingTarget.x - creature.x;
       const dy = creature.roamingTarget.y - creature.y;
       const distToTarget = Math.hypot(dx, dy);
-      
+
       if (distToTarget > ROAMING_DESTINATION_REACHED_DISTANCE) {
         // Ainda não chegou ao destino, continuar movendo
         const roamingSpeed = effectiveMoveSpeed * ROAMING_SPEED_MULTIPLIER * speedMultiplier;
@@ -1736,7 +1737,7 @@ function updateMeleeCreatureAI(
         creature.patrolTimer = 0;
       }
     }
-    
+
     return null;
   }
 
@@ -1774,7 +1775,7 @@ function updateMeleeCreatureAI(
   // Fora de alcance de ataque: perseguir
   if (canCreatureMove(creature)) {
     creature.aiState = "chasing";
-    
+
     const dx = player.x - creature.x;
     const dy = player.y - creature.y;
     const moveSpeed = effectiveMoveSpeed * deltaTime * speedMultiplier;
@@ -1782,7 +1783,7 @@ function updateMeleeCreatureAI(
     creature.x += (dx / distance) * moveSpeed;
     creature.y += (dy / distance) * moveSpeed;
   }
-  
+
   return null;
 }
 
@@ -1806,7 +1807,7 @@ function updateRangedCreatureAI(
 
   // ✅ FASE 9: Aplicar modificador de velocidade dos buffs
   const speedMultiplier = getCreatureSpeedMultiplier(creature);
-  
+
   // ✅ Usar stats calculados (nível + rank) - obrigatório agora
   const effectiveMoveSpeed = creature.effectiveStats?.moveSpeed;
   const detectionRange = creature.effectiveStats?.detectionRange;
@@ -1814,37 +1815,37 @@ function updateRangedCreatureAI(
   const attackCooldown = creature.effectiveStats?.attackCooldown;
   const preferredDistance = creature.effectiveStats?.preferredDistance;
   const projectileSpeed = creature.effectiveStats?.projectileSpeed;
-  
+
   if (!effectiveMoveSpeed || !detectionRange || !attackRange || !attackCooldown || !preferredDistance || projectileSpeed === undefined) {
     console.warn(`[Combat] Criatura ${creature.id} sem effectiveStats completo, pulando IA`);
     return null;
   }
-  
+
   // ✅ Cancelar roaming quando detecta jogador
   if (distance <= detectionRange) {
     creature.roamingTarget = null;
   }
-  
+
   // ✅ IA #5: Verificar se criatura está com pouca vida (< 30% HP)
   const hpPercent = creature.maxHp > 0 ? creature.currentHp / creature.maxHp : 1;
   const FLEE_HP_THRESHOLD = 0.3; // 30% HP
   const shouldFlee = hpPercent < FLEE_HP_THRESHOLD;
-  
+
   // ✅ IA #5: Se com pouca vida, tentar fugir do jogador
   if (shouldFlee && distance <= detectionRange && canCreatureMove(creature)) {
     creature.aiState = "retreating";
     creature.targetPlayerId = closestPlayer.id;
-    
+
     // Mover para longe do jogador
     const dx = player.x - creature.x;
     const dy = player.y - creature.y;
     const fleeSpeed = effectiveMoveSpeed * 1.2 * speedMultiplier; // 20% mais rápido ao fugir
-    
+
     creature.x -= (dx / distance) * fleeSpeed * deltaTime;
     creature.y -= (dy / distance) * fleeSpeed * deltaTime;
     return null;
   }
-  
+
   // Fora de detecção: idle/roaming
   if (distance > detectionRange) {
     creature.aiState = "idle";
@@ -1853,7 +1854,7 @@ function updateRangedCreatureAI(
     // ✅ Roaming: Sistema de patrulha aleatória (mesmo sistema para ranged)
     // Atualizar timer de patrulha
     creature.patrolTimer -= deltaTime;
-    
+
     // Se não tem destino ou chegou ao destino ou timer expirou, escolher novo destino
     if (!creature.roamingTarget || creature.patrolTimer <= 0) {
       // Escolher ponto aleatório dentro do raio de roaming
@@ -1865,13 +1866,13 @@ function updateRangedCreatureAI(
       };
       creature.patrolTimer = ROAMING_NEW_DESTINATION_INTERVAL;
     }
-    
+
     // Mover em direção ao destino de roaming
     if (creature.roamingTarget && canCreatureMove(creature)) {
       const dx = creature.roamingTarget.x - creature.x;
       const dy = creature.roamingTarget.y - creature.y;
       const distToTarget = Math.hypot(dx, dy);
-      
+
       if (distToTarget > ROAMING_DESTINATION_REACHED_DISTANCE) {
         // Ainda não chegou ao destino, continuar movendo
         const roamingSpeed = effectiveMoveSpeed * ROAMING_SPEED_MULTIPLIER * speedMultiplier;
@@ -1883,7 +1884,7 @@ function updateRangedCreatureAI(
         creature.patrolTimer = 0;
       }
     }
-    
+
     return null;
   }
 
@@ -1970,6 +1971,75 @@ function updateRangedCreatureAI(
 // ============================================================================
 
 /**
+ * ✅ Aplica efeitos de uma skill zone em uma entidade (player ou criatura).
+ * Usa valores programáticos da definição da skill em shared/attacks.ts.
+ * 
+ * @param skillType - Tipo da skill (fire_fog, root_trap, electric_surge)
+ * @param entity - Entidade afetada (player ou criatura)
+ * @param distance - Distância da entidade ao centro da zona
+ * @param dx - Diferença X da entidade ao centro da zona
+ * @param dy - Diferença Y da entidade ao centro da zona
+ * @param ownerId - ID do dono da skill zone
+ * @param damageResult - Resultado do dano aplicado (para verificar se morreu)
+ */
+function applySkillZoneEffects(
+  skillType: string,
+  entity: CombatPlayer | ServerCreature,
+  distance: number,
+  dx: number,
+  dy: number,
+  ownerId: string,
+  damageResult: DamageResult
+): void {
+  // Obter definição da skill do shared
+  const skillDef = getSpecialSkillByType(skillType);
+  if (!skillDef) {
+    return; // Skill não encontrada, não aplicar efeitos
+  }
+
+  // Aplicar slow se definido
+  if (skillDef.slowModifier !== undefined && skillDef.slowDuration !== undefined) {
+    if (!entity.buffs) {
+      entity.buffs = [];
+    }
+    const existingSlow = entity.buffs.find(b => b.type === 'slow');
+    if (!existingSlow || existingSlow.duration < skillDef.slowDuration) {
+      entity.buffs.push({
+        type: 'slow',
+        duration: skillDef.slowDuration,
+        value: skillDef.slowModifier,
+        sourceId: ownerId,
+        appliedAt: Date.now()
+      });
+    }
+  }
+
+  // Aplicar freeze se definido
+  if (skillDef.freezeDuration !== undefined) {
+    if (!entity.buffs) {
+      entity.buffs = [];
+    }
+    const existingFreeze = entity.buffs.find(b => b.type === 'freeze');
+    if (!existingFreeze || existingFreeze.duration < skillDef.freezeDuration) {
+      entity.buffs.push({
+        type: 'freeze',
+        duration: skillDef.freezeDuration,
+        sourceId: ownerId,
+        appliedAt: Date.now()
+      });
+    }
+  }
+
+  // Aplicar knockback se definido
+  if (skillDef.knockbackDistance !== undefined && distance > 0 && !damageResult.died) {
+    const nx = dx / distance;
+    const ny = dy / distance;
+    entity.x += nx * skillDef.knockbackDistance;
+    entity.y += ny * skillDef.knockbackDistance;
+  }
+}
+
+/**
  * Atualiza todas as skill zones ativas na sala.
  * 
  * Para cada zona:
@@ -1986,7 +2056,8 @@ function updateRangedCreatureAI(
 export function updateSkillZones(
   skillZones: ServerSkillZone[],
   creatures: ServerCreature[],
-  deltaTime: number
+  deltaTime: number,
+  players?: Map<string, CombatPlayer>
 ): DamageResult[] {
   const damageResults: DamageResult[] = [];
   const zonesToKeep: ServerSkillZone[] = [];
@@ -2007,61 +2078,66 @@ export function updateSkillZones(
     if (zone.tickTimer <= 0) {
       zone.tickTimer = zone.tickInterval; // Resetar timer para próximo tick
 
-      // Encontrar criaturas dentro da zona
-      for (const creature of creatures) {
-        const dx = creature.x - zone.x;
-        const dy = creature.y - zone.y;
-        const distance = Math.hypot(dx, dy);
+      // ✅ Verificar se ownerId é de uma criatura (começa com "wild-")
+      const isCreatureSkill = zone.ownerId.startsWith("wild-");
 
-        if (distance <= zone.radius) {
-          // Criatura está dentro da zona - aplicar dano
-          const damageResult = applyDamageToCreature(
-            creature,
-            zone.damagePerTick,
-            zone.ownerId,
-            zone.attackerAttack
-          );
-          damageResults.push(damageResult);
+      if (isCreatureSkill && players) {
+        // Skill zone de criatura inimiga - aplicar dano nos players
+        for (const [playerId, player] of players) {
+          const dx = player.x - zone.x;
+          const dy = player.y - zone.y;
+          const distance = Math.hypot(dx, dy);
 
-          // Aplicar efeitos adicionais baseados no tipo de skill
-          if (zone.skillType === "fire_fog") {
-            // Nevoeiro incendiário: slow moderado (30% mais lento)
-            if (!creature.buffs) {
-              creature.buffs = [];
-            }
-            const existingSlow = creature.buffs.find(b => b.type === 'slow');
-            if (!existingSlow || existingSlow.duration < 0.8) {
-              // Aplicar slow de 0.8s (dura até próximo tick)
-              creature.buffs.push({
-                type: 'slow',
-                duration: 0.8,
-                value: 0.7, // 30% mais lento
-                sourceId: zone.ownerId,
-                appliedAt: Date.now()
-              });
-            }
-          } else if (zone.skillType === "root_trap") {
-            // Armadilha de raízes: freeze (imobiliza)
-            if (!creature.buffs) {
-              creature.buffs = [];
-            }
-            const existingFreeze = creature.buffs.find(b => b.type === 'freeze');
-            if (!existingFreeze || existingFreeze.duration < 1.0) {
-              creature.buffs.push({
-                type: 'freeze',
-                duration: 1.0,
-                sourceId: zone.ownerId,
-                appliedAt: Date.now()
-              });
-            }
-          } else if (zone.skillType === "electric_surge") {
-            // Pulso elétrico: knockback leve
-            if (distance > 0 && !damageResult.died) {
-              const nx = dx / distance;
-              const ny = dy / distance;
-              creature.x += nx * SKILL_KNOCKBACK_DISTANCE;
-              creature.y += ny * SKILL_KNOCKBACK_DISTANCE;
-            }
+          if (distance <= zone.radius) {
+            // Player está dentro da zona - aplicar dano
+            const damageResult = applyDamageToPlayer(
+              playerId,
+              player,
+              zone.damagePerTick,
+              zone.ownerId,
+              zone.attackerAttack
+            );
+            damageResults.push(damageResult);
+
+            // ✅ Aplicar efeitos usando valores programáticos da definição da skill
+            applySkillZoneEffects(
+              zone.skillType,
+              player,
+              distance,
+              dx,
+              dy,
+              zone.ownerId,
+              damageResult
+            );
+          }
+        }
+      } else if (!isCreatureSkill) {
+        // Skill zone de player - aplicar dano nas criaturas (comportamento original)
+        for (const creature of creatures) {
+          const dx = creature.x - zone.x;
+          const dy = creature.y - zone.y;
+          const distance = Math.hypot(dx, dy);
+
+          if (distance <= zone.radius) {
+            // Criatura está dentro da zona - aplicar dano
+            const damageResult = applyDamageToCreature(
+              creature,
+              zone.damagePerTick,
+              zone.ownerId,
+              zone.attackerAttack
+            );
+            damageResults.push(damageResult);
+
+            // ✅ Aplicar efeitos usando valores programáticos da definição da skill
+            applySkillZoneEffects(
+              zone.skillType,
+              creature,
+              distance,
+              dx,
+              dy,
+              zone.ownerId,
+              damageResult
+            );
           }
         }
       }

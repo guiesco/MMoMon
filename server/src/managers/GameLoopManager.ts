@@ -111,7 +111,8 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
         const skillZoneDamageResults = updateSkillZones(
           room.worldState.skillZones,
           combatState.creatures,
-          deltaMs / 1000 // Converter para segundos
+          deltaMs / 1000, // Converter para segundos
+          combatState.players // ✅ Passar players para aplicar dano de skill zones de criaturas
         );
         
         // ✅ Sincronizar skill zones atualizadas de volta para combatState

@@ -33,13 +33,13 @@ import {
 } from "./systems/resources";
 import {
   processSkillIntent,
-  updateSkillZones,
   updatePlayerSkillWindups,
   SkillRoomState,
   SkillPlayer,
   SkillResult,
   SkillType
 } from "./systems/skills";
+import { updateSkillZones } from "./systems/combat";
 import { ServerCreature, ServerProjectile, ServerSkillZone, ServerResource } from "./types";
 
 /**
@@ -861,8 +861,10 @@ export class GameLoop {
 
     // 4. Atualizar skill zones e aplicar dano periódico
     const skillDamageResults = updateSkillZones(
-      this.combatState as unknown as SkillRoomState,
-      deltaSeconds
+      this.combatState.skillZones,
+      this.combatState.creatures,
+      deltaSeconds,
+      this.combatState.players // ✅ Passar players para aplicar dano de skill zones de criaturas
     );
 
     // 5. Consolidar todos os resultados de dano

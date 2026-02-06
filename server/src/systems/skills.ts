@@ -25,7 +25,7 @@ import { addBuffToCreature, BUFF_CONFIG } from "./buffs";
 import { SKILL_COOLDOWN_MS } from "../../../shared/serverConstants";
 import { getCreatureById } from "../../../shared/creatures";
 import { calculateEffectiveStats } from "../../../shared/creatureProgression";
-import { getSpecialSkillByCreatureId } from "../../../shared/attacks";
+import { getSpecialSkillByCreatureId, getSpecialSkillByType } from "../../../shared/attacks";
 
 // ============================================================================
 // Constantes
@@ -208,7 +208,7 @@ export function processSkillIntent(
 
   // Obter configuração base da skill
   const baseConfig = SKILL_CONFIG[skillType as SkillType];
-  
+
   // Calcular valores escalados se tiver creatureId, level e rank
   let radius = baseConfig.radius;
   let damagePerTick = baseConfig.damagePerTick;
@@ -220,7 +220,7 @@ export function processSkillIntent(
       { definitionId: creatureId, level: creatureLevel, rank: creatureRank },
       getCreatureById
     );
-    
+
     // Usar valores escalados da special skill
     radius = effectiveStats.specialSkillRadius;
     damagePerTick = effectiveStats.specialSkillDamagePerTick;
@@ -284,7 +284,7 @@ export function processSkillIntent(
       creatureLevel,
       creatureRank
     };
-    
+
     return {
       success: true,
       skillZoneId: undefined, // Skill zone será criada após windup
@@ -302,7 +302,7 @@ export function processSkillIntent(
     );
     attackerAttack = effectiveStats.attackDamage;
   }
-  
+
   const skillZone = createSkillZone(
     playerId,
     skillType as "fire_fog" | "root_trap" | "electric_surge",
@@ -389,30 +389,25 @@ export function updateSkillZones(
           );
           damageResults.push(damageResult);
 
-          // ✅ FASE 9: Aplicar efeitos especiais baseados no tipo de skill
-          switch (zone.skillType) {
-            case "fire_fog":
-              // Nevoeiro incendiário: slow moderado + dano contínuo
-              addBuffToCreature(creature, 'slow', 0.8, 0.7, zone.ownerId);
-              break;
-              
-            case "root_trap":
-              // Armadilha de raízes: freeze severo (quase imobiliza)
-              addBuffToCreature(creature, 'freeze', 1.0, undefined, zone.ownerId);
-              break;
-              
-            case "water_pulse":
-              // Pulso de água: slow leve
-              addBuffToCreature(creature, 'slow', 0.6, 0.8, zone.ownerId);
-              break;
-              
-            case "electric_surge":
-              // Surto elétrico: stun periódico
-              // Aplicar stun apenas no primeiro tick para evitar stun permanente
+          // ✅ Aplicar efeitos especiais usando valores programáticos da definição da skill
+          const skillDef = getSpecialSkillByType(zone.skillType);
+          if (skillDef) {
+            // Aplicar slow se definido
+            if (skillDef.slowModifier !== undefined && skillDef.slowDuration !== undefined) {
+              addBuffToCreature(creature, 'slow', skillDef.slowDuration, skillDef.slowModifier, zone.ownerId);
+            }
+
+            // Aplicar freeze se definido
+            if (skillDef.freezeDuration !== undefined) {
+              addBuffToCreature(creature, 'freeze', skillDef.freezeDuration, undefined, zone.ownerId);
+            }
+
+            // Aplicar stun se definido (apenas no primeiro tick para evitar stun permanente)
+            if (skillDef.stunDuration !== undefined && skillDef.stunDuration > 0) {
               if (zone.tickTimer >= zone.tickInterval - 0.1) {
-                addBuffToCreature(creature, 'stun', 0.5, undefined, zone.ownerId);
+                addBuffToCreature(creature, 'stun', skillDef.stunDuration, undefined, zone.ownerId);
               }
-              break;
+            }
           }
         }
       }
@@ -491,34 +486,34 @@ export function updatePlayerSkillWindups(
   deltaTime: number
 ): SkillResult[] {
   const skillResults: SkillResult[] = [];
-  
+
   for (const [playerId, player] of room.players) {
     if (player.skillWindupTimer && player.skillWindupTimer > 0) {
       // Reduzir windup timer
       player.skillWindupTimer = Math.max(0, player.skillWindupTimer - deltaTime);
-      
+
       // Se windup terminou, executar skill
       if (player.skillWindupTimer <= 0 && player.pendingSkill) {
         const { skillType, targetX, targetY, creatureId, creatureLevel, creatureRank } = player.pendingSkill;
         player.pendingSkill = undefined;
-        
+
         // Obter configuração base da skill
         const baseConfig = SKILL_CONFIG[skillType as SkillType];
         if (!baseConfig) {
           continue; // Skill inválida, pular
         }
-        
+
         // Calcular valores escalados
         let radius = baseConfig.radius;
         let damagePerTick = baseConfig.damagePerTick;
         let lifetime = baseConfig.lifetime;
-        
+
         if (creatureId && creatureLevel !== undefined && creatureRank !== undefined) {
           const effectiveStats = calculateEffectiveStats(
             { definitionId: creatureId, level: creatureLevel, rank: creatureRank },
             getCreatureById
           );
-          
+
           radius = effectiveStats.specialSkillRadius;
           damagePerTick = effectiveStats.specialSkillDamagePerTick;
           lifetime = effectiveStats.specialSkillLifetime;
@@ -530,7 +525,7 @@ export function updatePlayerSkillWindups(
             lifetime = specialSkill.lifetime;
           }
         }
-        
+
         // Obter attackDamage do effectiveStats se disponível
         let attackerAttack: number | undefined;
         if (creatureId && creatureLevel !== undefined && creatureRank !== undefined) {
@@ -540,7 +535,7 @@ export function updatePlayerSkillWindups(
           );
           attackerAttack = effectiveStats.attackDamage;
         }
-        
+
         // Criar skill zone com valores escalados
         const skillZone = createSkillZone(
           playerId,
@@ -554,12 +549,12 @@ export function updatePlayerSkillWindups(
           baseConfig.slowModifier,
           attackerAttack // ✅ Ataque do atacante para calcular dano com defesa
         );
-        
+
         room.skillZones.push(skillZone);
-        
+
         // Atualizar cooldown do jogador
         player.lastSkillTime = Date.now();
-        
+
         skillResults.push({
           success: true,
           skillZoneId: skillZone.id,
@@ -568,6 +563,6 @@ export function updatePlayerSkillWindups(
       }
     }
   }
-  
+
   return skillResults;
 }

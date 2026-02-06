@@ -64,6 +64,12 @@ export interface SpecialSkill {
   lifetime: number;
   /** Modificador de velocidade (opcional, 0.0 a 1.0) */
   slowModifier?: number;
+  /** Duração do slow aplicado (em segundos, opcional) */
+  slowDuration?: number;
+  /** Duração do freeze aplicado (em segundos, opcional) */
+  freezeDuration?: number;
+  /** Distância de knockback aplicado (em pixels, opcional) */
+  knockbackDistance?: number;
   /** Se a habilidade é um projétil ou área no chão */
   isProjectile: boolean;
   /** Velocidade do projétil (se isProjectile = true) */
@@ -191,6 +197,7 @@ export const SKILL_NEVOEIRO_INCENDIARIO: SpecialSkill = {
   tickInterval: 0.5,
   lifetime: 4,
   slowModifier: 0.7, // 30% mais lento
+  slowDuration: 0.8, // Duração do slow em segundos
   isProjectile: false,
   projectileSpeed: 0,
   attackRangePerLevel: 0.002, // +0.2% por nível
@@ -246,6 +253,7 @@ export const SKILL_RAIZES_PRENDENTES: SpecialSkill = {
   tickInterval: 0.5,
   lifetime: 5,
   slowModifier: 0.3, // 70% mais lento (quase imobilizado)
+  freezeDuration: 1.0, // Duração do freeze em segundos
   isProjectile: false,
   projectileSpeed: 0,
   attackRangePerLevel: 0.002,
@@ -273,6 +281,7 @@ export const SKILL_SURTO_ELETRICO: SpecialSkill = {
   damagePerTick: 15,
   tickInterval: 0.4,
   lifetime: 3,
+  knockbackDistance: 30, // Distância de knockback em pixels
   isProjectile: false,
   projectileSpeed: 0,
   attackRangePerLevel: 0.002,
@@ -325,4 +334,22 @@ export function getAttackByCreatureId(creatureId: string): BasicAttack | undefin
  */
 export function getSpecialSkillByCreatureId(creatureId: string): SpecialSkill | undefined {
   return CREATURE_SPECIAL_SKILLS[creatureId];
+}
+
+/**
+ * Mapa que associa tipos de skill (skillType) às suas definições.
+ * Útil para obter configurações de efeitos programaticamente.
+ */
+export const SKILL_TYPE_TO_DEFINITION: Record<string, SpecialSkill> = {
+  fire_fog: SKILL_NEVOEIRO_INCENDIARIO,
+  root_trap: SKILL_RAIZES_PRENDENTES,
+  electric_surge: SKILL_SURTO_ELETRICO,
+  heal_wave: SKILL_MARE_CURATIVA
+};
+
+/**
+ * Obtém a definição de uma skill especial por tipo (skillType).
+ */
+export function getSpecialSkillByType(skillType: string): SpecialSkill | undefined {
+  return SKILL_TYPE_TO_DEFINITION[skillType];
 }

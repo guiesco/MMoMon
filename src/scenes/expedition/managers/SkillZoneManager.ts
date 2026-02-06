@@ -149,6 +149,12 @@ export class SkillZoneManager {
         // (por enquanto zonas são estáticas, mas podemos atualizar alpha baseado em lifetime)
         const lifetimeRatio = Math.max(0, Math.min(1, zone.lifetime / 4)); // Assumindo 4s máximo
         existing.setAlpha(0.25 * lifetimeRatio + 0.1); // Fade out gradual
+        
+        // ✅ Atualizar posição da borda vermelha se existir
+        if ((existing as any).dangerStroke) {
+          (existing as any).dangerStroke.setPosition(zone.x, zone.y);
+          (existing as any).dangerStroke.setAlpha(0.8 * lifetimeRatio + 0.2);
+        }
       } else {
         // Criar nova skill zone
         const { color, strokeColor } = this.getSkillZoneColors(zone.skillType);
@@ -156,6 +162,17 @@ export class SkillZoneManager {
         const circle = this.scene.add.circle(zone.x, zone.y, zone.radius, color, 0.25);
         circle.setStrokeStyle(2, strokeColor, 0.9);
         circle.setDepth(50); // Abaixo de jogadores/criaturas mas acima do chão
+        
+        // ✅ Verificar se é skill zone hostil (criada por criatura inimiga)
+        const isHostile = zone.ownerId.startsWith("wild-");
+        if (isHostile) {
+          // Adicionar borda vermelha extra para skill zones hostis
+          const dangerStroke = this.scene.add.circle(zone.x, zone.y, zone.radius, 0x000000, 0); // Transparente
+          dangerStroke.setStrokeStyle(4, 0xff0000, 0.8); // Borda vermelha grossa
+          dangerStroke.setDepth(51); // Acima da skill zone normal
+          // Armazenar referência para poder atualizar/remover depois
+          (circle as any).dangerStroke = dangerStroke;
+        }
         
         this.remoteSkillZones.set(zone.id, circle);
         
@@ -167,6 +184,17 @@ export class SkillZoneManager {
           duration: 200,
           ease: "Back.easeOut"
         });
+        
+        // Efeito de criação para borda vermelha se existir
+        if ((circle as any).dangerStroke) {
+          (circle as any).dangerStroke.setScale(0.1);
+          this.scene.tweens.add({
+            targets: (circle as any).dangerStroke,
+            scale: 1,
+            duration: 200,
+            ease: "Back.easeOut"
+          });
+        }
       }
     }
     
@@ -179,7 +207,13 @@ export class SkillZoneManager {
           alpha: 0,
           scale: 1.2,
           duration: 150,
-          onComplete: () => circle.destroy()
+          onComplete: () => {
+            circle.destroy();
+            // ✅ Destruir borda vermelha se existir
+            if ((circle as any).dangerStroke) {
+              (circle as any).dangerStroke.destroy();
+            }
+          }
         });
         this.remoteSkillZones.delete(id);
       }
