@@ -87,7 +87,8 @@ export class StateBroadcaster {
   }
 
   /**
-   * Envia mensagem de extração para todos os clientes da sala.
+   * Envia mensagem de extração para o jogador específico.
+   * IMPORTANTE: Mensagens de extração são individuais - cada jogador só recebe suas próprias mensagens.
    */
   static broadcastExtractionMessage(
     room: Room,
@@ -95,10 +96,14 @@ export class StateBroadcaster {
   ): void {
     const payload = JSON.stringify(message);
 
-    for (const ws of room.clients.values()) {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(payload);
-      }
+    // Enviar apenas para o jogador específico que extraiu
+    // Isso evita que outros jogadores processem mensagens de extração que não são deles
+    const playerWs = room.clients.get(message.playerId);
+    if (playerWs && playerWs.readyState === WebSocket.OPEN) {
+      playerWs.send(payload);
+      console.log(`[StateBroadcaster] Mensagem de extração enviada para jogador ${message.playerId}`);
+    } else {
+      console.warn(`[StateBroadcaster] Jogador ${message.playerId} não encontrado ou conexão fechada ao enviar mensagem de extração`);
     }
   }
 }

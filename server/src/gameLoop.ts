@@ -270,16 +270,16 @@ export class GameLoop {
   private isPaused: boolean = false;
 
   // Estado de combate (expandido para incluir recursos e skill zones)
-  private combatState: CombatRoomState & { 
+  private combatState: CombatRoomState & {
     resources: ServerResource[];
     skillZones: ServerSkillZone[];
   } = {
-    players: new Map(),
-    creatures: [],
-    projectiles: [],
-    resources: [],
-    skillZones: []
-  };
+      players: new Map(),
+      creatures: [],
+      projectiles: [],
+      resources: [],
+      skillZones: []
+    };
 
   constructor(roomId: string, callbacks: GameLoopCallbacks) {
     this.roomId = roomId;
@@ -429,7 +429,7 @@ export class GameLoop {
       expeditionInventory: new Map(),
       lastSkillTime: 0
     };
-    
+
     this.combatState.players.set(playerId, player as CombatPlayer);
     console.log(`[GameLoop] Jogador ${playerId.slice(0, 8)}... registrado em (${x.toFixed(0)}, ${y.toFixed(0)}) - Total: ${this.combatState.players.size} jogadores`);
   }
@@ -741,7 +741,7 @@ export class GameLoop {
     const creatureIndex = this.combatState.creatures.findIndex(c => c.id === targetId);
     if (creatureIndex === -1) {
       this.debugLog(`Captura falhou: criatura ${targetId} não encontrada`);
-      
+
       if (this.callbacks.onCaptureResult) {
         this.callbacks.onCaptureResult(intent.playerId, targetId, ballType, {
           success: false,
@@ -803,7 +803,7 @@ export class GameLoop {
       const buffEffects = updatePlayerBuffs(playerId, player, deltaSeconds);
       // TODO: Broadcast efeitos de poison/regen se houver
     }
-    
+
     for (const creature of this.combatState.creatures) {
       const buffEffects = updateCreatureBuffs(creature, deltaSeconds);
       // TODO: Broadcast efeitos de poison/regen se houver
@@ -855,16 +855,16 @@ export class GameLoop {
 
     // 2. Atualizar IA de criaturas (agora retorna resultados de ataque melee)
     const aiAttackResults = updateCreatureAI(this.combatState, deltaSeconds);
-    
+
     // 3. Aplicar dano de contato (criaturas tocando jogadores)
     const contactDamageResults = applyContactDamage(this.combatState, deltaSeconds);
-    
+
     // 4. Atualizar skill zones e aplicar dano periódico
     const skillDamageResults = updateSkillZones(
       this.combatState as unknown as SkillRoomState,
       deltaSeconds
     );
-    
+
     // 5. Consolidar todos os resultados de dano
     for (const aiResult of aiAttackResults) {
       damageResults.push({
@@ -876,7 +876,7 @@ export class GameLoop {
         died: aiResult.died
       });
     }
-    
+
     damageResults.push(...contactDamageResults);
     damageResults.push(...skillDamageResults);
 
@@ -900,22 +900,29 @@ export class GameLoop {
 
   /**
    * Verifica condições de fim de partida.
+   * 
+   * IMPORTANTE: A partida só termina quando o timer chegar a 0.
+   * Quando um jogador extrai, apenas ele sai da partida, os outros continuam jogando.
+   * A room só será fechada quando:
+   * 1. O timer da partida chegar a 0 (esta função)
+   * 2. OU quando não houver mais jogadores na sala por 30 segundos (gerenciado no index.ts)
    */
   private checkMatchEnd(): void {
     if (this.matchState !== "in_progress") return;
 
     const { timeLeft } = this.getMatchTime();
 
-    // Condição 1: tempo esgotado
+    // ÚNICA condição de fim de partida: tempo esgotado
+    // Quando um jogador extrai, apenas ele é desconectado, a partida continua para os outros
     if (timeLeft <= 0) {
       this.setMatchState("finished");
       this.debugLog(`Partida finalizada: tempo esgotado`);
       return;
     }
 
-    // Condição 2: todos jogadores extraíram ou morreram
-    // Esta verificação é feita no GameLoopManager.onTick através do callback
-    // que tem acesso à Room completa (incluindo extractionPoints e activeExtractions)
+    // NOTA: Não verificamos se todos os jogadores extraíram aqui.
+    // Quando um jogador extrai, apenas ele é desconectado individualmente.
+    // A partida continua até o timer chegar a 0, mesmo que todos os jogadores tenham extraído.
   }
 
   /**

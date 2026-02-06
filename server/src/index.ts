@@ -1,59 +1,33 @@
-import { WebSocketServer, WebSocket } from "ws";
-import { GameLoop, MatchState, AnyIntent } from "./gameLoop";
+import { WebSocketServer } from "ws";
+import { MatchState, AnyIntent } from "./gameLoop";
 import {
-  MATCH_DURATION_SECONDS,
-  EXPEDITION_DURATION_SECONDS,
   MAX_PLAYERS_PER_ROOM,
   DEBUG_GAME_LOOP,
-  getMapSpawnConfig
 } from "./constants";
-import type { WorldState, ServerCreature } from "./types";
-import { 
-  createEmptyWorldState
-} from "./types";
-import { initializeWorldSpawns } from "./systems/spawns";
 import {
-  createAttackResultMessage,
-  createPlayerDeathMessage,
-  createPlayerMoveMessage,
-  createCaptureResultMessage,
-  createCreaturesUpdateMessage,
-  createResourcesUpdateMessage,
-  createProjectilesUpdateMessage,
-  createSkillZonesUpdateMessage,
   createExtractionStateMessage,
-  createMatchEventMessage,
+  createPlayerMoveMessage,
   type AttackResultMessage,
   type PlayerDeathMessage,
-  type PlayerMoveMessage,
-  type OutgoingMessage
 } from "./messages";
-import { 
-  type PlayerExpeditionInventory,
-  createExpeditionInventory
-} from "./systems/capture";
 import {
+  initializePlayerExtractionData,
   processExtractionIntent,
-  allPlayersExtractedOrDead,
-  initializePlayerExtractionData
 } from "./systems/extraction";
 import { initializeFirebase, isFirebaseAvailable } from "./firebase";
-import { saveExpeditionRewards, getUser } from "./firestoreOperations";
-import type { SaveExpeditionData } from "./firebaseTypes";
+import { getUser } from "./firestoreOperations";
 
 // FASE 4: Imports dos módulos modulares
 import { StateBroadcaster } from "./broadcast/StateBroadcaster";
 import { RoomManager } from "./room/RoomManager";
-import { JoinHandler } from "./handlers/JoinHandler";
-import { MessageRouter } from "./connection/MessageRouter";
 import { IntentFactory } from "./intents/IntentFactory";
 import { IntentValidator } from "./intents/IntentValidator";
-import type { 
-  ClientId, 
-  PlayerPresence, 
-  Room, 
-  BaseMessage, 
-  IncomingMessage, 
+import type {
+  ClientId,
+  PlayerPresence,
+  Room,
+  BaseMessage,
+  IncomingMessage,
   JoinMessage,
   MoveMessage,
   AttackMessage,
@@ -150,7 +124,7 @@ function stopRoomGameLoop(room: Room): void {
  */
 function cleanupRoom(roomId: string): void {
   roomManager.cleanupRoom(roomId);
-  
+
   if (DEBUG_GAME_LOOP) {
     console.log(`[Server] ✓ Sala removida completamente: ${roomId}`);
   }
@@ -250,7 +224,7 @@ wss.on("connection", (ws) => {
     if (msg.type === "join") {
       // Verificar se já existe uma sala com este ID
       let existingRoom = rooms.get(msg.roomId);
-      
+
       // Se a partida terminou, SEMPRE criar nova sala
       if (existingRoom && existingRoom.matchState === "finished") {
         if (DEBUG_GAME_LOOP) {
@@ -260,7 +234,7 @@ wss.on("connection", (ws) => {
         cleanupRoom(msg.roomId);
         existingRoom = undefined;
       }
-      
+
       // Cancelar timer de cleanup se a sala existir e estiver vazia
       if (existingRoom?.emptyRoomTimer) {
         if (DEBUG_GAME_LOOP) {
@@ -269,7 +243,7 @@ wss.on("connection", (ws) => {
         clearTimeout(existingRoom.emptyRoomTimer);
         existingRoom.emptyRoomTimer = null;
       }
-      
+
       // Obter ou criar sala
       // Se for uma nova sala, usar selectedMapId do Firebase do primeiro jogador
       let room = existingRoom;
@@ -298,13 +272,13 @@ wss.on("connection", (ws) => {
 
       currentRoom = room;
       room.clients.set(clientId, ws);
-      
+
       // Registrar cliente na sala
       clientToRoom.set(clientId, room.id);
-      
+
       // ✅ FASE 3: Recuperar time do Firebase se userId fornecido
       let activeCreatureId: string | undefined;
-      
+
       // Log de início da busca de dados do Firebase
       if (!msg.userId) {
         console.log(`[Firebase] ⚠️  Jogador ${msg.name} (${clientId}) entrou sem userId - dados do Firebase não serão recuperados`);
@@ -329,7 +303,7 @@ wss.on("connection", (ws) => {
           console.error(`[Firebase] ❌ Erro ao recuperar time do Firebase para ${msg.userId}:`, error);
         }
       }
-      
+
       // Criar jogador com dados inicializados
       const newPlayer: PlayerPresence = {
         id: clientId,
@@ -345,10 +319,10 @@ wss.on("connection", (ws) => {
         creaturesCaptured: 0,
         itemsConsumed: new Map()
       };
-      
+
       // Inicializar dados de extração
       initializePlayerExtractionData(newPlayer);
-      
+
       room.players.set(clientId, newPlayer);
 
       // Iniciar game loop se for o primeiro jogador (ou retomar se já existe)
@@ -382,7 +356,7 @@ wss.on("connection", (ws) => {
       // Broadcast inicial inclui worldState para sincronizar spawns
       // E notifica TODOS os jogadores (incluindo existentes) sobre o novo jogador
       broadcastState(room, true);
-      
+
       console.log(`[Server] Jogador ${msg.name} (${clientId}) entrou na sala ${room.id} | Total: ${room.players.size} jogadores`);
       return;
     }
@@ -397,7 +371,7 @@ wss.on("connection", (ws) => {
 
     // Debug: Log de mensagens recebidas (a cada 50 mensagens para não poluir)
     const DEBUG_MESSAGES = true;
-    
+
     switch (msg.type) {
       case "move": {
         if (!currentRoom) return;
@@ -441,7 +415,7 @@ wss.on("connection", (ws) => {
         if (!currentRoom) return;
         const player = currentRoom.players.get(clientId);
         if (!player) return;
-        
+
         // Armazenar dados do time do jogador
         const creatures = msg.creatures as Array<{
           instanceId: string;
@@ -451,20 +425,20 @@ wss.on("connection", (ws) => {
           maxHp: number;
           rank?: number;
         }>;
-        
+
         const activeCreatureId = msg.activeCreatureInstanceId as string | null;
-        
+
         // Atualizar criatura ativa do jogador
         if (activeCreatureId) {
           player.activeCreatureId = activeCreatureId;
-          
+
           // Atualizar HP do jogador no sistema de combate baseado na criatura ativa
           const activeCreature = creatures.find(c => c.instanceId === activeCreatureId);
           if (activeCreature && currentRoom.gameLoop) {
             currentRoom.gameLoop.updatePlayerHp(clientId, activeCreature.currentHp, activeCreature.maxHp);
           }
         }
-        
+
         console.log(`[Team Sync] Jogador ${clientId.slice(0, 8)}... sincronizou ${creatures.length} criaturas, ativa: ${activeCreatureId?.slice(0, 8) || 'nenhuma'}`);
         break;
       }
@@ -473,19 +447,19 @@ wss.on("connection", (ws) => {
         if (!currentRoom) return;
         const player = currentRoom.players.get(clientId);
         if (!player) return;
-        
+
         const instanceId = msg.instanceId as string;
         const currentHp = msg.currentHp as number;
         const maxHp = msg.maxHp as number;
-        
+
         // Atualizar criatura ativa do jogador
         player.activeCreatureId = instanceId;
-        
+
         // Atualizar HP do jogador no sistema de combate
         if (currentRoom.gameLoop) {
           currentRoom.gameLoop.updatePlayerHp(clientId, currentHp, maxHp);
         }
-        
+
         if (DEBUG_MESSAGES && Math.random() < 0.2) {
           console.log(`[Active Creature] Jogador ${clientId.slice(0, 8)}... trocou para ${instanceId.slice(0, 8)}... (${currentHp}/${maxHp} HP)`);
         }
@@ -519,7 +493,7 @@ wss.on("connection", (ws) => {
       case "extraction_request": {
         if (!currentRoom) return;
         console.log(`[Extraction] Recebido pedido de ${msg.action} para ponto ${msg.pointId} do jogador ${clientId.slice(0, 8)}...`);
-        
+
         // Processar intent de extração imediatamente (não enfileirar)
         const roomForExtraction = {
           id: currentRoom.id,
@@ -564,7 +538,7 @@ wss.on("connection", (ws) => {
     // Obter sala do cliente antes de desconectar
     const roomId = clientToRoom.get(clientId);
     const currentRoom = roomId ? rooms.get(roomId) ?? null : null;
-    
+
     // Remover cliente do mapa
     clientToRoom.delete(clientId);
 
@@ -577,13 +551,18 @@ wss.on("connection", (ws) => {
 
     currentRoom.clients.delete(clientId);
     currentRoom.players.delete(clientId);
-    
+
     console.log(`[Server] Jogador removido: ${clientId}. Jogadores restantes: ${currentRoom.players.size}`);
+
+    // IMPORTANTE: A room só deve ser fechada quando:
+    // 1. O timer da partida chegar a 0 (verificado no checkMatchEnd do gameLoop)
+    // 2. OU se estiver sem nenhum player por algum tempo (30 segundos)
+    // Quando um jogador extrai, apenas ele sai, os outros continuam na partida
 
     // Se sala ficou vazia, iniciar timer de cleanup
     if (currentRoom.clients.size === 0) {
       stopRoomGameLoop(currentRoom);
-      
+
       // Remover sala imediatamente se partida já terminou
       if (currentRoom.matchState === "finished") {
         if (DEBUG_GAME_LOOP) {
@@ -592,9 +571,10 @@ wss.on("connection", (ws) => {
         cleanupRoom(currentRoom.id);
       } else {
         // Iniciar timer de 30 segundos para remover sala vazia
+        // A sala só será fechada se continuar vazia por 30 segundos
         const roomId = currentRoom.id; // Capturar roomId para uso no timeout
         if (DEBUG_GAME_LOOP) {
-          console.log(`[Server] Sala ${roomId} vazia, iniciando timer de cleanup (30s)`);
+          console.log(`[Server] Sala ${roomId} vazia, iniciando timer de cleanup (30s). A sala só será fechada se continuar vazia por 30 segundos.`);
         }
         currentRoom.emptyRoomTimer = setTimeout(() => {
           // Verificar se sala ainda existe e está vazia
@@ -608,6 +588,8 @@ wss.on("connection", (ws) => {
         }, 30000); // 30 segundos
       }
     } else {
+      // Ainda há jogadores na sala, continuar normalmente
+      // O game loop continua rodando até o timer chegar a 0 ou todos extraírem
       console.log(`[Server] Broadcasting state para ${currentRoom.clients.size} clientes. Jogadores na lista: ${Array.from(currentRoom.players.keys()).map(id => id.slice(0, 8)).join(', ')}`);
       broadcastState(currentRoom);
     }
@@ -627,6 +609,7 @@ if (isFirebaseAvailable()) {
 }
 // Iniciar servidor HTTP para sincronização
 import { startHttpServer } from './httpServer';
+import { createExpeditionInventory } from "./systems/capture";
 const HTTP_PORT = Number(process.env.HTTP_PORT ?? 3004);
 startHttpServer(HTTP_PORT);
 

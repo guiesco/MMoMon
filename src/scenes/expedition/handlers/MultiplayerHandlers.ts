@@ -1,7 +1,7 @@
-import type { 
-  RemoteCreature, 
-  RemoteResource, 
-  AttackResult, 
+import type {
+  RemoteCreature,
+  RemoteResource,
+  AttackResult,
   CaptureResult,
   ExtractionState,
   MatchEvent,
@@ -42,7 +42,7 @@ export class MultiplayerHandlers {
   private projectileManager: ProjectileManager | null = null;
   private player: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody | null = null;
   private scene: Phaser.Scene | null = null;
-  
+
   // Callbacks para atualizar estado da cena
   private setState: ((state: ExpeditionState) => void) | null = null;
   private getState: (() => ExpeditionState) | null = null;
@@ -122,16 +122,16 @@ export class MultiplayerHandlers {
    */
   handleCreaturesUpdate(creatures: RemoteCreature[]): void {
     const seen = new Set<string>();
-    
+
     for (const remoteCreature of creatures) {
       if (remoteCreature.currentHp <= 0) {
         console.warn(`[DEBUG:Creatures] Servidor enviou criatura morta: ${remoteCreature.id.slice(0, 8)}... - Ignorando`);
         continue;
       }
-      
+
       seen.add(remoteCreature.id);
       const existingCreature = this.worldState.getCreature(remoteCreature.id);
-      
+
       if (existingCreature) {
         this.worldState.updateCreature(remoteCreature.id, {
           x: remoteCreature.x,
@@ -148,7 +148,7 @@ export class MultiplayerHandlers {
       } else {
         const tier = (remoteCreature.tier as ThreatTier) ?? "comum";
         const behaviorType = (remoteCreature.behaviorType as EnemyBehaviorType) ?? "melee";
-        
+
         const creatureState = {
           id: remoteCreature.id,
           speciesId: remoteCreature.speciesId ?? remoteCreature.creatureType ?? "unknown",
@@ -179,15 +179,15 @@ export class MultiplayerHandlers {
           windupTimer: remoteCreature.windupTimer ?? 0,
           skillWindupTimer: (remoteCreature as any).skillWindupTimer ?? 0, // ✅ Windup de skill de criaturas
           stunTimer: remoteCreature.stunTimer ?? 0,
-          patrolOrigin: { 
-            x: remoteCreature.patrolOriginX ?? remoteCreature.x, 
-            y: remoteCreature.patrolOriginY ?? remoteCreature.y 
+          patrolOrigin: {
+            x: remoteCreature.patrolOriginX ?? remoteCreature.x,
+            y: remoteCreature.patrolOriginY ?? remoteCreature.y
           },
           patrolTimer: remoteCreature.patrolTimer ?? 0,
           level: remoteCreature.level,
           state: "alive" as const
         };
-        
+
         this.worldState.addCreature(creatureState);
         this.spriteManager.createCreatureSprite(creatureState);
       }
@@ -207,11 +207,11 @@ export class MultiplayerHandlers {
    */
   handleResourcesUpdate(resources: RemoteResource[]): void {
     const seen = new Set<string>();
-    
+
     for (const remoteResource of resources) {
       seen.add(remoteResource.id);
       const existingResource = this.worldState.getResource(remoteResource.id);
-      
+
       if (existingResource) {
         this.worldState.updateResource(remoteResource.id, {
           x: remoteResource.x,
@@ -229,7 +229,7 @@ export class MultiplayerHandlers {
         } else if (resourceType.includes("energia") || resourceType.includes("energy")) {
           defaultColor = 0x8b5cf6;
         }
-        
+
         const isRare = remoteResource.isRare ?? false;
         const resourceState = {
           id: remoteResource.id,
@@ -245,7 +245,7 @@ export class MultiplayerHandlers {
           borderColor: remoteResource.borderColor ?? 0x92400e,
           borderWidth: remoteResource.borderWidth ?? (isRare ? 2 : 1)
         };
-        
+
         this.worldState.addResource(resourceState);
         this.spriteManager.createResourceSprite(resourceState);
       }
@@ -257,7 +257,7 @@ export class MultiplayerHandlers {
       ...this.worldState.resources.keys(),
       ...Array.from(this.spriteManager.getAllResources().map(r => r.id))
     ]);
-    
+
     for (const resourceId of allResourceIds) {
       if (!seen.has(resourceId)) {
         console.log(`[MultiplayerHandlers] Removendo recurso coletado: ${resourceId} (não está mais no servidor)`);
@@ -290,21 +290,21 @@ export class MultiplayerHandlers {
 
     // Verificar se o alvo é o jogador local
     const isLocalPlayer = result.targetId === this.mpClient?.getClientId();
-    
+
     if (isLocalPlayer && this.player && this.teamSystem && this.feedbackManager && this.scene) {
       const currentState = this.getState?.() ?? "exploring";
-      
+
       // Não processar dano se já está morto/falhou
       if (currentState === "failed") {
         console.log("[MP] Ignorando dano - jogador já está morto");
         return;
       }
-      
+
       // Atualizar HP do jogador local
       if (result.targetHp !== undefined) {
         this.teamSystem.updateActiveCreatureHp(Math.max(0, result.targetHp));
         this.telemetry.damageTaken += result.damage;
-        
+
         if (this.setDamageTakenRecently) {
           this.setDamageTakenRecently(result.damage);
         }
@@ -314,14 +314,14 @@ export class MultiplayerHandlers {
         if (this.setPlayerTookDamageThisFrame) {
           this.setPlayerTookDamageThisFrame(true);
         }
-        
+
         // Efeito visual de dano no jogador
         const originalTint = this.player.tintTopLeft;
         this.player.setTint(0xef4444);
         this.scene.time.delayedCall(100, () => {
           this.player?.setTint(originalTint);
         });
-        
+
         // Feedback de dano
         this.feedbackManager.createFloatingText(
           this.player.x,
@@ -329,7 +329,7 @@ export class MultiplayerHandlers {
           `-${result.damage} HP`,
           0xef4444
         );
-        
+
         // CORREÇÃO MULTIPLAYER: Aplicar knockback quando atacado por criatura
         if (result.attackerId && result.attackerId.startsWith("wild-")) {
           const creature = this.spriteManager.getCreatureSprite(result.attackerId);
@@ -338,22 +338,22 @@ export class MultiplayerHandlers {
             const dx = this.player.x - creature.sprite.x;
             const dy = this.player.y - creature.sprite.y;
             const dist = Math.hypot(dx, dy);
-            
+
             if (dist > 0) {
               const knockbackDist = 20; // Distância do knockback
               const nx = dx / dist;
               const ny = dy / dist;
-              
+
               // Aplicar knockback ao jogador
               this.player.x += nx * knockbackDist;
               this.player.y += ny * knockbackDist;
-              
+
               // Enviar nova posição ao servidor
               this.mpClient?.sendPosition(this.player.x, this.player.y);
             }
           }
         }
-        
+
         // Verificar morte imediatamente - não esperar pelo evento separado
         if (result.targetDestroyed || this.teamSystem.activeHp <= 0) {
           console.log("[MP] Jogador local morreu por ataque - mudando estado imediatamente");
@@ -363,13 +363,13 @@ export class MultiplayerHandlers {
           if (this.setEndSceneTimer) {
             this.setEndSceneTimer(0);
           }
-          
+
           // Registrar telemetria de falha se ainda não foi registrada
           if (!this.telemetry.extractionFailed) {
             this.telemetry.extractionFailed = true;
             const finalTime = this.getLastMatchState?.()?.elapsedSeconds ?? this.getExpeditionTime?.() ?? 0;
             this.telemetry.timeSpent = finalTime;
-            
+
             const timeMinutes = finalTime / 60;
             this.telemetry.resourcesPerMinute =
               this.telemetry.resourcesCollected / Math.max(0.1, timeMinutes);
@@ -379,7 +379,7 @@ export class MultiplayerHandlers {
               this.telemetry.captureAttempts > 0
                 ? this.telemetry.totalCaptureChanceSum / this.telemetry.captureAttempts
                 : 0;
-            
+
             console.log("[TELEMETRIA] Expedição falhou - morte em combate (multiplayer)");
             console.table({
               "Tempo Total (s)": Math.floor(this.telemetry.timeSpent),
@@ -388,13 +388,13 @@ export class MultiplayerHandlers {
               "Morto Por": result.attackerId || "desconhecido",
               Status: "FALHA (MORTE EM COMBATE)"
             });
-            
+
             // Mesmo em falha, criaturas ganham XP (sem bônus de extração)
             if (this.progressionSystem) {
               this.progressionSystem.processCreatureXp(false);
             }
           }
-          
+
           // Feedback visual
           if (this.scene) {
             this.feedbackManager.createFloatingText(
@@ -404,24 +404,24 @@ export class MultiplayerHandlers {
               0xef4444
             );
           }
-          
+
           // Desabilita controles
           if (this.disableControls) {
             this.disableControls();
           }
         }
       }
-      
+
       // Só mudar para combat se não estiver morto
       if (this.setState) {
         this.setState("combat");
       }
       return;
     }
-    
+
     // Se não é o jogador local, tentar encontrar a criatura alvo
     const creature = this.spriteManager.getCreatureSprite(result.targetId);
-    
+
     if (creature && this.teamSystem && this.feedbackManager && this.visualSystem) {
       // ✅ CORREÇÃO DESYNC: Se o atacante é o jogador local, remover projétil local
       const isLocalPlayerAttack = result.attackerId === this.mpClient?.getClientId();
@@ -435,7 +435,7 @@ export class MultiplayerHandlers {
           console.log(`[MP] ✅ Projétil local removido para hit confirmado pelo servidor em ${result.targetId}`);
         }
       }
-      
+
       const newHp = Math.max(0, result.targetHp ?? creature.currentHp - result.damage);
       creature.currentHp = newHp;
       this.worldState.updateCreature(result.targetId, { currentHp: newHp });
@@ -477,7 +477,7 @@ export class MultiplayerHandlers {
 
     // ✅ BUG FIX: Verificar se a captura é do jogador local
     const isLocalPlayerCapture = this.clientId && result.playerId === this.clientId;
-    
+
     if (!isLocalPlayerCapture) {
       console.log("[MP] Captura de outro jogador, ignorando atualização de contador local");
       return;
@@ -486,9 +486,9 @@ export class MultiplayerHandlers {
     // ✅ BUG FIX: Tentar obter posição da criatura, ou usar posição armazenada
     let feedbackX: number;
     let feedbackY: number;
-    
+
     const creature = this.spriteManager.getCreatureSprite(result.targetId);
-    
+
     if (creature) {
       // Criatura ainda existe - usar posição atual
       feedbackX = creature.sprite.x;
@@ -516,7 +516,7 @@ export class MultiplayerHandlers {
 
     // Incrementa contador de criaturas encontradas
     this.telemetry.creaturesEncountered += 1;
-    
+
     // Registra chance de captura para cálculo de média
     if (result.captureChance !== undefined) {
       this.telemetry.totalCaptureChanceSum += result.captureChance;
@@ -541,13 +541,13 @@ export class MultiplayerHandlers {
       }
       this.telemetry.creaturesCaptured += 1;
       this.telemetry.captureSuccesses += 1;
-      
+
       console.log(`[MP] ✅ Contador de capturas atualizado: ${currentCount + 1} capturas`);
       console.log(`[MP] ✅ Exibindo feedback de captura em (${feedbackX.toFixed(0)}, ${feedbackY.toFixed(0)})`);
 
       // Feedback visual de sucesso
       this.feedbackManager.createCaptureSuccessFeedback(feedbackX, feedbackY);
-      
+
       // ✅ BUG FIX: Exibir mensagem imediatamente
       this.feedbackManager.createEnhancedFloatingText(
         feedbackX,
@@ -583,7 +583,7 @@ export class MultiplayerHandlers {
         0xef4444,
         20
       );
-      
+
       // IMPORTANTE: A criatura fica agressiva após falha na captura
       if (creature) {
         creature.aiState = "chasing";
@@ -600,19 +600,31 @@ export class MultiplayerHandlers {
       return "exploring";
     }
 
+    // IMPORTANTE: Verificar se a mensagem de extração é para este jogador
+    // Quando um jogador extrai, apenas ele deve processar a mensagem, não todos
+    const isLocalPlayerExtraction = this.clientId && state.playerId === this.clientId;
+
+    if (!isLocalPlayerExtraction) {
+      // Esta mensagem de extração é de outro jogador, ignorar
+      console.log(`[Extraction] Mensagem de extração ignorada - não é para este jogador (clientId: ${this.clientId}, playerId: ${state.playerId})`);
+      return this.getState?.() ?? "exploring";
+    }
+
+    console.log(`[Extraction] Processando mensagem de extração para jogador local (clientId: ${this.clientId})`);
+
     // Atualizar estado através do ExtractionSystem
     const newState = this.extractionSystem.handleExtractionState({
       playerId: state.playerId,
       pointId: state.pointId,
       progress: state.progress,
-      status: state.status === "in_progress" ? "extracting" : 
-              state.status === "completed" ? "completed" : "cancelled"
+      status: state.status === "in_progress" ? "extracting" :
+        state.status === "completed" ? "completed" : "cancelled"
     });
-    
+
     if (this.setState) {
       this.setState(newState);
     }
-    
+
     // Processa recompensas se extração completou
     if (state.status === "completed" && state.rewards) {
       // Atualizar telemetria de sucesso
@@ -620,7 +632,7 @@ export class MultiplayerHandlers {
         this.telemetry.extractionSuccess = true;
         const finalTime = this.getLastMatchState?.()?.elapsedSeconds ?? this.getExpeditionTime?.() ?? 0;
         this.telemetry.timeSpent = finalTime;
-        
+
         // Calcula métricas finais
         const timeMinutes = finalTime / 60;
         this.telemetry.resourcesPerMinute = this.telemetry.resourcesCollected / Math.max(0.1, timeMinutes);
@@ -628,7 +640,7 @@ export class MultiplayerHandlers {
         this.telemetry.averageCaptureChance = this.telemetry.captureAttempts > 0
           ? this.telemetry.totalCaptureChanceSum / this.telemetry.captureAttempts
           : 0;
-        
+
         console.log("[TELEMETRIA] Extração bem-sucedida", {
           "Tempo Total (s)": Math.floor(this.telemetry.timeSpent),
           "Recursos Coletados": this.telemetry.resourcesCollected,
@@ -639,7 +651,7 @@ export class MultiplayerHandlers {
             : "0.0"
         });
       }
-      
+
       // Adicionar recursos coletados
       for (const [itemId, qty] of Object.entries(state.rewards.resources ?? {})) {
         if (qty > 0) {
@@ -647,7 +659,7 @@ export class MultiplayerHandlers {
           console.log(`[Extraction] Recurso adicionado: ${itemId} x${qty}`);
         }
       }
-      
+
       // Retornar itens não usados ao inventário permanente
       if (state.rewards.unusedItems) {
         for (const [itemId, qty] of Object.entries(state.rewards.unusedItems)) {
@@ -657,17 +669,17 @@ export class MultiplayerHandlers {
           }
         }
       }
-      
+
       const creaturesCaptured = state.rewards.creaturesCaptured || 0;
       const savedToCloud = state.rewards.savedToCloud ?? false;
       const unusedItemsCount = Object.keys(state.rewards.unusedItems ?? {}).length;
-      
+
       console.log(`[Extraction] ✅ Extração completada!`);
       console.log(`[Extraction] - Recursos: ${Object.keys(state.rewards.resources ?? {}).length} tipos`);
       console.log(`[Extraction] - Criaturas capturadas: ${creaturesCaptured}`);
       console.log(`[Extraction] - Itens não usados retornados: ${unusedItemsCount} tipos`);
       console.log(`[Extraction] - Salvo no Firebase: ${savedToCloud ? 'Sim' : 'Não'}`);
-      
+
       // IMPORTANTE: Criaturas são salvas diretamente no Firebase pelo servidor
       if (savedToCloud && creaturesCaptured > 0) {
         console.log(`[Extraction] ⏳ Aguardando sincronização do Firebase para ${creaturesCaptured} criaturas...`);
@@ -676,11 +688,11 @@ export class MultiplayerHandlers {
           console.log(`[Extraction] 📊 Criaturas no inventário após sincronização: ${currentCreatures}`);
         }, 2000);
       }
-      
+
       // Feedback visual
       this.feedbackManager.createExtractionSuccessFeedback();
     }
-    
+
     return newState;
   }
 
@@ -718,12 +730,12 @@ export class MultiplayerHandlers {
           "TEMPO ESGOTADO!",
           0xef4444
         );
-        
+
         // Força falha se ainda não extraiu
         const currentState = this.getState?.() ?? "exploring";
         if (currentState !== "extracted" && this.setState) {
           this.setState("failed");
-          
+
           // Registrar telemetria de falha por tempo
           if (!this.telemetry.extractionFailed && !this.telemetry.extractionSuccess) {
             this.telemetry.extractionFailed = true;
@@ -747,7 +759,7 @@ export class MultiplayerHandlers {
               "Criaturas Capturadas": this.getCreaturesCaptured?.() ?? 0,
               Status: "FALHA (TEMPO ESGOTADO)"
             });
-            
+
             // Mesmo em falha, criaturas ganham XP (sem bônus de extração)
             if (this.progressionSystem) {
               this.progressionSystem.processCreatureXp(false);
@@ -768,12 +780,12 @@ export class MultiplayerHandlers {
 
     // Verificar se é o jogador local que morreu
     const isLocalPlayer = death.playerId === this.mpClient?.getClientId();
-    
+
     if (isLocalPlayer && this.teamSystem) {
       // Processar morte do jogador local
       const currentState = this.getState?.() ?? "exploring";
       if (currentState === "failed") return; // Já processado
-      
+
       if (this.setState) {
         this.setState("failed");
       }
@@ -781,7 +793,7 @@ export class MultiplayerHandlers {
       if (this.setEndSceneTimer) {
         this.setEndSceneTimer(0);
       }
-      
+
       // Registrar telemetria de falha
       if (!this.telemetry.extractionFailed) {
         this.telemetry.extractionFailed = true;
@@ -806,13 +818,13 @@ export class MultiplayerHandlers {
           "Morto Por": death.killedBy || "desconhecido",
           Status: "FALHA (MORTE EM COMBATE)"
         });
-        
+
         // Mesmo em falha, criaturas ganham XP (sem bônus de extração)
         if (this.progressionSystem) {
           this.progressionSystem.processCreatureXp(false);
         }
       }
-      
+
       // Feedback visual
       this.feedbackManager.createFloatingText(
         this.scene.scale.width / 2,
@@ -848,7 +860,7 @@ export class MultiplayerHandlers {
         y: move.y,
         lastUpdate: move.timestamp ?? Date.now()
       });
-      
+
       // Obtém o estado atualizado e atualiza o sprite
       const updatedPlayer = this.worldState.getPlayer(move.playerId);
       if (updatedPlayer) {
@@ -871,18 +883,18 @@ export class MultiplayerHandlers {
   syncRemotePlayers(players: RemotePlayer[], clientId: string | null): void {
     console.log(`[MP:Sync] Sincronizando ${players.length} jogadores do servidor`);
     const seen = new Set<string>();
-    
+
     for (const p of players) {
       // Filtra o jogador local para evitar duplicação
       if (clientId && p.id === clientId) {
         continue;
       }
-      
+
       seen.add(p.id);
-      
+
       const updateTimestamp = p.lastUpdate ?? Date.now();
       const existingPlayer = this.worldState.getPlayer(p.id);
-      
+
       // Cria novo jogador remoto se não existir
       if (!existingPlayer) {
         const playerState: import("../../../game/worldState").PlayerState = {
@@ -907,7 +919,7 @@ export class MultiplayerHandlers {
         if (updateTimestamp < existingPlayer.lastUpdate) {
           continue;
         }
-        
+
         // Atualiza estado no worldState
         this.worldState.updatePlayer(p.id, {
           x: p.x,
@@ -917,7 +929,7 @@ export class MultiplayerHandlers {
           maxHp: p.maxHp ?? existingPlayer.maxHp,
           lastUpdate: updateTimestamp
         });
-        
+
         // Atualiza sprite
         const updatedPlayer = this.worldState.getPlayer(p.id)!;
         this.spriteManager.updatePlayerSprite(updatedPlayer);
@@ -930,7 +942,7 @@ export class MultiplayerHandlers {
       if (clientId && playerId === clientId) {
         continue;
       }
-      
+
       if (!seen.has(playerId)) {
         console.log(`[MP:Sync] Removendo jogador que saiu: ${playerId.slice(0, 8)}...`);
         this.worldState.removePlayer(playerId);
