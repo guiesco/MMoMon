@@ -70,11 +70,11 @@ export class SkillSystem {
     if (this.specialSkillCooldown > 0) {
       this.specialSkillCooldown = Math.max(0, this.specialSkillCooldown - dt);
     }
-    
+
     // ✅ Atualizar windup de skill
     if (this.specialSkillWindup > 0) {
       this.specialSkillWindup = Math.max(0, this.specialSkillWindup - dt);
-      
+
       // Se windup terminou, a skill já foi executada pelo servidor
       // (em multiplayer, o servidor é autoritativo)
       if (this.specialSkillWindup <= 0) {
@@ -82,14 +82,14 @@ export class SkillSystem {
       }
     }
   }
-  
+
   /**
    * ✅ Verifica se está em windup de skill.
    */
   isInSkillWindup(): boolean {
     return this.specialSkillWindup > 0;
   }
-  
+
   /**
    * ✅ Retorna o tempo restante de windup de skill.
    */
@@ -142,28 +142,28 @@ export class SkillSystem {
         : null;
       const creatureLevel = owned?.level ?? 1;
       const creatureRank = owned?.rank ?? 1;
-      
+
       // ✅ Obter windup time da special skill (escalado)
       let skillWindupTime = 0.5; // Default
       if (owned) {
-        const effectiveStats = getEffectiveStats(owned);
-        skillWindupTime = effectiveStats.specialSkillWindup;
+        //const effectiveStats = getEffectiveStats(owned);
+        // skillWindupTime = effectiveStats.specialSkillWindup;
       } else {
-        const specialSkill = this.activeCreatureDef?.specialSkill;
-        skillWindupTime = specialSkill?.attackWindup ?? 0.5;
+        // const specialSkill = this.activeCreatureDef?.specialSkill;
+        //  skillWindupTime = specialSkill?.attackWindup ?? 0.5;
       }
-      
+      skillWindupTime = 0;
       // ✅ Iniciar windup local (sincronizado com servidor)
       if (skillWindupTime > 0) {
         this.specialSkillWindup = skillWindupTime;
         this.pendingSkill = { targetX, targetY };
       }
-      
+
       this.mpClient.sendSkill(skillType, targetX, targetY, creatureId, creatureLevel, creatureRank);
-      
+
       // Feedback visual imediato (predição local)
       this.specialSkillCooldown = this.specialSkillCooldownTime;
-      
+
       // Criar feedback visual temporário
       this.createFloatingText(
         targetX,
@@ -292,7 +292,7 @@ export class SkillSystem {
       lightning.lineStyle(2, theme.attackColor, 0.9);
       lightning.beginPath();
       lightning.moveTo(this.player.x, this.player.y);
-      
+
       // Linha zigzag para simular raio
       let px = this.player.x;
       let py = this.player.y;
@@ -319,7 +319,7 @@ export class SkillSystem {
 
     // Aplicar dano e empurrão em criaturas próximas
     const creaturesInRange = this.getAllCreatures();
-    
+
     for (const wc of creaturesInRange) {
       const dx = wc.sprite.x - this.player.x;
       const dy = wc.sprite.y - this.player.y;
@@ -338,7 +338,7 @@ export class SkillSystem {
         const originalColor = wc.sprite.fillColor;
         wc.sprite.setFillStyle(theme.hitFlashColor);
         this.createHitImpactEffect(wc.sprite.x, wc.sprite.y, theme);
-        
+
         this.scene.time.delayedCall(100, () => {
           if (wc.currentHp > 0) {
             const ratio = Math.max(0, wc.currentHp / wc.maxHp);
@@ -380,7 +380,7 @@ export class SkillSystem {
       root.moveTo(x, y);
       const endX = x + Math.cos(angle) * (radius * 0.8 + Math.random() * 10);
       const endY = y + Math.sin(angle) * (radius * 0.8 + Math.random() * 10);
-      
+
       // Linha curva para parecer raiz
       const midX = (x + endX) / 2 + (Math.random() - 0.5) * 20;
       const midY = (y + endY) / 2 + (Math.random() - 0.5) * 20;

@@ -117,6 +117,7 @@ import {
 import { getCreatureAttackStats, getCreatureById } from "../../../shared/creatures";
 import { calculateEffectiveStats } from "../../../shared/creatureProgression";
 import { getSpecialSkillByCreatureId } from "../../../shared/attacks";
+import { executeCreatureSpecialSkill } from "../../../shared/creatureBehaviors";
 
 // ============================================================================
 // Constantes de Stats de Criaturas
@@ -209,6 +210,8 @@ export interface DamageResult {
   maxHp: number;
   /** Se a entidade morreu com este dano */
   died: boolean;
+  /** Nível do alvo (criatura derrotada); usado para XP por nível */
+  targetLevel?: number;
 }
 
 /**
@@ -269,6 +272,9 @@ export interface CombatPlayer {
     appliedAt: number;
   }>;
 
+  /** ✅ Timestamp quando o jogador completou extração (null = ainda na partida). Jogadores extraídos não recebem dano. */
+  extractedAt?: number | null;
+
   // Propriedades adicionais para compatibilidade com outros sistemas
   currentHp?: number; // Alias para hp
 }
@@ -285,6 +291,13 @@ export interface CombatRoomState {
   projectiles: ServerProjectile[];
   /** ✅ Zonas de skill ativas */
   skillZones: ServerSkillZone[];
+}
+
+/**
+ * Verifica se um jogador já completou extração (não deve receber dano nem ser alvo de IA).
+ */
+export function isPlayerExtracted(player: CombatPlayer): boolean {
+  return player.extractedAt != null;
 }
 
 // ============================================================================
@@ -422,8 +435,9 @@ export function processAttackIntent(
   }
 
   // ✅ Obter windup time do effectiveStats (escalado)
-  const windupTime = effectiveStats?.attackWindup ??
-    (creatureId ? getCreatureById(creatureId)?.basicAttack.attackWindup ?? 0.4 : 0.4);
+  // const windupTime = effectiveStats?.attackWindup ??
+  //   (creatureId ? getCreatureById(creatureId)?.basicAttack.attackWindup ?? 0.4 : 0.4);
+  const windupTime = 0;
 
   // ✅ Se há windup, iniciar timer e armazenar dados do ataque
   if (windupTime > 0) {
@@ -826,7 +840,8 @@ export function updateProjectiles(
             proj.ownerId,
             attackerAttack
           );
-          damageResults.push(damageResult);
+          const level = creature.level ?? 1;
+          damageResults.push({ ...damageResult, targetLevel: level });
 
           // ✅ Aplicar stun após projétil acertar (usando valor escalado do projétil)
           if (!damageResult.died && proj.stunDuration && proj.stunDuration > 0) {
@@ -851,9 +866,9 @@ export function updateProjectiles(
         }
       }
     } else {
-      // Projétil de criatura: colide com jogadores vivos
+      // Projétil de criatura: colide com jogadores vivos (ignora jogadores que já extraíram)
       for (const [playerId, player] of room.players) {
-        if (player.isDead) continue;
+        if (player.isDead || isPlayerExtracted(player)) continue;
         if (checkProjectilePlayerCollision(proj, player)) {
           if (DEBUG_PROJECTILES) {
             console.log(
@@ -959,37 +974,37 @@ function checkProjectilePlayerCollision(
 // ============================================================================
 
 /**
- * Calcula o dano final considerando ataque do atacante e defesa do defensor.
- * 
- * Fórmula: damage * attackerAttack / (defenderDefense^2 * DEFENSE_SCALING_FACTOR)
- * 
- * Usa defesa ao quadrado para reduzir significativamente o dano, mas com um fator
- * de escala para evitar que tanks fiquem quase invencíveis.
- * 
- * Exemplos com DEFENSE_SCALING_FACTOR = 0.5:
- * - Pyrognat (ATK 24) vs Pyrognat (DEF 6): 24 * 24 / (6^2 * 0.5) = 576 / 18 = 32 dano
- * - Pyrognat (ATK 24) vs Verdant (DEF 16): 24 * 24 / (16^2 * 0.5) = 576 / 128 = 4.5 dano
- * - Voltiger (ATK 28) vs Pyrognat (DEF 6): 28 * 28 / (6^2 * 0.5) = 784 / 18 = 43 dano
- * 
- * Garantias:
- * - Dano mínimo: MIN_DAMAGE (1)
- * - Defesa mínima: MIN_DEFENSE (1) para evitar divisão por zero
- * - Ataque mínimo: MIN_ATTACK (1)
- * - Validação de valores finitos
- * 
- * @param baseDamage - Dano base do ataque/skill
- * @param attackerAttack - Ataque do atacante
- * @param defenderDefense - Defesa do defensor
- * @returns Dano final calculado (sempre >= MIN_DAMAGE)
+ * Constante C da fórmula de mitigação (LoL/Dota style).
+ * Define a "velocidade" do jogo: defesa C = 50% de redução quando defesa escalada = C.
+ * Com DEFENSE_SCALE = 10, defesa base 10 → 50% de dano recebido.
  */
-const DEFENSE_SCALING_FACTOR = 0.19; // Fator para suavizar o efeito da defesa ao quadrado (otimizado via testes: melhor balanceamento de TTK)
+const DAMAGE_MITIGATION_C = 100;
 
+/**
+ * Escala a defesa das criaturas (stats ~8–14) para a faixa da fórmula.
+ * Defesa efetiva = defesa * DEFENSE_SCALE; com C=100, defesa 10 → 100 efetiva → 50% mitigação.
+ */
+const DEFENSE_SCALE = 10;
+
+/**
+ * Calcula o dano final com mitigação percentual (estilo League/Dota).
+ *
+ * Fórmula: Dano = (Ataque + Poder do Golpe) × (C / (C + Defesa_efetiva))
+ *
+ * - Redução percentual: defesa alta absorve % do dano (ex.: defesa efetiva 100 com C=100 → 50%).
+ * - Escalonamento: mais defesa = mais vida efetiva, de forma decrescente.
+ * - TTK longo: combates duram vários golpes, ideal para extração e tensão de emboscada.
+ *
+ * @param baseDamage - Poder do golpe (dano base do ataque/skill)
+ * @param attackerAttack - Ataque do atacante
+ * @param defenderDefense - Defesa do defensor (valor de stat, será escalado internamente)
+ * @returns Dano final (sempre >= MIN_DAMAGE)
+ */
 function calculateDamageWithDefense(
   baseDamage: number,
   attackerAttack: number,
   defenderDefense: number
 ): number {
-  // Validação de entrada
   if (!isFinite(baseDamage) || !isFinite(attackerAttack) || !isFinite(defenderDefense)) {
     if (DEBUG_COMBAT) {
       console.warn(
@@ -1000,16 +1015,12 @@ function calculateDamageWithDefense(
     return MIN_DAMAGE;
   }
 
-  // Evitar divisão por zero e garantir valores mínimos
   const safeDefense = Math.max(defenderDefense, MIN_DEFENSE);
-  const safeAttack = Math.max(attackerAttack, MIN_ATTACK);
-  const safeBaseDamage = Math.max(baseDamage, 0);
+  const rawDamage = Math.max(0, attackerAttack) + Math.max(0, baseDamage);
 
-  // Fórmula: damage * attackerAttack / (defense^2 * DEFENSE_SCALING_FACTOR)
-  // Defesa ao quadrado reduz drasticamente o dano, mas o fator evita que tanks fiquem invencíveis
-  const defenseSquared = safeDefense * safeDefense;
-  const scaledDefense = defenseSquared * DEFENSE_SCALING_FACTOR;
-  const calculatedDamage = safeBaseDamage * safeAttack / scaledDefense;
+  const effectiveDefense = safeDefense * DEFENSE_SCALE;
+  const mitigation = DAMAGE_MITIGATION_C / (DAMAGE_MITIGATION_C + effectiveDefense);
+  const calculatedDamage = rawDamage * mitigation;
   return Math.max(MIN_DAMAGE, Math.floor(calculatedDamage));
 }
 
@@ -1171,6 +1182,18 @@ export function applyDamageToPlayer(
     };
   }
 
+  // ✅ Jogador que já extraiu não recebe dano (evita dano "fantasma" no mesmo tick da extração)
+  if (isPlayerExtracted(player)) {
+    return {
+      targetId: playerId,
+      attackerId,
+      damage: 0,
+      currentHp: player.hp,
+      maxHp: player.maxHp,
+      died: false
+    };
+  }
+
   // Validação: verificar se dano é válido
   if (!isFinite(damage) || damage < 0) {
     if (DEBUG_COMBAT) {
@@ -1278,10 +1301,10 @@ export function updateCreatureAI(
   aiLogCounter++;
   const shouldLog = DEBUG_AI && aiLogCounter % 100 === 0; // Log a cada 100 ticks (~5 segundos)
 
-  // Encontrar jogadores vivos
+  // Encontrar jogadores vivos e que ainda não extraíram (extraídos não são alvo de IA)
   const alivePlayers: Array<{ id: string; player: CombatPlayer }> = [];
   for (const [id, player] of room.players) {
-    if (!player.isDead) {
+    if (!player.isDead && !isPlayerExtracted(player)) {
       alivePlayers.push({ id, player });
     }
   }
@@ -1420,12 +1443,11 @@ export function updateCreatureAI(
     if (creature.skillWindupTimer && creature.skillWindupTimer > 0) {
       creature.skillWindupTimer = Math.max(0, creature.skillWindupTimer - deltaTime);
 
-      // Se windup terminou, executar skill
+      // Se windup terminou, executar skill via comportamento da criatura (shared)
       if (creature.skillWindupTimer <= 0 && creature.pendingSkill) {
         const { skillType, targetX, targetY } = creature.pendingSkill;
         creature.pendingSkill = undefined;
 
-        // Calcular stats escalados da skill
         const level = creature.level ?? 1;
         const rank = 1;
         const effectiveStats = calculateEffectiveStats(
@@ -1433,36 +1455,55 @@ export function updateCreatureAI(
           getCreatureById
         );
 
-        const skillRadius = effectiveStats.specialSkillRadius;
-        const skillDamagePerTick = effectiveStats.specialSkillDamagePerTick;
-        const skillLifetime = effectiveStats.specialSkillLifetime;
-
         const specialSkill = getSpecialSkillByCreatureId(creature.creatureType);
         if (specialSkill) {
-          const skillZone = createSkillZone(
-            creature.id,
-            skillType as "fire_fog" | "root_trap" | "electric_surge",
+          const recipe = executeCreatureSpecialSkill(creature.creatureType, {
+            ownerId: creature.id,
+            skillType: skillType as "fire_fog" | "root_trap" | "electric_surge" | "heal_wave",
+            startX: creature.x,
+            startY: creature.y,
             targetX,
             targetY,
-            skillRadius,
-            skillDamagePerTick,
-            specialSkill.tickInterval,
-            skillLifetime,
-            specialSkill.slowModifier,
-            effectiveStats.attackDamage // ✅ Ataque do atacante para calcular dano com defesa
-          );
+            skillRange: effectiveStats.specialSkillRange,
+            radius: effectiveStats.specialSkillRadius,
+            damagePerTick: effectiveStats.specialSkillDamagePerTick,
+            tickInterval: specialSkill.tickInterval,
+            lifetime: effectiveStats.specialSkillLifetime,
+            slowModifier: specialSkill.slowModifier ?? 0.3,
+            attackerAttack: effectiveStats.attackDamage
+          });
 
-          room.skillZones.push(skillZone);
+          for (const z of recipe.zones) {
+            const skillZone = createSkillZone(
+              creature.id,
+              skillType as "fire_fog" | "root_trap" | "electric_surge",
+              z.x,
+              z.y,
+              z.radius,
+              z.damagePerTick,
+              z.tickInterval,
+              z.lifetime,
+              z.slowModifier,
+              z.attackerAttack
+            );
+            room.skillZones.push(skillZone);
+          }
 
-          // Atualizar cooldown da criatura
+          if (recipe.dashTarget) {
+            creature.x = recipe.dashTarget.x;
+            creature.y = recipe.dashTarget.y;
+          }
+
           creature.lastSkillTime = Date.now();
+          creature.skillCooldownRemaining = effectiveStats.specialSkillCooldown;
 
           if (DEBUG_AI) {
-            console.log(
-              `[AI] ${creature.id} (${creature.creatureType}) executou skill ${skillType} ` +
-              `em (${targetX.toFixed(0)}, ${targetY.toFixed(0)}) ` +
-              `[radius=${skillRadius.toFixed(0)}, damage=${skillDamagePerTick.toFixed(0)}/tick, lifetime=${skillLifetime.toFixed(1)}s]`
-            );
+            const msg = recipe.dashTarget
+              ? `[AI] ${creature.id} (${creature.creatureType}) executou dash ${skillType} ` +
+                `→ (${recipe.dashTarget.x.toFixed(0)},${recipe.dashTarget.y.toFixed(0)}) [zones=${recipe.zones.length}]`
+              : `[AI] ${creature.id} (${creature.creatureType}) executou skill ${skillType} ` +
+                `em (${targetX.toFixed(0)}, ${targetY.toFixed(0)})`;
+            console.log(msg);
           }
         }
       }
@@ -2128,8 +2169,9 @@ export function updateSkillZones(
       const isCreatureSkill = zone.ownerId.startsWith("wild-");
 
       if (isCreatureSkill && players) {
-        // Skill zone de criatura inimiga - aplicar dano nos players
+        // Skill zone de criatura inimiga - aplicar dano nos players (ignora extraídos)
         for (const [playerId, player] of players) {
+          if (isPlayerExtracted(player)) continue;
           const dx = player.x - zone.x;
           const dy = player.y - zone.y;
           const distance = Math.hypot(dx, dy);
@@ -2238,7 +2280,8 @@ export function updateSkillZones(
                 zone.ownerId,
                 zone.attackerAttack
               );
-              damageResults.push(damageResult);
+              const level = creature.level ?? 1;
+              damageResults.push({ ...damageResult, targetLevel: level });
 
               // ✅ Aplicar efeitos usando valores programáticos da definição da skill
               applySkillZoneEffects(
@@ -2297,9 +2340,9 @@ export function applyContactDamage(
 ): DamageResult[] {
   const results: DamageResult[] = [];
 
-  // Para cada jogador vivo
+  // Para cada jogador vivo que ainda não extraiu
   for (const [playerId, player] of room.players) {
-    if (player.isDead) continue;
+    if (player.isDead || isPlayerExtracted(player)) continue;
 
     // Verificar colisão com cada criatura
     for (const creature of room.creatures) {

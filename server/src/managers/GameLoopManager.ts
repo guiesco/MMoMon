@@ -16,7 +16,7 @@ import { createSkillZone } from "../types";
 import { updateSkillZones } from "../systems/combat";
 import { processCaptureIntent, type BallType } from "../systems/capture";
 import { allPlayersExtractedOrDead, processExtractionIntent } from "../systems/extraction";
-import { processExtractionSystem } from "../handlers/ExtractionHandler";
+import { processExtractionSystem, runExtractionBeforeWorldUpdate } from "../handlers/ExtractionHandler";
 import { getCreatureById } from "../../../shared/creatures";
 import { calculateEffectiveStats } from "../../../shared/creatureProgression";
 import { getSpecialSkillByCreatureId } from "../../../shared/attacks";
@@ -80,12 +80,14 @@ function createGameLoopCallbacks(room: Room): GameLoopCallbacks {
       }
     },
 
+    onBeforeWorldUpdate: (tickNumber: number, deltaMs: number) => {
+      // Processar extração ANTES do combate para marcar jogadores extraídos e evitar dano no mesmo tick
+      runExtractionBeforeWorldUpdate(room, deltaMs);
+    },
+
     onTick: (tickNumber: number, deltaMs: number) => {
-      // IMPORTANTE: Processar sistema de extração
-      // Cada jogador que extrai é desconectado individualmente em handleExtractionCompleted
-      // A partida só termina quando o tempo acabar ou quando todos os jogadores extraírem
-      // (verificação feita no checkMatchEnd do gameLoop)
-      processExtractionSystem(room, deltaMs)
+      // Processar broadcasts/Firebase/desconexão das extrações completadas e progresso/cancelamento
+      processExtractionSystem(room)
         .catch(error => {
           console.error(`[Room:${room.id}] Erro no sistema de extração:`, error);
         });
@@ -407,7 +409,8 @@ function handleDamageApplied(room: Room, results: DamageResult[]): void {
         targetId: result.targetId,
         targetHp: result.currentHp,
         targetMaxHp: result.maxHp,
-        targetDestroyed: result.died
+        targetDestroyed: result.died,
+        targetLevel: result.targetLevel
       }
     );
 
@@ -423,6 +426,13 @@ function handleDamageApplied(room: Room, results: DamageResult[]): void {
 
     if (!isPlayerTarget && result.died) {
       anyCreatureDied = true;
+      // Rastrear nível da criatura derrotada para XP (atacante = jogador que matou)
+      const killerId = result.attackerId;
+      if (killerId && room.players.has(killerId)) {
+        const killer = room.players.get(killerId)!;
+        if (!killer.defeatedCreatureLevels) killer.defeatedCreatureLevels = [];
+        killer.defeatedCreatureLevels.push(result.targetLevel ?? 1);
+      }
     }
   }
 

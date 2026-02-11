@@ -57,17 +57,18 @@ export class CombatSystem {
   tryBasicAttack(targetX: number, targetY: number): boolean {
     if (this.basicAttackCooldown > 0) return false;
     if (this.basicAttackWindup > 0) return false; // Já está em windup
-    
+
     const def = this.activeCreatureDef;
     if (!def) return false;
 
     // Obter stats efetivos para usar valores de windup
     const progress = LocalPlayerState.getProgress();
-    const owned = this.activeCreatureInstanceId 
+    const owned = this.activeCreatureInstanceId
       ? progress.creatures.find((c) => c.instanceId === this.activeCreatureInstanceId)
       : null;
     const effectiveStats = owned ? getEffectiveStats(owned) : null;
-    const windupTime = effectiveStats?.attackWindup ?? def.basicAttack.attackWindup ?? 0.4;
+    // const windupTime = effectiveStats?.attackWindup ?? def.basicAttack.attackWindup ?? 0.4;
+    const windupTime = 0;
 
     // ✅ WINDUP SINCRONIZADO: Em multiplayer, iniciar windup e aguardar resposta do servidor
     // O servidor também processa windup, então ambos devem estar sincronizados
@@ -75,10 +76,10 @@ export class CombatSystem {
       const creatureId = def.id;
       const creatureLevel = owned?.level ?? 1;
       const creatureRank = owned?.rank ?? 1;
-      
+
       // Enviar intent ao servidor (servidor iniciará windup)
       this.mpClient.sendAttack(targetX, targetY, creatureId, "basic", creatureLevel, creatureRank);
-      
+
       // ✅ Iniciar windup local (sincronizado com servidor)
       if (windupTime > 0) {
         this.basicAttackWindup = windupTime;
@@ -88,10 +89,10 @@ export class CombatSystem {
         // Se não há windup, criar projétil imediatamente (predição local)
         this.executeBasicAttack(targetX, targetY);
       }
-      
+
       return true;
     }
-    
+
     // Comportamento single-player: windup bloqueia o ataque
     if (windupTime > 0) {
       this.basicAttackWindup = windupTime;
@@ -118,15 +119,15 @@ export class CombatSystem {
     if (this.mpClient) {
       const basic = def.basicAttack;
       const theme = this.activeCreatureTheme;
-      
+
       const progress = LocalPlayerState.getProgress();
-      const owned = this.activeCreatureInstanceId 
+      const owned = this.activeCreatureInstanceId
         ? progress.creatures.find((c) => c.instanceId === this.activeCreatureInstanceId)
         : null;
       const effectiveStats = owned ? getEffectiveStats(owned) : null;
       const attackRange = effectiveStats?.attackRange ?? basic.range ?? 200;
       const projectileSpeed = effectiveStats?.projectileSpeed ?? COMBAT_CONFIG.projectileSpeed;
-      
+
       // Verificar se é ataque melee ou ranged
       if (!basic.isProjectile) {
         // Ataque melee: criar visual de arco
@@ -149,11 +150,11 @@ export class CombatSystem {
         const projectileColor = theme?.attackColor ?? 0xf97316;
         const projectileRadius = theme?.projectileRadius ?? 4;
         const speed = projectileSpeed;
-        
+
         // ✅ Calcular velocidade em pixels por segundo (igual ao servidor)
         const velocityX = Math.cos(angle) * speed;
         const velocityY = Math.sin(angle) * speed;
-        
+
         const sprite = this.scene.add.circle(
           this.player.x,
           this.player.y,
@@ -180,7 +181,7 @@ export class CombatSystem {
           velocityY
         });
       }
-      
+
       this.telemetry.projectilesFired += 1;
       return;
     }
@@ -188,7 +189,7 @@ export class CombatSystem {
     // Comportamento single-player (fallback)
     const basic = def.basicAttack;
     const progress = LocalPlayerState.getProgress();
-    const owned = this.activeCreatureInstanceId 
+    const owned = this.activeCreatureInstanceId
       ? progress.creatures.find((c) => c.instanceId === this.activeCreatureInstanceId)
       : null;
     const effectiveStats = owned ? getEffectiveStats(owned) : null;
@@ -220,11 +221,11 @@ export class CombatSystem {
       const projectileColor = theme?.attackColor ?? 0xf97316;
       const projectileRadius = theme?.projectileRadius ?? 4;
       const speed = projectileSpeed;
-      
+
       // ✅ Calcular velocidade em pixels por segundo (igual ao servidor)
       const velocityX = Math.cos(angle) * speed;
       const velocityY = Math.sin(angle) * speed;
-      
+
       const sprite = this.scene.add.circle(
         this.player.x,
         this.player.y,
@@ -308,15 +309,15 @@ export class CombatSystem {
     if (this.basicAttackCooldown > 0) {
       this.basicAttackCooldown = Math.max(0, this.basicAttackCooldown - dt);
     }
-    
+
     if (this.basicAttackWindup > 0) {
       this.basicAttackWindup = Math.max(0, this.basicAttackWindup - dt);
-      
+
       // ✅ Executar ataque após windup terminar
       if (this.basicAttackWindup <= 0 && this.pendingAttack) {
         const { targetX, targetY } = this.pendingAttack;
         this.pendingAttack = null;
-        
+
         // Em multiplayer, o servidor já processou o ataque após windup
         // Mas criamos o projétil visual localmente para predição
         if (this.mpClient) {
@@ -328,28 +329,28 @@ export class CombatSystem {
       }
     }
   }
-  
+
   /**
    * ✅ Verifica se o jogador está em windup (bloqueia movimento).
    */
   isInWindup(): boolean {
     return this.basicAttackWindup > 0;
   }
-  
+
   /**
    * ✅ Retorna o tempo restante de windup (para efeito visual).
    */
   getWindupTime(): number {
     return this.basicAttackWindup;
   }
-  
+
   /**
    * ✅ Verifica se o jogador está em windup de skill (bloqueia movimento).
    */
   isInSkillWindup(skillSystem: { isInSkillWindup: () => boolean } | null): boolean {
     return skillSystem?.isInSkillWindup() ?? false;
   }
-  
+
   /**
    * ✅ Retorna o tempo restante de windup de skill (para efeito visual).
    */

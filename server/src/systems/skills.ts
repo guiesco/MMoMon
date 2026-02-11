@@ -26,6 +26,7 @@ import { SKILL_COOLDOWN_MS } from "../../../shared/serverConstants";
 import { getCreatureById } from "../../../shared/creatures";
 import { calculateEffectiveStats } from "../../../shared/creatureProgression";
 import { getSpecialSkillByCreatureId, getSpecialSkillByType } from "../../../shared/attacks";
+import { executeCreatureSpecialSkill } from "../../../shared/creatureBehaviors";
 
 // ============================================================================
 // Constantes
@@ -260,8 +261,8 @@ export function processSkillIntent(
     };
   }
 
-  // ✅ Obter windup time da special skill (escalado)
-  let skillWindupTime = 0.5; // Default
+  // ✅ Obter range da skill (windup desativado para jogadores - sem animação, o delay fica confuso)
+  let skillWindupTime = 0; // Sempre 0 para jogadores
   let skillRange = 0; // Default
   if (creatureId && creatureLevel !== undefined && creatureRank !== undefined) {
     const effectiveStats = calculateEffectiveStats(
@@ -269,12 +270,12 @@ export function processSkillIntent(
       getCreatureById
     );
     // Usar windup escalado do effectiveStats
-    skillWindupTime = effectiveStats.specialSkillWindup;
+    // skillWindupTime = effectiveStats.specialSkillWindup;
     skillRange = effectiveStats.specialSkillRange;
   } else if (creatureId) {
     const specialSkill = getSpecialSkillByCreatureId(creatureId);
     if (specialSkill) {
-      skillWindupTime = specialSkill.attackWindup;
+      // skillWindupTime = specialSkill.attackWindup;
       skillRange = specialSkill.range;
     }
   }
@@ -404,7 +405,8 @@ export function updateSkillZones(
             zone.ownerId,
             zone.attackerAttack
           );
-          damageResults.push(damageResult);
+          const level = creature.level ?? 1;
+          damageResults.push({ ...damageResult, targetLevel: level });
 
           // ✅ Aplicar efeitos especiais usando valores programáticos da definição da skill
           const skillDef = getSpecialSkillByType(zone.skillType);
@@ -564,124 +566,84 @@ export function updatePlayerSkillWindups(
           attackerAttack = effectiveStats.attackDamage;
         }
 
-        // ✅ DASH DO PYROGNAT: Se for Pyrognat usando fire_fog, criar múltiplas zonas ao longo do caminho
-        if (creatureId === "pyrognat" && skillType === "fire_fog" && skillRange > 0) {
-          // Calcular caminho do dash
-          const startX = player.x;
-          const startY = player.y;
-          const dx = finalTargetX - startX;
-          const dy = finalTargetY - startY;
-          const totalDistance = Math.hypot(dx, dy);
+        // Inferir creatureId a partir do skillType se não veio no pendingSkill
+        const resolvedCreatureId =
+          creatureId ??
+          (skillType === "fire_fog"
+            ? "pyrognat"
+            : skillType === "root_trap"
+              ? "verdant"
+              : skillType === "electric_surge"
+                ? "voltiger"
+                : "aquaryl");
 
-          // Limitar distância ao alcance da skill
-          const dashDistance = Math.min(totalDistance, skillRange);
-          const normalizedDx = dx / totalDistance;
-          const normalizedDy = dy / totalDistance;
+        const recipe = executeCreatureSpecialSkill(resolvedCreatureId, {
+          ownerId: playerId,
+          skillType: skillType as "fire_fog" | "root_trap" | "electric_surge" | "heal_wave",
+          startX: player.x,
+          startY: player.y,
+          targetX: finalTargetX,
+          targetY: finalTargetY,
+          skillRange,
+          radius,
+          damagePerTick,
+          tickInterval: baseConfig.tickInterval,
+          lifetime,
+          slowModifier: baseConfig.slowModifier ?? 0.3,
+          attackerAttack
+        });
 
-          // Criar múltiplas skill zones ao longo do caminho (rastro de fogo)
-          const zoneSpacing = radius * 0.6; // Espaçamento entre zonas (60% do raio)
-          const numZones = Math.ceil(dashDistance / zoneSpacing);
+        let lastCreatedZoneId: string | undefined;
+        for (const z of recipe.zones) {
+          const skillZone = createSkillZone(
+            playerId,
+            skillType as "fire_fog" | "root_trap" | "electric_surge",
+            z.x,
+            z.y,
+            z.radius,
+            z.damagePerTick,
+            z.tickInterval,
+            z.lifetime,
+            z.slowModifier,
+            z.attackerAttack
+          );
+          room.skillZones.push(skillZone);
+          lastCreatedZoneId = skillZone.id;
+        }
 
-          for (let i = 0; i < numZones; i++) {
-            const t = i / Math.max(1, numZones - 1); // 0 a 1
-            const zoneX = startX + normalizedDx * dashDistance * t;
-            const zoneY = startY + normalizedDy * dashDistance * t;
-
-            const trailZone = createSkillZone(
-              playerId,
-              skillType as "fire_fog" | "root_trap" | "electric_surge",
-              zoneX,
-              zoneY,
-              radius,
-              damagePerTick,
-              baseConfig.tickInterval,
-              lifetime,
-              baseConfig.slowModifier,
-              attackerAttack
-            );
-
-            room.skillZones.push(trailZone);
-          }
-
-          // ✅ Implementar dash: mover jogador instantaneamente para o destino
-          const dashTargetX = startX + normalizedDx * dashDistance;
-          const dashTargetY = startY + normalizedDy * dashDistance;
-
-          // Mover jogador para o destino do dash
-          player.x = dashTargetX;
-          player.y = dashTargetY;
-
-          // ✅ Adicionar informação de dash no resultado para o gameLoop processar
+        if (recipe.dashTarget) {
+          player.x = recipe.dashTarget.x;
+          player.y = recipe.dashTarget.y;
           skillResults.push({
             success: true,
             skillZoneId: `dash-${playerId}-${Date.now()}`,
             skillType: skillType as SkillType,
             dashMovement: {
               playerId,
-              newX: dashTargetX,
-              newY: dashTargetY
+              newX: recipe.dashTarget.x,
+              newY: recipe.dashTarget.y
             }
           });
-
-          // Aplicar buff de velocidade temporário para o dash (2x velocidade por 0.3s)
-          const dashDuration = 0.3; // Duração do dash em segundos
-          // Cast para CombatPlayer para usar addBuffToPlayer
-          const combatPlayer = player as unknown as CombatPlayer;
-          if (!combatPlayer.buffs) {
-            combatPlayer.buffs = [];
-          }
-          addBuffToPlayer(combatPlayer, 'speed', dashDuration, 2.0, playerId);
-
-          // Criar skill zone no destino final também
-          const finalZone = createSkillZone(
-            playerId,
-            skillType as "fire_fog" | "root_trap" | "electric_surge",
-            dashTargetX,
-            dashTargetY,
-            radius,
-            damagePerTick,
-            baseConfig.tickInterval,
-            lifetime,
-            baseConfig.slowModifier,
-            attackerAttack
-          );
-
-          room.skillZones.push(finalZone);
-
-          // Atualizar cooldown do jogador
-          player.lastSkillTime = Date.now();
-
-          skillResults.push({
-            success: true,
-            skillZoneId: finalZone.id, // Retornar ID da zona final
-            skillType: skillType as SkillType
-          });
-        } else {
-          // Comportamento normal: criar uma única skill zone
-          const skillZone = createSkillZone(
-            playerId,
-            skillType as "fire_fog" | "root_trap" | "electric_surge",
-            finalTargetX,
-            finalTargetY,
-            radius,
-            damagePerTick,
-            baseConfig.tickInterval,
-            lifetime,
-            baseConfig.slowModifier,
-            attackerAttack // ✅ Ataque do atacante para calcular dano com defesa
-          );
-
-          room.skillZones.push(skillZone);
-
-          // Atualizar cooldown do jogador
-          player.lastSkillTime = Date.now();
-
-          skillResults.push({
-            success: true,
-            skillZoneId: skillZone.id,
-            skillType: skillType as SkillType
-          });
         }
+
+        if (recipe.speedBuff) {
+          const combatPlayer = player as unknown as CombatPlayer;
+          if (!combatPlayer.buffs) combatPlayer.buffs = [];
+          addBuffToPlayer(
+            combatPlayer,
+            "speed",
+            recipe.speedBuff.duration,
+            recipe.speedBuff.multiplier,
+            playerId
+          );
+        }
+
+        player.lastSkillTime = Date.now();
+        skillResults.push({
+          success: true,
+          skillZoneId: lastCreatedZoneId,
+          skillType: skillType as SkillType
+        });
       }
     }
   }

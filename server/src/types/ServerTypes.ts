@@ -26,6 +26,8 @@ export interface PlayerPresence {
   creaturesCaptured: number;
   /** Itens consumidos durante a expedição (itemId -> quantidade) */
   itemsConsumed: Map<string, number>;
+  /** Níveis das criaturas selvagens derrotadas pelo jogador (para XP por nível) */
+  defeatedCreatureLevels?: number[];
   
   // Propriedades visuais e de ação (sincronizadas com cliente)
   /** Cor do sprite do jogador (hex) */
@@ -77,6 +79,14 @@ export interface Room {
    * Chave: playerId, Valor: último progresso em porcentagem (0-100)
    */
   lastExtractionBroadcast?: Map<string, number>;
+  /**
+   * Updates de extração do tick atual (preenchido em onBeforeWorldUpdate, consumido em onTick).
+   */
+  pendingExtractionUpdates?: Array<{ playerId: string; pointId: string; status: string; progress: number }>;
+  /**
+   * Extrações completadas neste tick (recompensa já calculada; onTick envia broadcast/Firebase/desconecta).
+   */
+  pendingExtractionCompletions?: Array<{ playerId: string; pointId: string; reward: import("../systems/extraction").ExtractionReward }>;
   /**
    * Timer para cleanup automático de sala vazia.
    */

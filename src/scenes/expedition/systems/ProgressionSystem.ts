@@ -15,7 +15,7 @@ export class ProgressionSystem {
   private feedbackManager: FeedbackManager;
   private xpProcessed = false;
   private activeTimeByCreature: Map<string, number> = new Map();
-  private creaturesDefeatedCount = 0;
+  private defeatedCreatureLevels: number[] = [];
   private expeditionTime = 0;
   private activeTeamIds: string[] = [];
   private activeCreatureInstanceId: string | null = null;
@@ -41,10 +41,10 @@ export class ProgressionSystem {
   }
 
   /**
-   * Incrementa contador de criaturas derrotadas.
+   * Registra uma criatura derrotada pelo nível dela (quanto mais alto, mais XP na expedição).
    */
-  incrementCreaturesDefeated(): void {
-    this.creaturesDefeatedCount += 1;
+  recordCreatureDefeated(level: number): void {
+    this.defeatedCreatureLevels.push(Math.max(1, level));
   }
 
   /**
@@ -58,7 +58,8 @@ export class ProgressionSystem {
     const params: ExpeditionXpParams = {
       durationSeconds: this.expeditionTime,
       extractionSuccess,
-      creaturesDefeated: this.creaturesDefeatedCount,
+      creaturesDefeated: this.defeatedCreatureLevels.length,
+      defeatedCreatureLevels: this.defeatedCreatureLevels.length > 0 ? this.defeatedCreatureLevels : undefined,
       resourcesCollected: this.telemetry.resourcesCollected,
       teamCreatureIds: this.activeTeamIds,
       activeCreatureId: this.activeCreatureInstanceId,

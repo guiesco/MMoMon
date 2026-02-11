@@ -11,7 +11,8 @@ Manter constantes, tipos e funções sincronizadas entre cliente e servidor para
 - `types.ts` - Tipos TypeScript compartilhados (ex: `ElementType`)
 - `enums.ts` - Enums e tipos compartilhados (ex: `ThreatTier`, `EnemyBehaviorType`, `EnemyAIState`)
 - `typeEffectiveness.ts` - Matriz de vantagens/desvantagens de tipos
-- `creatureTypes.ts` - Mapeamento de criaturas para tipos elementais e função de cálculo
+- `creatureTypes.ts` - Mapeamento de criaturas para tipos (derivado de `creatures/`); use para `calculateTypeEffectiveness` e `CREATURE_TYPES`
+- **`creatures/`** - **Fonte de verdade por criatura**: uma classe por criatura (Pyrognat, Aquaryl, Verdant, Voltiger) com dados, tema e `executeSpecialSkill`. `CreatureRegistry.get(id)` retorna a instância. O arquivo `creatures.ts` na raiz do shared é um thin wrapper que re-exporta o registry e mantém `getCreatureById`, `CREATURES`, etc.
 - `threatTiers.ts` - Configurações de tiers de ameaça
 - `enemyAI.ts` - Configurações de IA de inimigos (interface EnemyBehaviorConfig)
 - `expedition.ts` - Constantes de expedição (duração, extração, etc)

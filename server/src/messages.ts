@@ -308,6 +308,8 @@ export interface AttackResultMessage extends BaseMessage {
   targetMaxHp?: number;
   isCritical?: boolean;
   targetDestroyed?: boolean;
+  /** Nível da criatura derrotada (para XP por nível no cliente) */
+  targetLevel?: number;
 }
 
 /** Resultado de tentativa de captura */
@@ -507,6 +509,7 @@ export function createAttackResultMessage(
     targetMaxHp?: number;
     isCritical?: boolean;
     targetDestroyed?: boolean;
+    targetLevel?: number;
   }
 ): AttackResultMessage {
   return {

@@ -23,17 +23,11 @@ import type { SaveExpeditionData } from "../firebaseTypes";
 import { calculateExpeditionXp, type ExpeditionXpParams } from "../creatureProgression";
 
 /**
- * Processa o sistema de extração para uma sala.
- * Chamado a cada tick do game loop.
- * 
- * @param room - Sala para processar extração
- * @param deltaMs - Tempo decorrido desde o último tick (em milissegundos)
+ * Chamado em onBeforeWorldUpdate (antes do combate). Atualiza progresso de extração,
+ * marca jogadores que completaram no combatState (extractedAt) e enfileira conclusões
+ * para broadcast/Firebase/desconexão no onTick. Assim o jogador não recebe dano no mesmo tick.
  */
-export async function processExtractionSystem(
-  room: Room,
-  deltaMs: number
-): Promise<void> {
-  // Converter Room para RoomForExtraction (interface compatível)
+export function runExtractionBeforeWorldUpdate(room: Room, deltaMs: number): void {
   const roomForExtraction: RoomForExtraction = {
     id: room.id,
     players: room.players,
@@ -41,36 +35,57 @@ export async function processExtractionSystem(
     activeExtractions: room.activeExtractions
   };
 
-  // Atualizar progresso de todas as extrações ativas
   const updates = updateExtractions(roomForExtraction, deltaMs);
+  room.pendingExtractionUpdates = updates;
 
-  // Processar updates e enviar broadcasts
   for (const update of updates) {
     if (update.status === "completed") {
-      console.log(`[ExtractionHandler] Processando extração completa para jogador ${update.playerId} no ponto ${update.pointId}`);
-
-      // IMPORTANTE: Enviar um update final de progresso (100%) antes de marcar como completed
-      // Isso garante que o cliente receba o update de 100% antes do status "completed"
-      // Verificar se o último broadcast não foi 100% para evitar duplicação
-      const lastBroadcastProgress = room.lastExtractionBroadcast?.get(update.playerId) ?? -1;
-      if (lastBroadcastProgress < 100) {
-        const finalProgressMessage = createExtractionStateMessage(
-          update.pointId,
-          update.playerId,
-          "in_progress",
-          100
-        );
-        StateBroadcaster.broadcastExtractionMessage(room, finalProgressMessage);
-
-        // Atualizar último progresso broadcastado
-        if (!room.lastExtractionBroadcast) {
-          room.lastExtractionBroadcast = new Map();
+      const reward = completeExtraction(roomForExtraction, update.playerId, update.pointId);
+      if (reward && room.gameLoop) {
+        const combatPlayer = room.gameLoop.getCombatState().players.get(update.playerId);
+        if (combatPlayer) {
+          combatPlayer.extractedAt = Date.now();
         }
-        room.lastExtractionBroadcast.set(update.playerId, 100);
+        if (!room.pendingExtractionCompletions) room.pendingExtractionCompletions = [];
+        room.pendingExtractionCompletions.push({
+          playerId: update.playerId,
+          pointId: update.pointId,
+          reward
+        });
       }
+    }
+  }
+}
 
-      await handleExtractionCompleted(room, roomForExtraction, update);
-    } else if (update.status === "cancelled") {
+/**
+ * Processa o sistema de extração para uma sala (chamado em onTick).
+ * Usa pendingExtractionUpdates e pendingExtractionCompletions preenchidos em onBeforeWorldUpdate.
+ */
+export async function processExtractionSystem(room: Room): Promise<void> {
+  const completions = room.pendingExtractionCompletions ?? [];
+  const updates = room.pendingExtractionUpdates ?? [];
+
+  room.pendingExtractionCompletions = [];
+  room.pendingExtractionUpdates = [];
+
+  for (const comp of completions) {
+    const lastBroadcastProgress = room.lastExtractionBroadcast?.get(comp.playerId) ?? -1;
+    if (lastBroadcastProgress < 100) {
+      const finalProgressMessage = createExtractionStateMessage(
+        comp.pointId,
+        comp.playerId,
+        "in_progress",
+        100
+      );
+      StateBroadcaster.broadcastExtractionMessage(room, finalProgressMessage);
+      if (!room.lastExtractionBroadcast) room.lastExtractionBroadcast = new Map();
+      room.lastExtractionBroadcast.set(comp.playerId, 100);
+    }
+    await handleExtractionCompletedAsync(room, comp);
+  }
+
+  for (const update of updates) {
+    if (update.status === "cancelled") {
       handleExtractionCancelled(room, update);
     } else if (update.status === "in_progress") {
       handleExtractionProgress(room, update);
@@ -79,53 +94,24 @@ export async function processExtractionSystem(
 }
 
 /**
- * Processa uma extração completa.
- * 
- * IMPORTANTE: Esta função garante que apenas dados do jogador específico são processados.
- * Cada jogador recebe suas próprias recompensas baseadas em seus próprios dados.
+ * Processa broadcast, Firebase e desconexão de uma extração já completada (recompensa já calculada em onBeforeWorldUpdate).
  */
-async function handleExtractionCompleted(
+async function handleExtractionCompletedAsync(
   room: Room,
-  roomForExtraction: RoomForExtraction,
-  update: { playerId: string; pointId: string; progress: number }
+  comp: { playerId: string; pointId: string; reward: import("../systems/extraction").ExtractionReward }
 ): Promise<void> {
-  console.log(`[ExtractionHandler] ✅ handleExtractionCompleted chamado para jogador ${update.playerId} no ponto ${update.pointId}`);
+  const update = { playerId: comp.playerId, pointId: comp.pointId, progress: 100 };
+  const reward = comp.reward;
 
-  // ✅ VALIDAÇÃO: Verificar que o playerId está presente
-  if (!update.playerId) {
-    console.error(`[ExtractionHandler] ❌ playerId não fornecido no update`);
-    return;
-  }
-
-  // ✅ Extração completa - calcular recompensas INDIVIDUAIS
-  const reward = completeExtraction(
-    roomForExtraction,
-    update.playerId,
-    update.pointId
-  );
-
-  if (!reward) {
-    console.warn(`[ExtractionHandler] ❌ completeExtraction retornou null para jogador ${update.playerId} - recompensas não serão enviadas`);
-    return;
-  }
-
-  // ✅ VALIDAÇÃO: Verificar que o reward contém o playerId correto
-  if (reward.playerId !== update.playerId) {
-    console.error(`[ExtractionHandler] ❌ ERRO CRÍTICO: playerId no reward (${reward.playerId}) não corresponde ao update (${update.playerId})`);
-    return;
-  }
-
-  console.log(`[ExtractionHandler] ✅ Recompensas INDIVIDUAIS calculadas para jogador ${update.playerId}: ${reward.creaturesCaptured} criaturas, ${reward.resources.size} tipos de recursos`);
+  console.log(`[ExtractionHandler] ✅ handleExtractionCompletedAsync para jogador ${update.playerId} no ponto ${update.pointId}`);
 
   const player = room.players.get(update.playerId);
 
-  // ✅ VALIDAÇÃO: Verificar que o jogador existe na sala
   if (!player) {
     console.error(`[ExtractionHandler] ❌ Jogador ${update.playerId} não encontrado na sala - recompensas não serão salvas`);
     return;
   }
 
-  // ✅ VALIDAÇÃO: Verificar que o userId corresponde ao jogador correto
   const userId = player.userId || update.playerId;
   if (player.userId && player.id !== update.playerId) {
     console.error(`[ExtractionHandler] ❌ ERRO CRÍTICO: player.id (${player.id}) não corresponde ao update.playerId (${update.playerId})`);
@@ -168,11 +154,13 @@ async function handleExtractionCompleted(
       const durationSeconds = (Date.now() - room.startedAt) / 1000;
       const resourcesCollected = Array.from(reward.resources.values()).reduce((a, b) => a + b, 0);
 
-      // Calcular XP para cada criatura da equipe
+      // Calcular XP para cada criatura da equipe (com bônus por nível das criaturas derrotadas)
+      const defeatedLevels = player.defeatedCreatureLevels ?? [];
       const xpParams: ExpeditionXpParams = {
         durationSeconds,
         extractionSuccess: true, // Extração bem-sucedida
-        creaturesDefeated: 0, // TODO: Rastrear criaturas derrotadas
+        creaturesDefeated: defeatedLevels.length,
+        defeatedCreatureLevels: defeatedLevels.length > 0 ? defeatedLevels : undefined,
         resourcesCollected,
         teamCreatureIds: activeTeamIds,
         activeCreatureId,

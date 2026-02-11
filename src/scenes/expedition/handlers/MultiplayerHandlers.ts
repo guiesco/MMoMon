@@ -474,6 +474,11 @@ export class MultiplayerHandlers {
 
       // Se a criatura foi destruída
       if (result.targetDestroyed || creature.currentHp <= 0) {
+        // Registrar derrota com nível para XP (bônus por nível alto)
+        if (this.progressionSystem && isLocalPlayerAttack) {
+          const level = result.targetLevel ?? creature.level ?? 1;
+          this.progressionSystem.recordCreatureDefeated(level);
+        }
         this.visualSystem.createDeathEffect(creature.sprite.x, creature.sprite.y, this.teamSystem.activeTheme);
         this.worldState.removeCreature(result.targetId);
         this.spriteManager.destroyCreatureSprite(result.targetId);
@@ -640,6 +645,13 @@ export class MultiplayerHandlers {
 
     if (this.setState) {
       this.setState(newState);
+    }
+
+    // Ao completar extração: remover jogador local do world state e destruir sprite imediatamente
+    // para evitar "ghost" (sprite duplicado ou residual ao entrar no lobby)
+    if (state.status === "completed" && this.clientId) {
+      this.worldState.removePlayer(this.clientId);
+      this.spriteManager.destroyPlayerSprite(this.clientId);
     }
 
     // Processa recompensas se extração completou

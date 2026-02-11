@@ -148,6 +148,8 @@ export interface AttackResult {
   targetMaxHp?: number;
   isCritical?: boolean;
   targetDestroyed?: boolean;
+  /** Nível da criatura derrotada (para XP por nível) */
+  targetLevel?: number;
 }
 
 /**

@@ -35,11 +35,25 @@ export const XP_REWARDS = {
   expeditionParticipation: 30,
   /** XP bonus se a expedição for extraída com sucesso */
   successfulExtraction: 50,
-  /** XP bonus por criatura selvagem derrotada (split entre equipe) */
+  /** XP base por criatura selvagem derrotada (nível 1). Níveis mais altos dão mais XP. */
   perCreatureDefeated: 10,
+  /** Bônus de XP por nível da criatura derrotada: XP = base * (1 + (level - 1) * factor). Ex: level 10 com 0.15 = 23.5x base */
+  defeatedLevelXpFactor: 0.15,
   /** XP bonus por recurso coletado (split entre equipe) */
   perResourceCollected: 3,
 } as const;
+
+/**
+ * Calcula o XP concedido por derrotar uma criatura de determinado nível.
+ * Quanto mais alto o nível do inimigo, mais XP a equipe ganha.
+ */
+export function getXpForDefeatingCreature(level: number): number {
+  const base = XP_REWARDS.perCreatureDefeated;
+  const factor = XP_REWARDS.defeatedLevelXpFactor;
+  const effectiveLevel = Math.max(1, Math.min(level, LEVEL_CONFIG.maxLevel));
+  const multiplier = 1 + (effectiveLevel - 1) * factor;
+  return Math.floor(base * multiplier);
+}
 
 /**
  * Configuração do sistema de ranks (fusão de cópias).
@@ -131,8 +145,10 @@ export interface ExpeditionXpParams {
   durationSeconds: number;
   /** Se a extração foi bem-sucedida */
   extractionSuccess: boolean;
-  /** Número de criaturas derrotadas */
+  /** Número de criaturas derrotadas (usado se defeatedCreatureLevels não for fornecido) */
   creaturesDefeated: number;
+  /** Níveis das criaturas derrotadas (prioridade sobre creaturesDefeated; dá mais XP por nível alto) */
+  defeatedCreatureLevels?: number[];
   /** Número de recursos coletados */
   resourcesCollected: number;
   /** IDs das criaturas que participaram (na equipe ativa) */
@@ -162,9 +178,11 @@ export function calculateExpeditionXp(
     ? XP_REWARDS.successfulExtraction
     : 0;
 
-  // XP dividido entre a equipe por derrotas e coletas
-  const sharedDefeatedXp =
-    (params.creaturesDefeated * XP_REWARDS.perCreatureDefeated) / teamSize;
+  // XP dividido entre a equipe por derrotas (com bônus por nível do inimigo)
+  const totalDefeatedXp = params.defeatedCreatureLevels?.length
+    ? params.defeatedCreatureLevels.reduce((sum, level) => sum + getXpForDefeatingCreature(level), 0)
+    : params.creaturesDefeated * XP_REWARDS.perCreatureDefeated;
+  const sharedDefeatedXp = totalDefeatedXp / teamSize;
   const sharedResourceXp =
     (params.resourcesCollected * XP_REWARDS.perResourceCollected) / teamSize;
 

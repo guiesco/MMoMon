@@ -103,9 +103,9 @@ export interface SpecialSkill {
 export const ATTACK_CHAMA_RAPIDA: BasicAttack = {
   name: "Chama Rápida",
   description: "Projétil de fogo de curto alcance.",
-  range: 240, // +20 (DPS Rápido: alcance médio)
-  damage: 24, // +4 (escala com ATK)
-  cooldown: 2.2, // -0.3s (DPS Rápido: cooldown menor)
+  range: 240,
+  damage: 22, // alinhado ao attackDamage do Pyrognat (fórmula ATK/(DEF*2)+1 × Poder)
+  cooldown: 2.2,
   isProjectile: true,
   attackWindup: 0.5,
   stunDuration: 0.2,
@@ -123,9 +123,9 @@ export const ATTACK_CHAMA_RAPIDA: BasicAttack = {
 export const ATTACK_JATO_AGUA: BasicAttack = {
   name: "Jato d'Água",
   description: "Projétil de água de médio alcance.",
-  range: 280, // +20 (Tank/Support: alcance maior)
-  damage: 18, // mantém (escala com ATK)
-  cooldown: 2.3, // -0.2s (Tank/Support: cooldown médio)
+  range: 280,
+  damage: 19, // alinhado ao attackDamage do Aquaryl
+  cooldown: 2.3,
   isProjectile: true,
   attackWindup: 0.5,
   stunDuration: 0.2,
@@ -143,9 +143,9 @@ export const ATTACK_JATO_AGUA: BasicAttack = {
 export const ATTACK_CHICOTE_VINHA: BasicAttack = {
   name: "Chicote de Vinha",
   description: "Ataque melee curto, rápido.",
-  range: 90, // +10 (Tank Melee: alcance curto)
-  damage: 16, // mantém (escala com ATK)
-  cooldown: 1.8, // -0.2s (Tank Melee: cooldown menor)
+  range: 90,
+  damage: 14, // alinhado ao attackDamage do Verdant
+  cooldown: 1.8,
   isProjectile: false,
   attackWindup: 0.4,
   stunDuration: 0.15,
@@ -163,9 +163,9 @@ export const ATTACK_CHICOTE_VINHA: BasicAttack = {
 export const ATTACK_RAIO_CORTANTE: BasicAttack = {
   name: "Raio Cortante",
   description: "Dispara um raio elétrico de alto dano em linha reta.",
-  range: 300, // +20 (Glass Cannon: alcance maior)
-  damage: 28, // +4 (Glass Cannon: muito mais dano)
-  cooldown: 2.0, // mantém
+  range: 300,
+  damage: 19, // rebalanceado para fórmula (ATK/(DEF*2)+1)×Poder — menos burst
+  cooldown: 2.25, // cooldown maior para TTK 3–15s
   isProjectile: true,
   attackWindup: 0.45,
   stunDuration: 0.15,

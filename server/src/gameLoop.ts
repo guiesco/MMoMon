@@ -154,6 +154,11 @@ export interface GameLoopCallbacks {
   onMatchStateChange: (newState: MatchState, oldState: MatchState) => void;
 
   /**
+   * Chamado antes de updateWorld no mesmo tick (para processar extrações e marcar jogadores extraídos antes do combate).
+   */
+  onBeforeWorldUpdate?: (tickNumber: number, deltaMs: number) => void;
+
+  /**
    * Chamado a cada tick para processar lógica customizada.
    */
   onTick?: (tickNumber: number, deltaMs: number) => void;
@@ -528,19 +533,24 @@ export class GameLoop {
       // 1. Processar intents na fila
       this.processIntents();
 
-      // 2. Atualizar estado do mundo (IA de criaturas, projéteis, cooldowns)
+      // 2. Callback antes do mundo (extração: marcar jogadores que completaram para não receberem dano neste tick)
+      if (this.callbacks.onBeforeWorldUpdate) {
+        this.callbacks.onBeforeWorldUpdate(this.tickNumber, deltaMs);
+      }
+
+      // 3. Atualizar estado do mundo (IA de criaturas, projéteis, cooldowns)
       // TODO: Implementar quando movermos lógica de jogo para servidor
       this.updateWorld(deltaMs);
 
-      // 3. Verificar condições de fim de partida
+      // 4. Verificar condições de fim de partida
       this.checkMatchEnd();
 
-      // 4. Callback de tick customizado
+      // 5. Callback de tick customizado
       if (this.callbacks.onTick) {
         this.callbacks.onTick(this.tickNumber, deltaMs);
       }
 
-      // 5. Broadcast de estado a cada N ticks
+      // 6. Broadcast de estado a cada N ticks
       if (this.tickNumber % STATE_BROADCAST_RATE === 0) {
         this.callbacks.onBroadcastState();
       }
